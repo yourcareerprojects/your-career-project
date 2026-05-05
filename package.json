@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "audit:prod": "npm audit --production",
-    "build": "npx webpack --mode production",
+    "build": "node ./node_modules/webpack/bin/webpack.js --mode production",
     "migrate:duplicates": "node scripts/migrateDuplicateCareerSteps.js",
     "build:skills": "node scripts/buildSkillModels.js",
     "build:skills:force": "node scripts/buildSkillModels.js --force",
@@ -139,7 +139,7 @@
     "picocolors": "^1.1.1",
     "style-loader": "^3.3.3",
     "supertest": "^6.3.4",
-    "webpack": "^5.99.9",
+    "webpack": "^5.106.2",
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^5.2.2"
   },
