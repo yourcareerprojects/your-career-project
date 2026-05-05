@@ -20,7 +20,7 @@ if (isProduction) {
   }
 
   if (process.env.OPENAI_API_KEY == null || String(process.env.OPENAI_API_KEY).trim() === '') {
-    logger.warn('OPENAI_API_KEY is not set. AI-powered endpoints may fail until this env var is configured.');
+    logger.info('OPENAI_API_KEY is not set. AI-powered endpoints may fail until this env var is configured.');
   }
 }
 
