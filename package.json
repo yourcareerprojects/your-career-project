@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "audit:prod": "npm audit --production",
-    "build": "webpack --mode production",
+    "build": "npx webpack --mode production",
     "migrate:duplicates": "node scripts/migrateDuplicateCareerSteps.js",
     "build:skills": "node scripts/buildSkillModels.js",
     "build:skills:force": "node scripts/buildSkillModels.js --force",
