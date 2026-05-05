@@ -14,7 +14,8 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "audit:prod": "npm audit --production",
-    "build": "node ./node_modules/webpack/bin/webpack.js --mode production",
+    "build": "webpack --mode production",
+    "build:render": "npm install --include=dev && npm run build",
     "migrate:duplicates": "node scripts/migrateDuplicateCareerSteps.js",
     "build:skills": "node scripts/buildSkillModels.js",
     "build:skills:force": "node scripts/buildSkillModels.js --force",
@@ -65,6 +66,9 @@
     "professional-development"
   ],
   "author": "Nicola",
+  "engines": {
+    "node": "20.x"
+  },
   "license": "ISC",
   "dependencies": {
     "@babel/register": "^7.29.3",
