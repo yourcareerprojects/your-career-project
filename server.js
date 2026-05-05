@@ -7,7 +7,7 @@ const logger = require('./src/server/utils/logger');
 const isProduction = process.env.NODE_ENV === 'production';
 
 if (isProduction) {
-  const productionRequiredEnv = ['JWT_SECRET', 'MONGODB_URI', 'OPENAI_API_KEY', 'CORS_ORIGIN'];
+  const productionRequiredEnv = ['JWT_SECRET', 'MONGODB_URI'];
   const missingProductionEnv = productionRequiredEnv.filter((key) => {
     const val = process.env[key];
     return val == null || String(val).trim() === '';
@@ -17,6 +17,10 @@ if (isProduction) {
       missingKeys: missingProductionEnv,
     });
     process.exit(1);
+  }
+
+  if (process.env.OPENAI_API_KEY == null || String(process.env.OPENAI_API_KEY).trim() === '') {
+    logger.warn('OPENAI_API_KEY is not set. AI-powered endpoints may fail until this env var is configured.');
   }
 }
 
