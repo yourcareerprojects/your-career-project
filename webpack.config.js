@@ -41,9 +41,14 @@ module.exports = (env, argv) => {
       extensions: ['.js', '.jsx']
     },
     plugins: [
-      new Dotenv({ path: envPath }),
+      new Dotenv({
+        path: envPath,
+        systemvars: true,
+        silent: true
+      }),
       new HtmlWebpackPlugin({
-        template: path.resolve(__dirname, 'public/webpack-index-template.html'),
+        // Keep template in src so it's tracked in git (public/ is ignored).
+        template: path.resolve(__dirname, 'src/client/index.template.html'),
         filename: 'index.html',
         inject: true
       })
