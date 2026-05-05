@@ -1,0 +1,220 @@
+const {
+  evaluateInputFieldQuality,
+  buildDeterministicDiagnosis,
+  evaluateProfileReviewFollowUps,
+  buildStep3ReviewTextMap,
+  ALLOWED_ISSUES
+} = require('../services/jobAnalysis/inputQualityDiagnosisService');
+
+describe('inputQualityDiagnosisService', () => {
+  test('buildStep3ReviewTextMap has seven keys only', () => {
+    const map = buildStep3ReviewTextMap({
+      userIdentity: { workEnjoyMost: 'A' },
+      structuredUserInfo: {
+        skills: [{ name: 'Ignored' }],
+        keyResponsibilities: ['Shipped feature'],
+        skillsInDevelopment: []
+      }
+    });
+    expect(Object.keys(map).length).toBe(7);
+    expect(map['structuredUserInfo.skills']).toBeUndefined();
+    expect(map['structuredUserInfo.keyResponsibilities']).toBe('Shipped feature');
+  });
+
+  test('evaluateProfileReviewFollowUps returns three items with one follow_up_question each', async () => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const { followUps } = await evaluateProfileReviewFollowUps({
+      userIdentity: {
+        workEnjoyMost: 'x',
+        topicsIndustriesInterest: 'yy',
+        naturallyGoodAt: 'zzz',
+        workEnvironmentFit: 'aaaa',
+        workingLifeAchievement: 'bbbbb'
+      },
+      structuredUserInfo: {
+        keyResponsibilities: [
+          'Built reporting pipelines in Python and Tableau; improved weekly decision latency for leadership.'
+        ],
+        skillsInDevelopment: []
+      }
+    });
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(followUps.length).toBe(3);
+    followUps.forEach((f) => {
+      expect(typeof f.follow_up_question).toBe('string');
+      expect(f.follow_up_question.length).toBeGreaterThan(5);
+      expect(typeof f.quality_score).toBe('number');
+      expect(f.field).toBeTruthy();
+    });
+    const scores = followUps.map((f) => f.quality_score);
+    const sorted = [...scores].sort((a, b) => a - b);
+    expect(scores).toEqual(sorted);
+  });
+
+  test('evaluateProfileReviewFollowUps localizes follow-up questions when lang is de', async () => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const translateFn = jest.fn(async ({ text, targetLang }) => `${targetLang.toUpperCase()}: ${text}`);
+    const { followUps } = await evaluateProfileReviewFollowUps(
+      {
+        userIdentity: {
+          workEnjoyMost: 'x',
+          topicsIndustriesInterest: 'yy',
+          naturallyGoodAt: 'zzz',
+          workEnvironmentFit: 'aaaa',
+          workingLifeAchievement: 'bbbbb'
+        },
+        structuredUserInfo: {
+          keyResponsibilities: ['Did something'],
+          skillsInDevelopment: []
+        }
+      },
+      { lang: 'de', translateFn }
+    );
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(followUps.length).toBe(3);
+    followUps.forEach((f) => {
+      expect(f.follow_up_question.startsWith('DE: ')).toBe(true);
+    });
+    expect(translateFn).toHaveBeenCalled();
+    expect(translateFn.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        targetLang: 'de'
+      })
+    );
+  });
+
+  test('ALLOWED_ISSUES matches taxonomy size', () => {
+    expect(ALLOWED_ISSUES).toContain('too_short');
+    expect(ALLOWED_ISSUES).toContain('inconsistent_with_other_fields');
+    expect(ALLOWED_ISSUES.length).toBe(11);
+  });
+
+  test('buildDeterministicDiagnosis returns contract shape', () => {
+    const d = buildDeterministicDiagnosis('keyResponsibilities', 'I did stuff.', {
+      summary: 'I did stuff.'
+    });
+    expect(d.field).toBe('keyResponsibilities');
+    expect(d).toHaveProperty('dimension_scores');
+    expect(Object.keys(d.dimension_scores).sort()).toEqual(
+      ['clarity', 'completeness', 'information_density', 'relevance', 'specificity'].sort()
+    );
+    const mean =
+      (d.dimension_scores.specificity +
+        d.dimension_scores.information_density +
+        d.dimension_scores.clarity +
+        d.dimension_scores.relevance +
+        d.dimension_scores.completeness) /
+      5;
+    const expectedOverall = Math.round(Math.max(0, Math.min(1, mean)) * 100) / 100;
+    expect(d.quality_score).toBe(expectedOverall);
+    expect(d.follow_up_questions.length).toBe(3);
+    d.issues.forEach((issue) => expect(ALLOWED_ISSUES).toContain(issue));
+  });
+
+  test('buildDeterministicDiagnosis flags duplicate text across fields', () => {
+    const body = 'Leading cross-functional initiatives to deliver customer value at scale.';
+    const d = buildDeterministicDiagnosis('domains', body, { skills: body });
+    expect(d.issues).toContain('inconsistent_with_other_fields');
+  });
+
+  test('evaluateInputFieldQuality adds inconsistent_with_other_fields when duplicate across fields', async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-key';
+    const body =
+      'Owning roadmap prioritization and stakeholder alignment end to end across multiple quarters.';
+    const llmProvider = jest.fn(async () =>
+      JSON.stringify({
+        field: 'domains',
+        quality_score: 0.5,
+        dimension_scores: {
+          specificity: 0.5,
+          information_density: 0.5,
+          clarity: 0.5,
+          relevance: 0.5,
+          completeness: 0.5
+        },
+        issues: ['too_short'],
+        follow_up_questions: ['Q1?', 'Q2?', 'Q3?']
+      })
+    );
+    const d = await evaluateInputFieldQuality(
+      { field: 'domains', text: body, otherFields: { skills: body } },
+      { llmProvider }
+    );
+    process.env.OPENAI_API_KEY = prev;
+    expect(d.issues).toContain('inconsistent_with_other_fields');
+  });
+
+  test('evaluateInputFieldQuality uses llmProvider when API key present', async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-key';
+
+    const llmProvider = jest.fn(async () =>
+      JSON.stringify({
+        field: 'skills',
+        quality_score: 0.5,
+        dimension_scores: {
+          specificity: 0.5,
+          information_density: 0.5,
+          clarity: 0.5,
+          relevance: 0.5,
+          completeness: 0.5
+        },
+        issues: ['too_short'],
+        follow_up_questions: ['Q1?', 'Q2?', 'Q3?']
+      })
+    );
+
+    const d = await evaluateInputFieldQuality(
+      { field: 'skills', text: 'Python' },
+      { llmProvider }
+    );
+
+    process.env.OPENAI_API_KEY = prev;
+
+    expect(llmProvider).toHaveBeenCalled();
+    expect(d.field).toBe('skills');
+    expect(d.quality_score).toBe(0.5);
+    expect(d.follow_up_questions).toEqual(['Q1?', 'Q2?', 'Q3?']);
+  });
+
+  test('evaluateInputFieldQuality uses heuristics when OPENAI_API_KEY is missing', async () => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const d = await evaluateInputFieldQuality({ field: 'skills', text: '' });
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(d.issues).toContain('too_short');
+    expect(d.follow_up_questions.length).toBe(3);
+  });
+
+  test('evaluateInputFieldQuality pads follow-ups when LLM returns too few', async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-key';
+
+    const llmProvider = jest.fn(async () =>
+      JSON.stringify({
+        field: 'skills',
+        quality_score: 0.4,
+        dimension_scores: {
+          specificity: 0.4,
+          information_density: 0.4,
+          clarity: 0.4,
+          relevance: 0.4,
+          completeness: 0.4
+        },
+        issues: ['too_short', 'no_tools_or_methods'],
+        follow_up_questions: ['Only one?']
+      })
+    );
+
+    const d = await evaluateInputFieldQuality({ field: 'skills', text: 'x' }, { llmProvider });
+    process.env.OPENAI_API_KEY = prev;
+
+    expect(d.follow_up_questions.length).toBe(3);
+  });
+});

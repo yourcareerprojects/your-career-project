@@ -1,0 +1,89 @@
+{
+  "app": {
+    "name": "Your Career Project",
+    "loading": "Laden...",
+    "unsavedChanges": "Ungespeicherte Änderungen"
+  },
+  "auth": {
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "logout": "Abmelden"
+  },
+  "navigation": {
+    "home": "Startseite",
+    "profile": "Profil",
+    "openDrawer": "NavigationsmenÜ Öffnen",
+    "goHome": "Zur Startseite"
+  },
+  "actions": {
+    "exploreCareerPaths": "Berufspfade erkunden",
+    "goBack": "Zurück"
+  },
+  "home": {
+    "title": {
+      "authenticated": "Hallo {{name}}!",
+      "guest": "Willkommen bei Your Career Project",
+      "fallbackName": "dir"
+    },
+    "subtitle": "Deine persönliche Reise durch das Berufsleben beginnt hier. Entdecke, plane und erreiche deine beruflichen Ziele mit unserem innovativen Tool zur Berufspfad-Erkundung.",
+    "actions": {
+      "getStarted": "Los geht's!",
+      "signIn": "Anmelden"
+    },
+    "features": {
+      "understand": {
+        "title": "Berufspfade verstehen",
+        "description": "Entdecke verschiedene Berufspfade und erkunde unterschiedliche Rollen und Berufsfelder."
+      },
+      "simulate": {
+        "title": "Berufspfade simulieren",
+        "description": "Simuliere deine nächsten beruflichen Schritte basierend auf deinem aktuellen Lebenslauf."
+      },
+      "find": {
+        "title": "Deinen Weg finden",
+        "description": "Interagiere mit den Ergebnissen, um deinen eigenen Berufspfad zu gestalten."
+      }
+    }
+  },
+  "language": {
+    "switchLabel": "Sprache",
+    "englishShort": "EN",
+    "germanShort": "DE"
+  },
+  "theme": {
+    "toggleDark": "Dunkles Design aktivieren",
+    "toggleLight": "Helles Design aktivieren"
+  },
+  "emailVerification": {
+    "resendCta": "E-Mail erneut senden",
+    "notice": "Bitte bestätige deine E-Mail, um Speicher-, Freigabe- und Wiederherstellungsfunktionen freizuschalten.",
+    "resendSuccessFallback": "Bestätigungs-E-Mail wurde gesendet.",
+    "resendErrorFallback": "Erneutes Senden nicht möglich."
+  },
+  "verifyEmail": {
+    "title": "E-Mail bestätigen",
+    "verifying": "Link wird bestätigt...",
+    "actions": {
+      "resendVerificationEmail": "Bestätigungs-E-Mail erneut senden"
+    },
+    "messages": {
+      "verified": "E-Mail erfolgreich bestätigt.",
+      "alreadyVerified": "Diese E-Mail-Adresse ist bereits bestätigt.",
+      "failed": "Bestätigung fehlgeschlagen.",
+      "resent": "Bestätigungs-E-Mail erneut gesendet.",
+      "unableToResend": "Erneutes Senden nicht möglich."
+    }
+  },
+  "sharedResult": {
+    "title": "Brufsschritt teilen",
+    "subtitle": "Diese Berufschance wurde mit dir geteilt",
+    "errors": {
+      "invalidLink": "Ungültiger Freigabelink. Bitte prüfe die URL und versuche es erneut.",
+      "loadFailed": "Geteilter Inhalt konnte nicht geladen werden. Bitte versuche es erneut.",
+      "notFound": "Geteilter Inhalt wurde nicht gefunden"
+    }
+  },
+  "errors": {
+    "missingRoot": "Root-Element wurde nicht gefunden"
+  }
+}

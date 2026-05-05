@@ -1,0 +1,89 @@
+{
+  "app": {
+    "name": "Your Career Project",
+    "loading": "Loading...",
+    "unsavedChanges": "Unsaved changes"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout"
+  },
+  "navigation": {
+    "home": "Home",
+    "profile": "Profile",
+    "openDrawer": "Open navigation menu",
+    "goHome": "Go to Home"
+  },
+  "actions": {
+    "exploreCareerPaths": "Explore Career Paths",
+    "goBack": "Go Back"
+  },
+  "home": {
+    "title": {
+      "authenticated": "Hi {{name}}!",
+      "guest": "Welcome to Career Path",
+      "fallbackName": "there"
+    },
+    "subtitle": "Your personalized career journey starts here. Discover, plan, and achieve your professional goals with our innovative career path exploration tool.",
+    "actions": {
+      "getStarted": "Let's get started!",
+      "signIn": "Sign In"
+    },
+    "features": {
+      "understand": {
+        "title": "Understand Career Paths",
+        "description": "Explore diverse career paths and browse different roles and professional fields."
+      },
+      "simulate": {
+        "title": "Simulate Career Paths",
+        "description": "Simulate your next career steps based on your current CV."
+      },
+      "find": {
+        "title": "Find Your Path",
+        "description": "Interact with the results to design your own career path."
+      }
+    }
+  },
+  "language": {
+    "switchLabel": "Language",
+    "englishShort": "EN",
+    "germanShort": "DE"
+  },
+  "theme": {
+    "toggleDark": "Switch to dark theme",
+    "toggleLight": "Switch to light theme"
+  },
+  "emailVerification": {
+    "resendCta": "Resend email",
+    "notice": "Please verify your email to unlock saving, sharing, and account recovery features.",
+    "resendSuccessFallback": "Verification email sent.",
+    "resendErrorFallback": "Unable to resend."
+  },
+  "verifyEmail": {
+    "title": "Verify your email",
+    "verifying": "Verifying link...",
+    "actions": {
+      "resendVerificationEmail": "Resend verification email"
+    },
+    "messages": {
+      "verified": "Email verified successfully.",
+      "alreadyVerified": "This email address is already verified.",
+      "failed": "Verification failed.",
+      "resent": "Verification email resent.",
+      "unableToResend": "Unable to resend."
+    }
+  },
+  "sharedResult": {
+    "title": "Share Career Step",
+    "subtitle": "This career opportunity was shared with you",
+    "errors": {
+      "invalidLink": "Invalid share link. Please check the URL and try again.",
+      "loadFailed": "Failed to load shared content. Please try again.",
+      "notFound": "Shared content not found"
+    }
+  },
+  "errors": {
+    "missingRoot": "Failed to find the root element"
+  }
+}

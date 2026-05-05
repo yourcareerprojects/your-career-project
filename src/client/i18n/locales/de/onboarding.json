@@ -1,0 +1,603 @@
+{
+  "identityQuestions": {
+    "workEnjoyMost": "Welche Arbeitstätigkeiten führst du am liebsten aus?",
+    "topicsIndustriesInterest": "Welche Themen oder Branchen interessieren dich am meisten?",
+    "naturallyGoodAt": "Worin bist du von Natur aus gut oder fühlst dich besonders sicher?",
+    "workEnvironmentFit": "Welche Art Arbeitsumfeld oder Arbeitsweise passt am besten zu dir?",
+    "workingLifeAchievement": "Was möchtest du in deinem Berufsleben erreichen?"
+  },
+  "login": {
+    "title": "Anmelden",
+    "emailLabel": "E-Mail-Adresse",
+    "passwordLabel": "Passwort",
+    "submitCta": "Anmelden",
+    "registerPrompt": "Noch kein Konto? Registrieren",
+    "errors": {
+      "emailRequired": "E-Mail ist erforderlich",
+      "emailInvalid": "E-Mail ist ungültig",
+      "passwordRequired": "Passwort ist erforderlich",
+      "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+    }
+  },
+  "register": {
+    "title": "Konto erstellen",
+    "subtitle": "Registriere dich mit Name, E-Mail und Passwort. Weitere Details kannst du später auf deinem Profil ergänzen.",
+    "nameLabel": "Name",
+    "emailLabel": "E-Mail-Adresse",
+    "passwordLabel": "Passwort",
+    "confirmPasswordLabel": "Passwort bestätigen",
+    "submitCta": "Konto erstellen",
+    "loginPrompt": "Bereits ein Konto? Anmelden",
+    "passwordPolicyHint": "Mindestens 8 Zeichen, darunter eine Zahl, ein Kleinbuchstabe, ein Großbuchstabe und ein Sonderzeichen (!@#$%^&*).",
+    "errors": {
+      "nameRequired": "Name ist erforderlich",
+      "nameMinLength": "Name muss mindestens 2 Zeichen lang sein",
+      "emailRequired": "E-Mail ist erforderlich",
+      "emailInvalid": "E-Mail ist ungültig",
+      "passwordRequired": "Passwort ist erforderlich",
+      "passwordMinLength": "Passwort muss mindestens 8 Zeichen lang sein",
+      "passwordNeedsNumber": "Passwort muss eine Zahl enthalten",
+      "passwordNeedsLowercase": "Passwort muss einen Kleinbuchstaben enthalten",
+      "passwordNeedsUppercase": "Passwort muss einen Grossbuchstaben enthalten",
+      "passwordNeedsSpecial": "Passwort muss ein Sonderzeichen enthalten (!@#$%^&*)",
+      "confirmPasswordRequired": "Bitte bestätige dein Passwort",
+      "passwordMismatch": "Passwörter stimmen nicht überein",
+      "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+    }
+  },
+  "passwordVisibility": {
+    "show": "Passwort anzeigen",
+    "hide": "Passwort verbergen"
+  },
+  "profileCreation": {
+    "loading": "Laden...",
+    "errors": {
+      "verifyEmailRequired": "Bitte bestätige deine E-Mail, bevor du Profildetails hinzufügst.",
+      "identityQuestionsRequired": "Bitte beantworte alle fünf Identitätsfragen, bevor du dein Profil speicherst.",
+      "saveFailed": "Fehler beim Speichern des Profils. Bitte versuche es erneut."
+    },
+    "alreadyCreated": {
+      "title": "Profil bereits erstellt",
+      "description": "Du hast dein Profil bereits erstellt. Du kannst deine Daten bearbeiten oder einen neuen Lebenslauf auf deiner Profilseite hochladen.",
+      "goToProfileCta": "Zum Profil"
+    },
+    "default": {
+      "title": "Profil ausfüllen",
+      "description": "Lade deinen Lebenslauf hoch, um Erfahrungen, Fähigkeiten und Details auszulesen."
+    },
+    "fullUpdate": {
+      "title": "Profil vollständig aktualisieren",
+      "description": "Lade einen neuen Lebenslauf hoch, um dein Profil vollständig zu aktualisieren. Du wirst ausgelesene Inhalte prüfen und Kontextfragen beantworten, bevor bestehende Daten ersetzt werden."
+    }
+  },
+  "profilePagePrompts": {
+    "incomplete": {
+      "title": "Vervollständige dein Profil",
+      "description": "Vervollständige mehr von deinem Profil, um personalisierte Simulationen freizuschalten.",
+      "cta": "Profil ausfüllen"
+    },
+    "goToSimulationCta": "Zur Simulation",
+    "fullUpdateCta": "Profil vollständig aktualisieren"
+  },
+  "loginSecurity": {
+    "title": "Login & Sicherheit",
+    "description": "Verwalte Anmeldedaten und sicherheitsrelevante Änderungen.",
+    "loadingDetails": "Sicherheitsdetails werden geladen...",
+    "actions": {
+      "changeEmail": "E-Mail ändern",
+      "changePassword": "Passwort ändern",
+      "cancel": "Abbrechen"
+    },
+    "errors": {
+      "actionFailed": "Aktion fehlgeschlagen"
+    },
+    "messages": {
+      "requestCompleted": "Anfrage erfolgreich abgeschlossen.",
+      "emailChangeUpdated": "Anfrage zur E-Mail-Änderung aktualisiert.",
+      "passwordUpdated": "Passwort erfolgreich aktualisiert."
+    },
+    "primaryEmail": {
+      "label": "Primäre E-Mail",
+      "verified": "E-Mail bestätigt",
+      "pendingVerification": "Bestätigung ausstehend",
+      "notAvailable": "Nicht verfügbar"
+    },
+    "pending": {
+      "pendingFor": "E-Mail-Änderung ausstehend für {{email}}.",
+      "codeExpires": "Code läuft ab",
+      "soon": "bald",
+      "attemptsRemaining": "Verbleibende Versuche: {{current}}/{{max}}",
+      "nextResendAt": "Nächster Versand möglich um"
+    },
+    "changeEmail": {
+      "title": "E-Mail-Adresse ändern",
+      "steps": {
+        "verifyIdentity": "Identität bestätigen",
+        "newEmail": "Neue E-Mail",
+        "enterCode": "Code eingeben"
+      },
+      "reauthDescription": "Bestätige deine Identität mit deinem aktuellen Passwort. So wird sichergestellt, dass nur du deine Login-E-Mail ändern kannst.",
+      "emailStepDescription": "Wir senden einen 6-stelligen Bestätigungscode an deine neue E-Mail-Adresse. Die Änderung gilt erst, nachdem du den Code hier eingegeben hast.",
+      "reauthValidUntil": "Re-Authentifizierung gültig bis {{time}}",
+      "currentEmailLabel": "Aktuelle E-Mail:",
+      "fields": {
+        "currentPassword": "Aktuelles Passwort",
+        "newEmail": "Neue E-Mail",
+        "confirmNewEmail": "Neue E-Mail bestätigen",
+        "verificationCode": "Bestätigungscode"
+      },
+      "actions": {
+        "verifyPassword": "Passwort bestätigen",
+        "sendVerificationCode": "Bestätigungscode senden",
+        "verifyCode": "Code bestätigen",
+        "resendCode": "Code erneut senden",
+        "resendIn": "Erneut senden in {{seconds}}s",
+        "cancelRequest": "Anfrage abbrechen"
+      },
+      "messages": {
+        "verificationSent": "Bestätigungscode gesendet. Gib die sechs Ziffern unten ein, um die Änderung abzuschließen.",
+        "pendingCancelled": "Ausstehende E-Mail-Änderung abgebrochen.",
+        "verificationResent": "Bestätigungscode erneut gesendet. Prüfe deinen Posteingang auf den neuesten Code.",
+        "emailUpdated": "E-Mail erfolgreich aktualisiert."
+      },
+      "errors": {
+        "currentPasswordRequired": "Bitte gib dein aktuelles Passwort ein.",
+        "verifyPasswordFailed": "Passwort konnte nicht bestätigt werden",
+        "validEmail": "Bitte gib eine gültige E-Mail-Adresse ein.",
+        "newEmailMustDiffer": "Die neue E-Mail muss sich von der aktuellen unterscheiden.",
+        "emailMismatch": "E-Mail-Adressen stimmen nicht überein.",
+        "reauthBeforeContinue": "Bitte authentifiziere dich erneut, bevor du fortfährst.",
+        "emailAndConfirmationRequired": "Bitte gib die neue E-Mail und die Bestätigung ein.",
+        "submitFailed": "E-Mail-Änderung konnte nicht übermittelt werden",
+        "cancelPendingFailed": "Ausstehende Änderung konnte nicht abgebrochen werden",
+        "resendFailed": "Bestätigungs-E-Mail konnte nicht erneut gesendet werden",
+        "enterSixDigitCode": "Gib den 6-stelligen Code ein, den wir dir per E-Mail gesendet haben.",
+        "verifyCodeFailed": "Code konnte nicht bestätigt werden"
+      },
+      "friendlyCodeErrors": {
+        "codeInvalid": "Dieser Code hat nicht funktioniert. Bitte versuche es erneut.",
+        "codeExpired": "Dieser Code ist abgelaufen. Starte eine neue Anfrage, um fortzufahren.",
+        "attemptsExceeded": "Zu viele falsche Versuche. Starte die E-Mail-Änderung erneut.",
+        "reauthRequired": "Deine Re-Authentifizierung ist abgelaufen. Starte den Vorgang neu.",
+        "requestNotFound": "Keine ausstehende E-Mail-Änderung gefunden. Starte eine neue Anfrage."
+      },
+      "pending": {
+        "attemptsRemaining": "Verbleibende Versuche: {{current}}/{{max}}",
+        "codeHelper": "Gib den neuesten 6-stelligen Code aus deiner E-Mail ein",
+        "enterCodeForEmail": "Gib den 6-stelligen Code ein, den wir an {{email}} gesendet haben, um deine E-Mail zu aktualisieren.",
+        "expiresIn": "Läuft ab in",
+        "unknown": "unbekannt",
+        "requestedAt": "Angefordert am",
+        "notAvailable": "k. A.",
+        "existingPending": "Du hast bereits eine ausstehende E-Mail-Änderung zu {{email}}. Wenn du unten eine neue E-Mail eingibst, wird die bestehende Anfrage ersetzt."
+      },
+      "time": {
+        "expired": "Abgelaufen",
+        "minutesSeconds": "{{minutes}}m {{seconds}}s"
+      }
+    },
+    "changePassword": {
+      "title": "Passwort ändern",
+      "steps": {
+        "verifyIdentity": "Identität bestätigen",
+        "setNewPassword": "Neues Passwort setzen",
+        "confirmation": "Bestätigung"
+      },
+      "reauthDescription": "Zu deiner Sicherheit bestätige bitte dein aktuelles Passwort, bevor du Änderungen vornimmst.",
+      "reauthValidFor": "Re-Authentifizierung noch {{seconds}} Sekunden gültig.",
+      "fields": {
+        "currentPassword": "Aktuelles Passwort",
+        "newPassword": "Neues Passwort",
+        "confirmNewPassword": "Neues Passwort bestätigen"
+      },
+      "requirements": {
+        "title": "Passwortanforderungen",
+        "length": "Mindestens 8 Zeichen",
+        "uppercase": "Ein Großbuchstabe",
+        "lowercase": "Ein Kleinbuchstabe",
+        "number": "Eine Zahl",
+        "symbol": "Ein Sonderzeichen (!@#$%^&*)"
+      },
+      "actions": {
+        "verifyPassword": "Passwort bestätigen",
+        "updatePassword": "Passwort aktualisieren",
+        "done": "Fertig"
+      },
+      "messages": {
+        "passwordUpdated": "Passwort erfolgreich aktualisiert.",
+        "updatedSignedOutOthers": "Dein Passwort wurde aktualisiert. Auf anderen Geräten wirst du abgemeldet."
+      },
+      "errors": {
+        "currentPasswordRequired": "Bitte gib dein aktuelles Passwort ein.",
+        "verifyPasswordFailed": "Passwort konnte nicht bestätigt werden",
+        "reauthBeforeChange": "Bitte authentifiziere dich erneut, bevor du dein Passwort änderst.",
+        "requirementsNotMet": "Bitte erfülle alle Passwortanforderungen.",
+        "passwordMismatch": "Passwörter stimmen nicht überein.",
+        "updateFailed": "Passwort konnte nicht aktualisiert werden"
+      }
+    }
+  },
+  "profileCompletionTooltip": {
+    "title": "Vollständigkeit deines Profils",
+    "overall": "Gesamt",
+    "sections": {
+      "userIdentity": "Wer bist du?",
+      "structuredUserInfo": "Was kannst du gut?",
+      "seniority": "Wie viel Erfahrung hast du?",
+      "documents": "Dein Lebenslauf"
+    },
+    "hints": {
+      "high": "Dein Profil ist bereits sehr gut ausgefüllt.",
+      "medium": "Füge mehr Details hinzu, um stärkere Empfehlungen zu erhalten.",
+      "low": "Vervollständige mehr Bereiche, um das Berufs-Matching zu verbessern."
+    }
+  },
+  "profilePage": {
+    "actions": {
+      "retry": "Erneut versuchen",
+      "save": "Speichern",
+      "saving": "Speichern...",
+      "cancel": "Abbrechen",
+      "edit": "Bearbeiten",
+      "close": "Schließen"
+    },
+    "notProvided": "Nicht angegeben",
+    "errors": {
+      "fetchProfileFailed": "Fehler beim Laden des Profils",
+      "saveChangesFailed": "Fehler beim Speichern der Änderungen",
+      "identityQuestionsRequired": "Bitte beantworte alle fünf Identitätsfragen.",
+      "saveStructuredInfoFailed": "Strukturierte Nutzerdaten konnten nicht gespeichert werden",
+      "recalculateFailed": "Eingaben konnten nicht neu berechnet werden"
+    },
+    "loginSecurity": {
+      "title": "Login & Sicherheit",
+      "loadFailed": "Details zu Login und Sicherheit konnten nicht geladen werden"
+    },
+    "documents": {
+      "title": "Dokumente"
+    },
+    "photo": {
+      "edit": "Foto bearbeiten",
+      "add": "Foto hinzufügen",
+      "alt": "Profilbild",
+      "editor": {
+        "titleEdit": "Profilbild bearbeiten",
+        "titleAdd": "Profilbild hinzufügen",
+        "selectImageCta": "Klicke, um ein Bild auszuwählen",
+        "supportedFormats": "JPEG, PNG, GIF oder WebP (max. 10MB)",
+        "zoomOut": "Herauszoomen",
+        "zoomIn": "Hineinzoomen",
+        "zoomAriaLabel": "Zoom",
+        "cropHint": "Ziehe das Bild, um die Position anzupassen • Nutze den Zoom-Regler oder die Buttons zum Rein- und Auszoomen",
+        "previewLabel": "Vorschau:",
+        "previewAlt": "Vorschau",
+        "changeImage": "Bild ändern",
+        "delete": "Löschen",
+        "uploading": "Wird hochgeladen...",
+        "deleting": "Wird gelöscht...",
+        "errors": {
+          "invalidType": "Ungültiger Dateityp. Bitte wähle ein JPEG-, PNG-, GIF- oder WebP-Bild aus.",
+          "fileTooLarge": "Die Dateigröße muss kleiner als 5MB sein. Bitte wähle ein kleineres Bild.",
+          "selectAndCropFirst": "Bitte wähle zuerst ein Bild aus und schneide es zu.",
+          "uploadFailed": "Profilbild konnte nicht hochgeladen werden. Bitte versuche es erneut.",
+          "noPictureToDelete": "Kein Profilbild zum Löschen vorhanden.",
+          "deleteFailed": "Profilbild konnte nicht gelöscht werden. Bitte versuche es erneut."
+        },
+        "deleteDialog": {
+          "title": "Profilbild löschen",
+          "confirmation": "Möchtest du dein Profilbild wirklich löschen?",
+          "currentAlt": "Aktuelles Profilbild",
+          "currentLabel": "Aktuelles Profilbild",
+          "warning": "Diese Aktion kann nicht rückgängig gemacht werden."
+        }
+      }
+    },
+    "nameEditor": {
+      "label": "Name",
+      "helper": "Wird in deiner Profilüberschrift angezeigt",
+      "placeholderName": "Dein Name",
+      "editCta": "Name bearbeiten",
+      "errors": {
+        "required": "Name ist erforderlich",
+        "saveFailed": "Name konnte nicht gespeichert werden"
+      }
+    },
+    "identityForm": {
+      "helper": "Diese Antworten werden zu deinem Nutzeridentitätstext für Karriere-Matching und Simulationen zusammengesetzt.",
+      "unsavedDialog": {
+        "title": "Änderungen verwerfen?",
+        "description": "Möchtest du deine Änderungen wirklich verwerfen? Alle nicht gespeicherten Änderungen gehen verloren.",
+        "keepEditing": "Weiter bearbeiten",
+        "discardChanges": "Änderungen verwerfen"
+      }
+    },
+    "sections": {
+      "identity": "Wer bist du?",
+      "goodAt": "Was kannst du gut?",
+      "experience": "Wie viel Erfahrung hast du?"
+    },
+    "structuredInfo": {
+      "maxEntriesPerCategory": "Bis zu {{max}} Einträge pro Kategorie.",
+      "emptyEntries": "Noch keine Einträge. Füge deine Ideen hinzu.",
+      "strengths": {
+        "title": "Deine Stärken",
+        "addCta": "Stärke hinzufügen",
+        "helper": "Übergeordnete Fähigkeiten, die deine Stärken beschreiben.",
+        "empty": "Noch keine Stärken hinzugefügt. Füge deine Stärken hinzu."
+      },
+      "industrySectors": {
+        "title": "Deine Branchen",
+        "addCta": "Branche hinzufügen",
+        "helper": "Nutze Branchen wie MedTech, Life Sciences, Fertigung.",
+        "empty": "Noch keine Branchen. Weitere Branchen werden daraus abgeleitet."
+      },
+      "responsibilities": {
+        "title": "Deine Aufgaben & Verantwortungen",
+        "addCta": "Verantwortung hinzufügen",
+        "helper": "Konkrete Verantwortungen aus deiner Berufserfahrung.",
+        "empty": "Keine Verantwortungen angegeben"
+      },
+      "skills": {
+        "title": "Deine Fähigkeiten",
+        "addCta": "Fähigkeit hinzufügen",
+        "helper": "Spezifische Tools, Methoden und Kompetenzen.",
+        "empty": "Keine Fähigkeiten angegeben"
+      },
+      "learningGoals": {
+        "title": "Deine Lernziele",
+        "addCta": "Lernziel hinzufügen",
+        "helper": "Fähigkeiten, die du aktiv aufbaust.",
+        "empty": "Keine Lernziele angegeben"
+      },
+      "inferredOccupationGroups": {
+        "title": "Abgeleitete Berufsgruppen",
+        "helper": "Diese werden aus deinen Branchen abgeleitet. Entferne alle, die nicht passen.",
+        "empty": "Noch keine abgeleiteten Branchen zur Prüfung.",
+        "removedForNextSave": "Für nächstes Speichern entfernt"
+      }
+    },
+    "seniority": {
+      "currentEmploymentStatus": "Aktueller Beschäftigungsstatus",
+      "yearsOfWorkExperience": "Jahre Berufserfahrung",
+      "yearsValue": "{{count}} Jahre",
+      "highestEducationalDegree": "Höchster Bildungsabschluss",
+      "mostSeniorWorkExperience": "Höchstes Job-Level"
+    },
+    "seniorityForm": {
+      "notSpecified": "Nicht angegeben",
+      "errors": {
+        "currentStatusRequired": "Aktueller Beschäftigungsstatus ist erforderlich",
+        "yearsRange": "Jahre müssen zwischen 0 und 50 liegen",
+        "highestDegreeRequired": "Höchster Bildungsabschluss ist erforderlich",
+        "mostSeniorRequired": "Höchstes Job-Level ist erforderlich"
+      },
+      "unsavedDialog": {
+        "title": "Änderungen verwerfen?",
+        "description": "Möchtest du deine Änderungen wirklich verwerfen? Alle nicht gespeicherten Änderungen gehen verloren.",
+        "keepEditing": "Weiter bearbeiten",
+        "discardChanges": "Änderungen verwerfen"
+      },
+      "options": {
+        "currentStatus": {
+          "pupil": "Schüler*in",
+          "student": "Student*in",
+          "intern": "Praktikant*in oder Trainee",
+          "employed": "Angestellt",
+          "part_time": "Teilzeit angestellt",
+          "self-employed": "Selbstständig",
+          "contractor": "Vertraglich angestellt",
+          "unemployed": "Arbeitslos",
+          "extended_leave": "Längere Auszeit",
+          "retired": "Im Ruhestand"
+        },
+        "highestDegree": {
+          "none": "Kein Abschluss",
+          "high_school": "Abitur",
+          "hauptschulabschluss": "Hauptschulabschluss",
+          "realschulabschluss": "Realschulabschluss",
+          "ausbildung": "Berufliche Ausbildung",
+          "fachabitur": "Fachabitur",
+          "associate": "Berufsfachschule",
+          "bachelors": "Bachelor",
+          "masters": "Master",
+          "phd": "Promotion (PhD)",
+          "staatsexamen": "Staatsexamen",
+          "professional": "Berufliche Weiterbildung (Meister, Techniker, etc.)"
+        },
+        "mostSenior": {
+          "intern": "Praktikant*in",
+          "entry_level": "Einsteiger*in",
+          "mid_level": "Mittleres Management",
+          "senior": "Senior",
+          "lead": "Lead",
+          "manager": "Manager*in",
+          "director": "Direktor*in",
+          "vp": "VP",
+          "c_suite": "C-Ebene"
+        }
+      }
+    },
+    "careerInputs": {
+      "title": "Eingaben für Berufssimulation",
+      "description": "Dieser Bereich zeigt die Daten, die für Berufssimulationen verwendet werden. Du kannst diese Eingaben bearbeiten, um genauere Empfehlungen zu erhalten.",
+      "tipLabel": "Tipp:",
+      "tipDescription": "Vollständigere Informationen führen zu besseren Berufsvorschlägen. Nutze \"Aus Profil neu berechnen\", um diese Felder automatisch aus deinen Profildaten zu aktualisieren.",
+      "recalculateFromProfile": "Aus Profil neu berechnen",
+      "recalculating": "Wird neu berechnet...",
+      "embeddingIdentityLabel": "Embedding-Identitätstext für Brufssimulation (gecacht)",
+      "notAvailableYet": "Noch nicht verfügbar",
+      "strengthsLabel": "Deine Stärken (skill_domains — übergeordnete Fähigkeiten)",
+      "occupationGroupLabel": "Berufsgruppen-Eingabe (Bereiche + abgeleitete ISCO)",
+      "responsibilitiesLabel": "Verantwortungen-Eingabe (strukturierter Vektor: responsibilities)",
+      "requiredSkillsLabel": "Notwendige Fähigkeiten-Eingabe (strukturierter Vektor: required_skills)",
+      "skillsInDevelopmentLabel": "Fähigkeiten in Entwicklung",
+      "optionalSkillsLabel": "Optionale Fähigkeiten-Eingabe (strukturierter Vektor: optional_skills = skills + skills in development)",
+      "seniorityLabel": "Senioritäts-Eingaben (für Nutzerlevel und Senioritätsstrafe verwendet)",
+      "lastManuallyEdited": "Zuletzt manuell bearbeitet: {{date}}",
+      "lastAutoCalculated": "Zuletzt automatisch berechnet: {{date}}",
+      "empty": {
+        "strengths": "Noch keine Stärken. Bearbeite die Berufssimulations-Eingaben, um Kompetenzbereiche hinzuzufügen.",
+        "industrySectors": "Noch keine Branchen hinzugefügt. Bearbeite, um Branchen hinzuzufügen (z. B. MedTech, Fertigung).",
+        "responsibilities": "Noch keine Verantwortungen hinzugefügt. Bearbeite, um Verantwortungen hinzuzufügen.",
+        "skills": "Noch keine Fähigkeiten hinzugefügt. Bearbeite, um deine Fähigkeiten hinzuzufügen.",
+        "learningGoals": "Noch keine Lernziele. Bearbeite, um hinzuzufügen, was du lernst.",
+        "optionalSkills": "Noch keine optionalen Fähigkeiten vorhanden.",
+        "experience": "Noch keine Erfahrungsdaten. Bearbeite, um welche hinzuzufügen."
+      },
+      "editablePlaceholders": {
+        "strengths": "Übergeordnete Fähigkeit eingeben und Enter drücken",
+        "industrySectors": "Nur Bereiche: MedTech, Life Sciences, Fertigung, Bildung",
+        "responsibilities": "Verantwortung eingeben und Enter drücken",
+        "skills": "Fähigkeit eingeben und Enter drücken oder auf Hinzufügen klicken",
+        "learningGoals": "Fähigkeit in Entwicklung eingeben und Enter drücken"
+      }
+    },
+    "recalculateDialog": {
+      "title": "Eingaben für Berufssimulation neu berechnen?",
+      "description": "Du hast deine Eingaben für die Berufssimulation manuell bearbeitet. Eine Neuberechnung aus deinem Profil überschreibt diese manuellen Änderungen.",
+      "willDoTitle": "Diese Aktion wird:",
+      "keepManualEditsCta": "Meine manuellen Änderungen behalten",
+      "recalculateAndOverwriteCta": "Neu berechnen und überschreiben",
+      "bullets": {
+        "replaceInputs": "Alle manuell bearbeiteten Eingaben durch automatisch berechnete Werte aus deinem Profil ersetzen",
+        "resetManualFlag": "Den Status \"manuell bearbeitet\" zurücksetzen",
+        "updateTimestamp": "Den Zeitstempel \"zuletzt berechnet\" aktualisieren"
+      }
+    }
+  },
+  "documentUpload": {
+    "sectionTitle": "Dokumente",
+    "uploadSuccessPrefix": "Upload erfolgreich.",
+    "extraction": {
+      "semanticInterpretationSuccess": "Profilsignale aus deinem Lebenslauf wurden per semantischer Analyse interpretiert.",
+      "semanticInterpretationNone": "Aus dem Dokument konnten keine Profilsignale interpretiert werden.",
+      "noPdfTextLayer": "Aus dieser PDF konnte kein lesbarer Text extrahiert werden (auch OCR nicht). Bitte erneut als PDF mit markierbarem Text exportieren oder DOCX hochladen."
+    },
+    "common": {
+      "cancel": "Abbrechen",
+      "back": "Zurück",
+      "continue": "Weiter"
+    },
+    "errors": {
+      "filesRejected": "Einige Dateien konnten nicht hochgeladen werden. Bitte versuche es erneut.",
+      "fileTooLarge": "Datei zu groß. Die maximale Dateigröße beträgt 10MB.",
+      "invalidType": "Nicht unterstützter Dateityp. Bitte lade PDF-, DOC- oder DOCX-Dateien hoch.",
+      "deleteFailed": "Dokument konnte nicht gelöscht werden. Bitte versuche es erneut.",
+      "downloadFailed": "Fehler beim Herunterladen des Dokuments",
+      "selectFileAndType": "Bitte wähle eine Datei und einen Dokumenttyp aus",
+      "fileSizeLimit": "Die Dateigröße muss unter 10MB liegen",
+      "uploadFailed": "Dokument konnte nicht hochgeladen werden. Bitte versuche es erneut.",
+      "saveProfileFailed": "Profildaten konnten nicht gespeichert werden. Bitte versuche es erneut.",
+      "qualityAnalysisFailed": "Qualitätsanalyse fehlgeschlagen",
+      "renameFailed": "Dokument konnte nicht umbenannt werden. Bitte versuche es erneut."
+    },
+    "dropzone": {
+      "dragActive": "Dateien hier ablegen...",
+      "idle": "Ziehe deinen Lebenslauf hierher oder klicke, um ihn auszuwählen",
+      "supportedFormats": "Unterstützte Formate: PDF, DOC, DOCX (max. 10MB)",
+      "cta": "Dein Lebenslauf"
+    },
+    "documents": {
+      "noTitle": "Kein Titel",
+      "uploadedOn": "Hochgeladen am {{date}}",
+      "rename": {
+        "saveCta": "Speichern"
+      }
+    },
+    "deleteDialog": {
+      "title": "Dokument löschen",
+      "confirmation": "Möchtest du dieses Dokument wirklich löschen?",
+      "detailsTitle": "Dokumentdetails:",
+      "nameLabel": "Name:",
+      "typeLabel": "Typ:",
+      "notSpecified": "Nicht angegeben",
+      "warning": "Diese Aktion kann nicht rückgängig gemacht werden.",
+      "deleteCta": "Löschen"
+    },
+    "uploadDialog": {
+      "title": "Dokument hochladen",
+      "selectFileCta": "Datei auswählen",
+      "documentTypeLabel": "Dokumenttyp",
+      "documentTypePlaceholder": "Typ auswählen",
+      "defaultTypeInfo": "Dein Lebenslauf wird für Profileingaben verarbeitet",
+      "uploadCta": "Hochladen",
+      "documentTypes": {
+        "resume": "Lebenslauf",
+        "certificate": "Zertifikat",
+        "transcript": "Zeugnis",
+        "portfolio": "Portfolio",
+        "other": "Sonstiges"
+      }
+    },
+    "review": {
+      "step2Title": "Ausgelesene Profildaten prüfen (Schritt 2 von 3)",
+      "step3Title": "Fragen nach mehr Kontext (Schritt 3 von 3)",
+      "step2Intro": "Bitte prüfe die ausgelesenen Daten. Du kannst jedes Feld bearbeiten.",
+      "step3Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und speichere dann dein Profil.",
+      "step3QualityErrorPrefix": "Qualitätsvorschläge konnten nicht geladen werden:",
+      "followUpPlaceholder": "Deine Antwort",
+      "strengthsTitle": "Stärken und Fokusbereiche",
+      "strengthsDescription": "Diese Listen enthielten noch keinen Text. Füge bis zu {{max}} Einträge hinzu, einen pro Zeile. Nur befüllte Zeilen werden gespeichert.",
+      "emptyCategoryChip": "Leere Kategorie",
+      "goodAtPlaceholder": "Ein Eintrag pro Zeile (max. {{max}})",
+      "noExtractedData": "Keine ausgelesenen Daten gefunden.",
+      "analyzing": "Analyse läuft...",
+      "saving": "Speichern...",
+      "saveToProfileCta": "Im Profil speichern",
+      "goodAtLimit": "Bis zu {{max}} Einträge pro Kategorie.",
+      "maxEntriesTitle": "Maximal {{max}} Einträge",
+      "status": {
+        "success": "Auslesen erfolgreich",
+        "partial": "Teilweise ausgelesen",
+        "failed": "Auslesen fehlgeschlagen"
+      },
+      "sections": {
+        "identity": "Wer bist du?",
+        "goodAt": "Was kannst du gut?",
+        "experience": "Wie viel Erfahrung hast du?"
+      },
+      "goodAtCategories": {
+        "skillDomains": "Kompetenzbereiche",
+        "domains": "Branchen",
+        "keyResponsibilities": "Deine Aufgaben & Verantwortungen",
+        "skills": "Deine Fähigkeiten",
+        "skillsInDevelopment": "Deine Lernziele"
+      },
+      "emptyMessages": {
+        "skillDomains": "Keine Kompetenzbereiche ausgelesen. Du kannst eigene hinzufügen.",
+        "domains": "Keine Branchen ausgelesen. Du kannst eigene hinzufügen.",
+        "keyResponsibilities": "Keine Verantwortungen ausgelesen. Du kannst eigene hinzufügen.",
+        "skills": "Keine Fähigkeiten ausgelesen. Du kannst eigene hinzufügen.",
+        "skillsInDevelopment": "Keine Lernziele ausgelesen. Du kannst eigene hinzufügen."
+      },
+      "labels": {
+        "skillDomain": "Kompetenzbereich {{index}}",
+        "domain": "Bereich {{index}}",
+        "responsibility": "Verantwortung {{index}}",
+        "skill": "Fähigkeit {{index}}",
+        "learningGoal": "Lernziel {{index}}"
+      },
+      "actions": {
+        "addSkillDomain": "Kompetenzbereich hinzufügen",
+        "addDomain": "Branchen hinzufügen",
+        "addResponsibility": "Verantwortung hinzufügen",
+        "addSkill": "Fähigkeit hinzufügen",
+        "addLearningGoal": "Lernziel hinzufügen"
+      },
+      "experience": {
+        "currentEmploymentStatus": "Aktueller Beschäftigungsstatus",
+        "yearsOfWorkExperience": "Jahre Berufserfahrung",
+        "highestEducationalDegree": "Höchster Bildungsabschluss",
+        "mostSeniorWorkExperience": "Höchstes Job-Level",
+        "notSpecified": "Nicht angegeben"
+      },
+      "selectPlaceholder": "Auswählen...",
+      "cancelConfirm": {
+        "title": "Profilbearbeitung verlassen?",
+        "description": "Deine Änderungen in diesem Schritt gehen verloren. Du kannst deinen Lebenslauf später erneut hochladen.",
+        "stayCta": "Weiter bearbeiten",
+        "discardCta": "Verlassen und verwerfen"
+      }
+    }
+  }
+}

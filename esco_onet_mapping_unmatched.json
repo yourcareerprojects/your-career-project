@@ -1,0 +1,896 @@
+[
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/17abb59e-a1f9-4ce8-88b7-569e5413dca9",
+    "esco_title": "cigar brander",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/190ec9a5-938c-45a5-bd9c-c12b1af33353",
+    "esco_title": "ambassador",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/1fb92021-9576-4c85-8759-f6918e9f0ad4",
+    "esco_title": "diplomat",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/246dda29-70f6-408b-b205-aa17b2ffb168",
+    "esco_title": "election observer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/2c8a4b72-21f4-4ab1-9dbd-1cae779211b7",
+    "esco_title": "commercial art gallery manager",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/2d3d7188-47ab-49b9-9045-e452d9db06f1",
+    "esco_title": "commercial director",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/2d92f7f5-d2b1-4223-92c4-23c33f8604fc",
+    "esco_title": "wine sommelier",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/34b63359-faad-4d6a-9d4d-98c2c15b9fac",
+    "esco_title": "cocoa press operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/35291723-dc32-4a7f-a9f0-39c0e5fd96dd",
+    "esco_title": "man-made fiber spinner",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/3fa31588-2e4d-49c3-b839-4b615cc62742",
+    "esco_title": "humanitarian advisor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/404a50e9-61ce-448d-a695-bbfc697a0727",
+    "esco_title": "government minister",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/40da2fc6-8cb4-4cd3-8fe3-899715905070",
+    "esco_title": "body artist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/42a96d07-1e1d-49ae-9399-c1f4be27ddea",
+    "esco_title": "employment agent",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/42c769cd-4c60-4bac-94d2-29a492b82b74",
+    "esco_title": "scopist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/43ee9c1a-59c2-48ee-afcd-c384dca92162",
+    "esco_title": "doorman/doorwoman",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/4dceca8d-9faf-487b-b342-c9d7dc209533",
+    "esco_title": "assistant outdoor animator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/50af07f0-7a75-424e-a66d-5a9deea10f4c",
+    "esco_title": "ICT accessibility tester",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/51ec004e-aec8-4f89-b114-952bcc56b0b0",
+    "esco_title": "vlogger",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/578470d7-1848-44cd-a769-96cdd64b2c37",
+    "esco_title": "civil registrar",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/5a8835bf-65c7-48e3-ab2f-7ad98b3fdb59",
+    "esco_title": "intellectual property consultant",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/5ab842f6-1f75-4d84-bf41-b8a9799347df",
+    "esco_title": "coachbuilder",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/5bca96fd-4203-400b-be58-9e9b50bc98da",
+    "esco_title": "member of parliament",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/5fe1b340-9b02-4c40-bbc9-ffd4d5fb5699",
+    "esco_title": "cultural policy officer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/61704d4b-f54b-43e5-a7de-bfd7a76f2f0d",
+    "esco_title": "homeopath",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6474e4d4-e3a6-4e88-83ee-971ebbf954e9",
+    "esco_title": "helmsman",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/666846b2-01ce-43f6-8cb7-f3be09fac4a2",
+    "esco_title": "ombudsman",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6725a5bb-b79d-4128-9494-089389ae2a48",
+    "esco_title": "cacao bean roaster",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6b5e5aa6-9bf7-47e6-90d2-4d2187d47d11",
+    "esco_title": "immigration policy officer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6ccb925a-264a-4e00-aa3a-503e53c5db2b",
+    "esco_title": "V-belt finisher",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6cee3765-2b3b-48b0-af2b-1eb512d071fd",
+    "esco_title": "mayor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/6d16c41d-81a7-44a9-836d-7aed46ccb955",
+    "esco_title": "glass painter",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/719f101d-1866-49d3-8d5c-2256f606a8b9",
+    "esco_title": "digital transformation manager",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/7226c10f-701b-4711-8843-140aace12c6f",
+    "esco_title": "city councillor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/728b9e5b-3da4-4dbd-ac36-614ebdb6c8c0",
+    "esco_title": "froth flotation deinking operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/73b10c97-b003-45dc-a36d-c1d585c04be1",
+    "esco_title": "social entrepreneur",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/74cbe6fb-336f-4f3f-8c8f-7645b279a231",
+    "esco_title": "domestic butler",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/7a18e959-44fe-49ae-9757-124f46a7487c",
+    "esco_title": "prop maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/7cd070f5-b5dd-4228-bdcf-0419dbacfcf4",
+    "esco_title": "distillery miller",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/7d27600b-5cff-4ebc-b259-cc2d47572035",
+    "esco_title": "head of workshop",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/82fe0140-7069-47f9-a7d4-d63a611cb5bd",
+    "esco_title": "election agent",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/8b97d85f-4a7a-4908-aa72-9c947c0cb0cd",
+    "esco_title": "carpet handicraft worker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/8d765d88-c8d6-406e-8dfe-e37c5aa89be6",
+    "esco_title": "roughneck",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/8f10ea9b-bfdf-4a4c-9fa7-b6e02daa93e5",
+    "esco_title": "pastry chef",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/8f9b20ff-86b3-478c-8054-73a220973d6f",
+    "esco_title": "automated cable vehicle controller",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/903dc1bf-2da8-477d-83b2-687d360cf1da",
+    "esco_title": "intercultural communication consultant",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/90569478-805c-4d14-a1ba-e9c9c4ac2818",
+    "esco_title": "victim support officer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/92dc335d-a116-416f-ad2b-257e5382e574",
+    "esco_title": "mattress maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/949f1dc9-fb19-4212-8ac6-35ce83c88921",
+    "esco_title": "prompter",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/96430121-2757-4e96-9d6f-7517b25db4f7",
+    "esco_title": "house sitter",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/969f8af0-3c0d-403a-9c16-a6fb76c6b443",
+    "esco_title": "conceptual artist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/9851c83c-5670-4da0-964a-1ef0e682e30b",
+    "esco_title": "thanatology researcher",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/9ae8251e-cb8e-4324-9d77-d967d43e6b46",
+    "esco_title": "fat-purification worker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/9e1e8379-6377-4969-b141-0d2337218fc9",
+    "esco_title": "economic development coordinator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/9f1d546b-1b4e-4b64-97e8-600fc502304b",
+    "esco_title": "innovation officer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/9f686e81-c236-42cb-b848-1918eb36e16a",
+    "esco_title": "leaf tier",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a1acd539-c359-4af3-8a4a-07f1b611e368",
+    "esco_title": "catcher",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a1b4eb5e-45d4-441b-a7e8-795ac5cf6fbf",
+    "esco_title": "sign maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a1ba7574-cc28-446c-9741-12d7fbb325cb",
+    "esco_title": "labour market policy officer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a20e4b15-a128-49b9-a06a-e790e3bd5c68",
+    "esco_title": "head sommelier",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a2a126ac-d90d-4e9f-97d1-9b8dff2ff946",
+    "esco_title": "master coffee roaster",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a2dee758-72f5-4f1c-b760-f2b8e9d81911",
+    "esco_title": "chimney sweep",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a4dd6eae-ca75-456f-829d-333671a7c186",
+    "esco_title": "chaplain",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a6af318e-8a3a-4266-a1ef-cf7afe588201",
+    "esco_title": "hop farmer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a7198837-139d-49c7-8fd0-eb8d8c1ee844",
+    "esco_title": "osteopath",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a78d8e2b-fe31-447f-8694-38ed7198d143",
+    "esco_title": "taxidermist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a79e7622-2307-44e2-94cc-d1ff1caf655a",
+    "esco_title": "youth programme director",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a8d05b64-f60b-4dd9-91c2-e2e63d82f2f5",
+    "esco_title": "consul",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/a9c7a04d-807a-41b5-b441-87c73c73c9c5",
+    "esco_title": "linguist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ab9e06c8-e0fc-4c1b-afa2-61421592f1a5",
+    "esco_title": "germination operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/abae06d8-525f-4a2d-8bbd-67b559aad8f2",
+    "esco_title": "temperature screener",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ac7c07d1-bc11-4f19-bca5-e468e9b1a53c",
+    "esco_title": "steeplejack",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ac80b511-fd22-4edf-8570-e531704778bd",
+    "esco_title": "blogger",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/aff66ae0-d6e1-4de3-b6af-78647defd08c",
+    "esco_title": "enterprise development worker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b059d331-2dd9-4d7d-923e-1dd029d2e58c",
+    "esco_title": "hawker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b06a1dde-e5a1-4219-9491-2bedd0282e4b",
+    "esco_title": "writer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b07e291d-1ea0-44d6-861c-e2c36861f9e3",
+    "esco_title": "basketmaker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b0cb4f78-c361-48cf-97aa-25104ac2647c",
+    "esco_title": "wood treater",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b322bb4c-bbef-45c2-bd7e-00a97c3ab268",
+    "esco_title": "rustproofer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b567a979-c556-49fa-8b36-8af6cfe97624",
+    "esco_title": "stevedore",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b864c9a3-ef6e-46a0-a40c-66188f74dfa7",
+    "esco_title": "colonel",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b866b3bb-3dbd-4b3d-9a53-9ec15f43ca2f",
+    "esco_title": "columnist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b997a091-23b3-4f87-a6bc-bdbea2f609ae",
+    "esco_title": "wine fermenter",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b9b47087-6045-405d-b769-6a0c94e2eb84",
+    "esco_title": "cultural visitor services manager",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b9c80d74-97b6-4a4b-849e-a3908ba57ae1",
+    "esco_title": "veneer grader",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/b9e51ff4-d7fb-4653-bc72-65086ffc6e65",
+    "esco_title": "viticulture adviser",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bab5fa79-7f96-4e21-87b6-1eba560b8d9a",
+    "esco_title": "3D modeller",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bcffa133-c499-4db4-8e4f-b2d95da3b0fc",
+    "esco_title": "farrier",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bd2c868c-371b-4958-83b4-012c52bc7faf",
+    "esco_title": "stand-up comedian",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bd55e8d7-8bdf-4179-a84b-ed43073f05a1",
+    "esco_title": "harp maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bd94312f-05c8-455d-a2f6-5490489ac4a4",
+    "esco_title": "prop master/prop mistress",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/be375e11-9a70-47cb-8091-711c94ed0c13",
+    "esco_title": "tanning consultant",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/beacd3d6-e414-42ea-baf9-3ddc34fc143a",
+    "esco_title": "yeast distiller",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bf89925d-00a1-4f94-ab3b-2148c887af33",
+    "esco_title": "retail entrepreneur",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bfc92738-128b-44f5-92d4-51b10df17961",
+    "esco_title": "philosopher",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/bfdc096e-e450-424d-9340-46968047ed68",
+    "esco_title": "nitroglycerin neutraliser",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/c05090e2-d599-46c8-a47b-3d52a893ca55",
+    "esco_title": "mask maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/c56295bb-ef33-4ccd-a929-59e3dd73f876",
+    "esco_title": "vineyard cellar master",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/c7b31477-88e3-400f-988f-3baa090de173",
+    "esco_title": "organ builder",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/c822ca35-6c36-4eab-97fa-90f2775091c3",
+    "esco_title": "market vendor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ca2da084-3bfa-47d8-84ba-ef890191708d",
+    "esco_title": "vermouth manufacturer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/caa75a5b-b32f-4d57-bffa-03dbb91058cf",
+    "esco_title": "green coffee coordinator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/cb60beab-7afb-4e99-8162-221abea68e6d",
+    "esco_title": "consumer rights advisor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ce6230b8-154f-4e0b-ac03-dca3a269a19c",
+    "esco_title": "cultural centre director",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ce8145f5-d7ea-40ea-b12e-ef168f11184a",
+    "esco_title": "sound artist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ceda6443-e1dd-4890-b018-42318e3abac2",
+    "esco_title": "sophrologist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/cf7b89d0-1cf9-4567-a8bf-9d6905a2b31b",
+    "esco_title": "choirmaster/choirmistress",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d08b4700-758c-467d-ab77-d5a8029c4070",
+    "esco_title": "standalone public buyer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d21890a3-cbe9-49df-9a19-a4120d866548",
+    "esco_title": "notary",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d23fbcdc-d5e9-4724-a83f-99a0cfa8adb0",
+    "esco_title": "répétiteur",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d4edb527-2e5d-440c-9f8c-cd5caa9cc4d6",
+    "esco_title": "astronaut",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d5954a2b-a525-45b7-b6d9-b62efafc6c78",
+    "esco_title": "companion",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d63789ac-74b5-40e3-b890-685513c38e12",
+    "esco_title": "governor",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d71eb4f9-2de3-4955-ba79-7b82ea3fe32c",
+    "esco_title": "followspot operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d9612966-e295-4d81-ba2b-9f36bad0b392",
+    "esco_title": "business coach",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/d9723f33-7faf-4f8a-8a98-6b02d1e10f2b",
+    "esco_title": "bankruptcy trustee",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/da4589ce-7534-4cc1-9ce4-cabf9364b87c",
+    "esco_title": "localiser",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/daa6197d-dba6-49b5-8223-b31b7a126e4e",
+    "esco_title": "wax bleacher",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/db20c08e-819e-4410-91e2-6ac06add4e27",
+    "esco_title": "escort",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/dc3cc282-488d-4d8f-be80-191c6b521823",
+    "esco_title": "malt master",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/dddf9385-2939-4395-951a-70ef8a36cabe",
+    "esco_title": "stevedore superintendent",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e00c46c4-bd3c-4d88-8d30-fc6f951554bd",
+    "esco_title": "confectioner",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e0c5e005-6303-4d5a-9125-a7f86ed1c4df",
+    "esco_title": "liquor grinding mill operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e148e1ed-4f46-40a7-95c9-d6914f664f17",
+    "esco_title": "candle maker",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e19fe26f-0759-4bb1-af71-5bbecf3df69f",
+    "esco_title": "immigration adviser",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e246eca2-2cec-45b4-ae76-aa1f37d07bc5",
+    "esco_title": "tourism policy director",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e3713dd7-572d-4c6c-87ec-1944b3572175",
+    "esco_title": "cider fermentation operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e4ad2547-9188-4fbd-897a-c91b3c097779",
+    "esco_title": "dean of faculty",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e4fca489-4c79-4392-874f-9ea1051c05c8",
+    "esco_title": "extra",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e7ef8a86-6acd-458d-bf48-634b8fd28950",
+    "esco_title": "foam rubber mixer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e80cee57-3672-4aaf-8ca7-53b90771c364",
+    "esco_title": "V-belt coverer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/e89e330c-daa3-48f0-b34e-04e3344ea8dc",
+    "esco_title": "voice-over artist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ec2c0655-5ba0-4cc8-860a-977f73b37f34",
+    "esco_title": "subtitler",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ecd0fad8-b099-4c47-93f6-dde9f6f6c5fc",
+    "esco_title": "cartoonist",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ee37a4a5-5360-4e94-a749-a2b8ead08500",
+    "esco_title": "tracer powder blender",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/ef53663e-c295-43a4-a48e-84254270b138",
+    "esco_title": "irrigation system installer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f219f643-4df1-4a9a-b6c5-dc2f48c22806",
+    "esco_title": "au pair",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f3d8bc61-f812-4106-afd2-a356e4c11fce",
+    "esco_title": "literary scholar",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f4e0016b-29fa-48ac-b98d-364c658f8aed",
+    "esco_title": "liquor blender",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f53dbdb1-2f64-42f8-a6a4-0552c40e4f57",
+    "esco_title": "flour purifier operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f57eb0cb-e67a-419c-9b7b-4abd811b7e2f",
+    "esco_title": "move coordinator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f6f1a9c5-a956-4a10-98ad-b83525e843fb",
+    "esco_title": "bulk filler",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f8304b4c-1220-4979-b2dd-47d2a2f0734a",
+    "esco_title": "specialised antique dealer",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f84aae41-28cc-4aa0-a0df-e7c3030516fd",
+    "esco_title": "dating service consultant",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/f9116001-8cf5-453c-af51-3adaef7841ef",
+    "esco_title": "pre-lasting operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/fc81b573-e0ea-4466-8560-c2bb278c314a",
+    "esco_title": "futures trader",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/fc85156e-4f0b-46c4-ba66-a3b17318d932",
+    "esco_title": "life coach",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/fd1c0f5a-f465-4067-af54-621e68c90f74",
+    "esco_title": "milliner",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/fdd8eef7-d89c-419f-9166-0747f466a769",
+    "esco_title": "critic",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  },
+  {
+    "esco_id": "http://data.europa.eu/esco/occupation/fde97584-d8e3-413e-a662-511c9055357e",
+    "esco_title": "live chat operator",
+    "status": "no_match",
+    "reason": "manual_review_skipped_or_rejected"
+  }
+]

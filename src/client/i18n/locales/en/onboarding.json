@@ -1,0 +1,603 @@
+{
+  "identityQuestions": {
+    "workEnjoyMost": "What kind of work do you enjoy doing most?",
+    "topicsIndustriesInterest": "What topics or industries are you most interested in?",
+    "naturallyGoodAt": "What are you naturally good at or confident doing?",
+    "workEnvironmentFit": "What kind of work environment or way of working suits you best?",
+    "workingLifeAchievement": "What would you like to achieve in your working life?"
+  },
+  "login": {
+    "title": "Login",
+    "emailLabel": "Email Address",
+    "passwordLabel": "Password",
+    "submitCta": "Login",
+    "registerPrompt": "Don't have an account? Register",
+    "errors": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Email is invalid",
+      "passwordRequired": "Password is required",
+      "unexpected": "An unexpected error occurred. Please try again."
+    }
+  },
+  "register": {
+    "title": "Create Account",
+    "subtitle": "Sign up with your name, email, and password. You can add profile details anytime on your profile page.",
+    "nameLabel": "Name",
+    "emailLabel": "Email Address",
+    "passwordLabel": "Password",
+    "confirmPasswordLabel": "Confirm Password",
+    "submitCta": "Create Account",
+    "loginPrompt": "Already have an account? Login",
+    "passwordPolicyHint": "At least 8 characters, including a number, a lowercase letter, an uppercase letter, and a special character (!@#$%^&*).",
+    "errors": {
+      "nameRequired": "Name is required",
+      "nameMinLength": "Name must be at least 2 characters long",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Email is invalid",
+      "passwordRequired": "Password is required",
+      "passwordMinLength": "Password must be at least 8 characters long",
+      "passwordNeedsNumber": "Password must contain a number",
+      "passwordNeedsLowercase": "Password must contain a lowercase letter",
+      "passwordNeedsUppercase": "Password must contain an uppercase letter",
+      "passwordNeedsSpecial": "Password must contain a special character (!@#$%^&*)",
+      "confirmPasswordRequired": "Please confirm your password",
+      "passwordMismatch": "Passwords do not match",
+      "unexpected": "An unexpected error occurred. Please try again."
+    }
+  },
+  "passwordVisibility": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "profileCreation": {
+    "loading": "Loading...",
+    "errors": {
+      "verifyEmailRequired": "Please verify your email before adding profile details.",
+      "identityQuestionsRequired": "Please answer all five identity questions before saving your profile.",
+      "saveFailed": "Error saving profile. Please try again."
+    },
+    "alreadyCreated": {
+      "title": "Profile Already Created",
+      "description": "You have already created your profile. You can edit your data or upload a new CV from your profile page.",
+      "goToProfileCta": "Go to Profile"
+    },
+    "default": {
+      "title": "Fill your profile",
+      "description": "Upload your CV to extract your experience, skills, and background."
+    },
+    "fullUpdate": {
+      "title": "Full profile update",
+      "description": "Upload a new CV to fully refresh your profile. You can review extracted content and answer context questions before replacing existing data."
+    }
+  },
+  "profilePagePrompts": {
+    "incomplete": {
+      "title": "Complete Your Profile",
+      "description": "Complete more of your profile to unlock personalized simulations.",
+      "cta": "Fill your profile"
+    },
+    "goToSimulationCta": "Go to Simulation",
+    "fullUpdateCta": "Full profile update"
+  },
+  "loginSecurity": {
+    "title": "Login & Security",
+    "description": "Manage sign-in credentials and security-sensitive updates.",
+    "loadingDetails": "Loading security details...",
+    "actions": {
+      "changeEmail": "Change Email",
+      "changePassword": "Change Password",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "actionFailed": "Action failed"
+    },
+    "messages": {
+      "requestCompleted": "Request completed successfully.",
+      "emailChangeUpdated": "Email change request updated.",
+      "passwordUpdated": "Password updated successfully."
+    },
+    "primaryEmail": {
+      "label": "Primary Email",
+      "verified": "Verified email",
+      "pendingVerification": "Pending verification",
+      "notAvailable": "Not available"
+    },
+    "pending": {
+      "pendingFor": "Email change pending for {{email}}.",
+      "codeExpires": "Code expires",
+      "soon": "soon",
+      "attemptsRemaining": "Attempts remaining: {{current}}/{{max}}",
+      "nextResendAt": "Next resend available at"
+    },
+    "changeEmail": {
+      "title": "Change Email Address",
+      "steps": {
+        "verifyIdentity": "Verify Identity",
+        "newEmail": "New Email",
+        "enterCode": "Enter Code"
+      },
+      "reauthDescription": "Confirm your identity by entering your current password. This step ensures that only you can change your login email.",
+      "emailStepDescription": "We'll send a 6-digit verification code to your new email address. The change only takes effect after you enter that code here.",
+      "reauthValidUntil": "Reauthentication valid until {{time}}",
+      "currentEmailLabel": "Current email:",
+      "fields": {
+        "currentPassword": "Current Password",
+        "newEmail": "New Email",
+        "confirmNewEmail": "Confirm New Email",
+        "verificationCode": "Verification Code"
+      },
+      "actions": {
+        "verifyPassword": "Verify Password",
+        "sendVerificationCode": "Send Verification Code",
+        "verifyCode": "Verify Code",
+        "resendCode": "Resend Code",
+        "resendIn": "Resend in {{seconds}}s",
+        "cancelRequest": "Cancel Request"
+      },
+      "messages": {
+        "verificationSent": "Verification code sent. Enter the six digits below to finish the change.",
+        "pendingCancelled": "Pending email change cancelled.",
+        "verificationResent": "Verification code resent. Check your inbox for the latest code.",
+        "emailUpdated": "Email updated successfully."
+      },
+      "errors": {
+        "currentPasswordRequired": "Please enter your current password.",
+        "verifyPasswordFailed": "Failed to verify password",
+        "validEmail": "Please enter a valid email address.",
+        "newEmailMustDiffer": "New email must be different from your current email.",
+        "emailMismatch": "Email addresses do not match.",
+        "reauthBeforeContinue": "Please reauthenticate before continuing.",
+        "emailAndConfirmationRequired": "Please provide the new email and confirmation.",
+        "submitFailed": "Failed to submit email change",
+        "cancelPendingFailed": "Failed to cancel pending change",
+        "resendFailed": "Failed to resend verification email",
+        "enterSixDigitCode": "Enter the 6-digit code we emailed you.",
+        "verifyCodeFailed": "Failed to verify code"
+      },
+      "friendlyCodeErrors": {
+        "codeInvalid": "That code didn't work. Please try again.",
+        "codeExpired": "That code expired. Submit a new request to continue.",
+        "attemptsExceeded": "Too many incorrect attempts. Start the email change again.",
+        "reauthRequired": "Your reauthentication expired. Restart the flow.",
+        "requestNotFound": "No pending email change found. Start a new request."
+      },
+      "pending": {
+        "attemptsRemaining": "Attempts remaining: {{current}}/{{max}}",
+        "codeHelper": "Enter the latest 6-digit code from your email",
+        "enterCodeForEmail": "Enter the 6-digit code we sent to {{email}} to finish updating your email.",
+        "expiresIn": "Expires in",
+        "unknown": "unknown",
+        "requestedAt": "Requested at",
+        "notAvailable": "N/A",
+        "existingPending": "You have a pending email change to {{email}}. Entering a new email below will replace that pending change."
+      },
+      "time": {
+        "expired": "Expired",
+        "minutesSeconds": "{{minutes}}m {{seconds}}s"
+      }
+    },
+    "changePassword": {
+      "title": "Change Password",
+      "steps": {
+        "verifyIdentity": "Verify Identity",
+        "setNewPassword": "Set New Password",
+        "confirmation": "Confirmation"
+      },
+      "reauthDescription": "For your security, please confirm your current password before making changes.",
+      "reauthValidFor": "Reauthentication valid for another {{seconds}} seconds.",
+      "fields": {
+        "currentPassword": "Current Password",
+        "newPassword": "New Password",
+        "confirmNewPassword": "Confirm New Password"
+      },
+      "requirements": {
+        "title": "Password requirements",
+        "length": "At least 8 characters",
+        "uppercase": "One uppercase letter",
+        "lowercase": "One lowercase letter",
+        "number": "One number",
+        "symbol": "One special character (!@#$%^&*)"
+      },
+      "actions": {
+        "verifyPassword": "Verify Password",
+        "updatePassword": "Update Password",
+        "done": "Done"
+      },
+      "messages": {
+        "passwordUpdated": "Password updated successfully.",
+        "updatedSignedOutOthers": "Your password has been updated. You will be signed out on other devices."
+      },
+      "errors": {
+        "currentPasswordRequired": "Please enter your current password.",
+        "verifyPasswordFailed": "Failed to verify password",
+        "reauthBeforeChange": "Please reauthenticate before changing your password.",
+        "requirementsNotMet": "Please meet all password requirements.",
+        "passwordMismatch": "Passwords do not match.",
+        "updateFailed": "Failed to update password"
+      }
+    }
+  },
+  "profileCompletionTooltip": {
+    "title": "Profile completion",
+    "overall": "Overall",
+    "sections": {
+      "userIdentity": "Who are you?",
+      "structuredUserInfo": "What are you good at?",
+      "seniority": "How experienced are you?",
+      "documents": "Your CV"
+    },
+    "hints": {
+      "high": "Your profile is well completed.",
+      "medium": "Add more detail for stronger recommendations.",
+      "low": "Complete more sections to improve career matching."
+    }
+  },
+  "profilePage": {
+    "actions": {
+      "retry": "Retry",
+      "save": "Save",
+      "saving": "Saving...",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "close": "Close"
+    },
+    "notProvided": "Not provided",
+    "errors": {
+      "fetchProfileFailed": "Error fetching profile",
+      "saveChangesFailed": "Error saving changes",
+      "identityQuestionsRequired": "Please answer all five identity questions.",
+      "saveStructuredInfoFailed": "Failed to save structured user info",
+      "recalculateFailed": "Failed to recalculate inputs"
+    },
+    "loginSecurity": {
+      "title": "Login & Security",
+      "loadFailed": "Failed to load login security details"
+    },
+    "documents": {
+      "title": "Documents"
+    },
+    "photo": {
+      "edit": "Edit photo",
+      "add": "Add photo",
+      "alt": "Profile Picture",
+      "editor": {
+        "titleEdit": "Edit Profile Picture",
+        "titleAdd": "Add Profile Picture",
+        "selectImageCta": "Click to select an image",
+        "supportedFormats": "JPEG, PNG, GIF, or WebP (max 5MB)",
+        "zoomOut": "Zoom Out",
+        "zoomIn": "Zoom In",
+        "zoomAriaLabel": "Zoom",
+        "cropHint": "Drag the image to adjust position • Use zoom slider or buttons to zoom in/out",
+        "previewLabel": "Preview:",
+        "previewAlt": "Preview",
+        "changeImage": "Change Image",
+        "delete": "Delete",
+        "uploading": "Uploading...",
+        "deleting": "Deleting...",
+        "errors": {
+          "invalidType": "Invalid file type. Please select a JPEG, PNG, GIF, or WebP image.",
+          "fileTooLarge": "File size must be less than 5MB. Please select a smaller image.",
+          "selectAndCropFirst": "Please select and crop an image first.",
+          "uploadFailed": "Failed to upload profile picture. Please try again.",
+          "noPictureToDelete": "No profile picture to delete.",
+          "deleteFailed": "Failed to delete profile picture. Please try again."
+        },
+        "deleteDialog": {
+          "title": "Delete Profile Picture",
+          "confirmation": "Are you sure you want to delete your profile picture?",
+          "currentAlt": "Current profile picture",
+          "currentLabel": "Current profile picture",
+          "warning": "This action cannot be undone."
+        }
+      }
+    },
+    "nameEditor": {
+      "label": "Name",
+      "helper": "Displayed in your profile header",
+      "placeholderName": "Your Name",
+      "editCta": "Edit Name",
+      "errors": {
+        "required": "Name is required",
+        "saveFailed": "Failed to save name"
+      }
+    },
+    "identityForm": {
+      "helper": "These answers are composed into your user identity text for career matching and simulations.",
+      "unsavedDialog": {
+        "title": "Discard Changes?",
+        "description": "Are you sure you want to discard your changes? All unsaved modifications will be lost.",
+        "keepEditing": "Keep Editing",
+        "discardChanges": "Discard Changes"
+      }
+    },
+    "sections": {
+      "identity": "Who are you?",
+      "goodAt": "What are you good at?",
+      "experience": "How experienced are you?"
+    },
+    "structuredInfo": {
+      "maxEntriesPerCategory": "Up to {{max}} entries per category.",
+      "emptyEntries": "No entries yet. Add your own.",
+      "strengths": {
+        "title": "Your strengths",
+        "addCta": "Add strength",
+        "helper": "Overarching skills, usually inferred from CV.",
+        "empty": "No strengths added yet. Add overarching skills (from your CV or manually)."
+      },
+      "industrySectors": {
+        "title": "Industry sectors",
+        "addCta": "Add industry sector",
+        "helper": "Use sectors like MedTech, Life Sciences, Manufacturing.",
+        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). ISCO codes are derived from these — not from job functions like Marketing."
+      },
+      "responsibilities": {
+        "title": "Your responsibilities",
+        "addCta": "Add responsibility",
+        "helper": "Concrete responsibilities from your work history.",
+        "empty": "No responsibilities provided"
+      },
+      "skills": {
+        "title": "Your skills",
+        "addCta": "Add skill",
+        "helper": "Tools, methods, and competencies.",
+        "empty": "No skills provided"
+      },
+      "learningGoals": {
+        "title": "Your learning goals",
+        "addCta": "Add learning goal",
+        "helper": "Skills you are actively building.",
+        "empty": "No learning goals provided"
+      },
+      "inferredOccupationGroups": {
+        "title": "Inferred occupation groups",
+        "helper": "These are inferred from your industry sectors. Remove any that do not fit.",
+        "empty": "No inferred ISCO entries to review yet.",
+        "removedForNextSave": "Removed for next save"
+      }
+    },
+    "seniority": {
+      "currentEmploymentStatus": "Current Employment Status",
+      "yearsOfWorkExperience": "Years of Work Experience",
+      "yearsValue": "{{count}} years",
+      "highestEducationalDegree": "Highest Educational Degree",
+      "mostSeniorWorkExperience": "Most Senior Work Experience"
+    },
+    "seniorityForm": {
+      "notSpecified": "Not specified",
+      "errors": {
+        "currentStatusRequired": "Current employment status is required",
+        "yearsRange": "Years must be between 0 and 50",
+        "highestDegreeRequired": "Highest educational degree is required",
+        "mostSeniorRequired": "Most senior work experience is required"
+      },
+      "unsavedDialog": {
+        "title": "Discard Changes?",
+        "description": "Are you sure you want to discard your changes? All unsaved modifications will be lost.",
+        "keepEditing": "Keep Editing",
+        "discardChanges": "Discard Changes"
+      },
+      "options": {
+        "currentStatus": {
+          "pupil": "Pupil",
+          "student": "Student",
+          "intern": "Intern or trainee",
+          "employed": "Employed",
+          "part_time": "Part-time employed",
+          "self-employed": "Self-employed",
+          "contractor": "Contractor",
+          "unemployed": "Unemployed",
+          "extended_leave": "Extended leave",
+          "retired": "Retired"
+        },
+        "highestDegree": {
+          "none": "None",
+          "high_school": "High school",
+          "hauptschulabschluss": "Hauptschulabschluss",
+          "realschulabschluss": "Realschulabschluss",
+          "ausbildung": "Ausbildung",
+          "fachabitur": "Fachabitur",
+          "associate": "Associate",
+          "bachelors": "Bachelor's",
+          "masters": "Master's",
+          "phd": "PhD",
+          "staatsexamen": "Staatsexamen",
+          "professional": "Professional degree"
+        },
+        "mostSenior": {
+          "intern": "Intern",
+          "entry_level": "Entry-level",
+          "mid_level": "Mid-level",
+          "senior": "Senior",
+          "lead": "Lead",
+          "manager": "Manager",
+          "director": "Director",
+          "vp": "VP",
+          "c_suite": "C-Suite"
+        }
+      }
+    },
+    "careerInputs": {
+      "title": "Career Simulation Inputs",
+      "description": "This section shows the data used for career path simulations. You can edit these inputs for more accurate recommendations.",
+      "tipLabel": "Tip:",
+      "tipDescription": "More complete information leads to better career path suggestions. Use \"Recalculate from Profile\" to automatically update these fields from your profile data.",
+      "recalculateFromProfile": "Recalculate from Profile",
+      "recalculating": "Recalculating...",
+      "embeddingIdentityLabel": "Career-simulation embedding identity text (cached)",
+      "notAvailableYet": "Not available yet",
+      "strengthsLabel": "Your strengths (skill_domains — overarching skills)",
+      "occupationGroupLabel": "Occupation group input (domains + derived ISCO)",
+      "responsibilitiesLabel": "Responsibilities input (structured vector: responsibilities)",
+      "requiredSkillsLabel": "Required skills input (structured vector: required_skills)",
+      "skillsInDevelopmentLabel": "Skills in development input",
+      "optionalSkillsLabel": "Optional skills input (structured vector: optional_skills = skills + skills in development)",
+      "seniorityLabel": "Seniority inputs (used for user level and seniority penalty)",
+      "lastManuallyEdited": "Last manually edited: {{date}}",
+      "lastAutoCalculated": "Last auto-calculated: {{date}}",
+      "empty": {
+        "strengths": "No strengths yet. Edit career simulation inputs to add skill domains.",
+        "industrySectors": "No industry sectors added yet. Edit to add sectors (e.g. MedTech, Manufacturing), not job functions.",
+        "responsibilities": "No responsibilities added yet. Edit to add responsibilities.",
+        "skills": "No skills added yet. Edit to add your skills.",
+        "learningGoals": "No learning goals yet. Edit to add what you're learning.",
+        "optionalSkills": "No optional skills input yet.",
+        "experience": "No experience info yet. Edit to add."
+      },
+      "editablePlaceholders": {
+        "strengths": "Enter an overarching skill and press Enter",
+        "industrySectors": "Sector only: MedTech, Life Sciences, Manufacturing, Education — not Marketing or Social Media",
+        "responsibilities": "Enter a responsibility and press Enter",
+        "skills": "Enter a skill and press Enter or click Add",
+        "learningGoals": "Enter a skill you're learning and press Enter"
+      }
+    },
+    "recalculateDialog": {
+      "title": "Recalculate Career Simulation Inputs?",
+      "description": "You have manually edited your career simulation inputs. Recalculating from your profile will overwrite these manual changes.",
+      "willDoTitle": "This action will:",
+      "keepManualEditsCta": "Keep My Manual Edits",
+      "recalculateAndOverwriteCta": "Recalculate and Overwrite",
+      "bullets": {
+        "replaceInputs": "Replace all manually edited inputs with automatically calculated values from your profile",
+        "resetManualFlag": "Reset the \"manually edited\" status",
+        "updateTimestamp": "Update the \"last calculated\" timestamp"
+      }
+    }
+  },
+  "documentUpload": {
+    "sectionTitle": "Documents",
+    "uploadSuccessPrefix": "Upload successful.",
+    "extraction": {
+      "semanticInterpretationSuccess": "Interpreted profile signals from your CV using semantic analysis.",
+      "semanticInterpretationNone": "No profile signals could be interpreted from the document.",
+      "noPdfTextLayer": "No readable text could be extracted from this PDF (including OCR). Export again as a PDF with selectable text, or upload DOCX."
+    },
+    "common": {
+      "cancel": "Cancel",
+      "back": "Back",
+      "continue": "Continue"
+    },
+    "errors": {
+      "filesRejected": "Some files could not be uploaded. Please try again.",
+      "fileTooLarge": "File too large. Maximum file size is 10MB.",
+      "invalidType": "Unsupported file type. Please upload PDF, DOC, or DOCX files.",
+      "deleteFailed": "Failed to delete document. Please try again.",
+      "downloadFailed": "Error downloading document",
+      "selectFileAndType": "Please select a file and document type",
+      "fileSizeLimit": "File size must be less than 10MB",
+      "uploadFailed": "Failed to upload document. Please try again.",
+      "saveProfileFailed": "Failed to save profile data. Please try again.",
+      "qualityAnalysisFailed": "Quality analysis failed",
+      "renameFailed": "Failed to rename document. Please try again."
+    },
+    "dropzone": {
+      "dragActive": "Drop the files here...",
+      "idle": "Drag and drop your CV here, or click to select CV",
+      "supportedFormats": "Supported formats: PDF, DOC, DOCX (max 10MB)",
+      "cta": "Your CV"
+    },
+    "documents": {
+      "noTitle": "No title",
+      "uploadedOn": "Uploaded {{date}}",
+      "rename": {
+        "saveCta": "Save"
+      }
+    },
+    "deleteDialog": {
+      "title": "Delete Document",
+      "confirmation": "Are you sure you want to delete this document?",
+      "detailsTitle": "Document Details:",
+      "nameLabel": "Name:",
+      "typeLabel": "Type:",
+      "notSpecified": "Not specified",
+      "warning": "This action cannot be undone.",
+      "deleteCta": "Delete"
+    },
+    "uploadDialog": {
+      "title": "Upload Document",
+      "selectFileCta": "Select File",
+      "documentTypeLabel": "Document Type",
+      "documentTypePlaceholder": "Select a type",
+      "defaultTypeInfo": "Your CV is processed for profile input",
+      "uploadCta": "Upload",
+      "documentTypes": {
+        "resume": "Resume",
+        "certificate": "Certificate",
+        "transcript": "Transcript",
+        "portfolio": "Portfolio",
+        "other": "Other"
+      }
+    },
+    "review": {
+      "step2Title": "Review Extracted Profile Data (Step 2 of 3)",
+      "step3Title": "Need More Context Questions (Step 3 of 3)",
+      "step2Intro": "Please review the extracted data below. You can edit any field before moving to the context step.",
+      "step3Intro": "We scored your answers and identified some gaps. Answer each follow-up in the sections below, then save your profile to finish.",
+      "step3QualityErrorPrefix": "Could not load quality suggestions:",
+      "followUpPlaceholder": "Your answer",
+      "strengthsTitle": "Strengths and focus areas",
+      "strengthsDescription": "These lists had no text yet. Add up to {{max}} items, one per line. Only non-empty lines are saved.",
+      "emptyCategoryChip": "Empty category",
+      "goodAtPlaceholder": "One item per line (max {{max}})",
+      "noExtractedData": "No extracted data found.",
+      "analyzing": "Analyzing...",
+      "saving": "Saving...",
+      "saveToProfileCta": "Save to Profile",
+      "goodAtLimit": "Up to {{max}} entries per category.",
+      "maxEntriesTitle": "Maximum {{max}} entries",
+      "status": {
+        "success": "Extraction Successful",
+        "partial": "Partial Extraction",
+        "failed": "Extraction Failed"
+      },
+      "sections": {
+        "identity": "Who are you?",
+        "goodAt": "What are you good at?",
+        "experience": "How experienced are you?"
+      },
+      "goodAtCategories": {
+        "skillDomains": "Skill domains",
+        "domains": "Industry sectors",
+        "keyResponsibilities": "Your responsibilities",
+        "skills": "Your skills",
+        "skillsInDevelopment": "Your learning goals"
+      },
+      "emptyMessages": {
+        "skillDomains": "No skill domains extracted. You can add your own.",
+        "domains": "No industry sectors extracted. You can add your own.",
+        "keyResponsibilities": "No responsibilities extracted. You can add your own.",
+        "skills": "No skills extracted. You can add your own.",
+        "skillsInDevelopment": "No learning goals extracted. You can add your own."
+      },
+      "labels": {
+        "skillDomain": "Skill domain {{index}}",
+        "domain": "Domain {{index}}",
+        "responsibility": "Responsibility {{index}}",
+        "skill": "Skill {{index}}",
+        "learningGoal": "Learning goal {{index}}"
+      },
+      "actions": {
+        "addSkillDomain": "Add skill domain",
+        "addDomain": "Add industry sector",
+        "addResponsibility": "Add responsibility",
+        "addSkill": "Add skill",
+        "addLearningGoal": "Add learning goal"
+      },
+      "experience": {
+        "currentEmploymentStatus": "Current employment status",
+        "yearsOfWorkExperience": "Years of work experience",
+        "highestEducationalDegree": "Highest educational degree",
+        "mostSeniorWorkExperience": "Most senior work experience",
+        "notSpecified": "Not specified"
+      },
+      "selectPlaceholder": "Select...",
+      "cancelConfirm": {
+        "title": "Leave profile setup?",
+        "description": "Your edits on this step will be discarded. You can upload your CV again later if you leave now.",
+        "stayCta": "Keep editing",
+        "discardCta": "Leave and discard"
+      }
+    }
+  }
+}

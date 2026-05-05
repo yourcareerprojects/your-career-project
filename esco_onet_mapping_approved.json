@@ -1,0 +1,1322 @@
+[
+  {
+    "esco_id": "cluster_00006",
+    "esco_title": "automotive battery technician",
+    "onet_id": "49-3023.00",
+    "onet_title": "Automotive Service Technicians and Mechanics",
+    "confidence_score": 0.431673,
+    "scores": {
+      "cosine": 0.564233,
+      "title_similarity": 0.630137,
+      "skill_overlap": 0.078431,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-3027.01",
+        "score": 0.431342
+      },
+      {
+        "onet_id": "49-3092.00",
+        "score": 0.4211
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00001",
+    "esco_title": "primary school teaching assistant",
+    "onet_id": "25-9043.00",
+    "onet_title": "Teaching Assistants, Special Education",
+    "confidence_score": 0.389435,
+    "scores": {
+      "cosine": 0.531905,
+      "title_similarity": 0.591549,
+      "skill_overlap": 0.017241,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "25-9049.00",
+        "score": 0.381275
+      },
+      {
+        "onet_id": "25-9042.00",
+        "score": 0.377628
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00003",
+    "esco_title": "ceramic painter",
+    "onet_id": "27-1013.00",
+    "onet_title": "Fine Artists, Including Painters, Sculptors, and Illustrators",
+    "confidence_score": 0.326019,
+    "scores": {
+      "cosine": 0.536248,
+      "title_similarity": 0.289474,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "47-2141.00",
+        "score": 0.311332
+      },
+      {
+        "onet_id": "27-1011.00",
+        "score": 0.296824
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00011",
+    "esco_title": "tower crane operator",
+    "onet_id": "53-7021.00",
+    "onet_title": "Crane and Tower Operators",
+    "confidence_score": 0.48787,
+    "scores": {
+      "cosine": 0.661017,
+      "title_similarity": 0.755556,
+      "skill_overlap": 0.020833,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-8013.00",
+        "score": 0.372921
+      },
+      {
+        "onet_id": "47-2072.00",
+        "score": 0.364047
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00020",
+    "esco_title": "department store manager",
+    "onet_id": "11-3012.00",
+    "onet_title": "Administrative Services Managers",
+    "confidence_score": 0.333369,
+    "scores": {
+      "cosine": 0.466739,
+      "title_similarity": 0.5,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-1021.00",
+        "score": 0.330455
+      },
+      {
+        "onet_id": "11-2022.00",
+        "score": 0.318918
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00028",
+    "esco_title": "child care worker",
+    "onet_id": "39-9011.00",
+    "onet_title": "Childcare Workers",
+    "confidence_score": 0.41063,
+    "scores": {
+      "cosine": 0.585965,
+      "title_similarity": 0.588235,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-9031.00",
+        "score": 0.323186
+      },
+      {
+        "onet_id": "21-1021.00",
+        "score": 0.299531
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00019",
+    "esco_title": "dance teacher",
+    "onet_id": "27-2031.00",
+    "onet_title": "Dancers",
+    "confidence_score": 0.41962,
+    "scores": {
+      "cosine": 0.639239,
+      "title_similarity": 0.5,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "27-2032.00",
+        "score": 0.39709
+      },
+      {
+        "onet_id": "25-1121.00",
+        "score": 0.356276
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00031",
+    "esco_title": "stock trader",
+    "onet_id": "41-3031.00",
+    "onet_title": "Securities, Commodities, and Financial Services Sales Agents",
+    "confidence_score": 0.332957,
+    "scores": {
+      "cosine": 0.568574,
+      "title_similarity": 0.222222,
+      "skill_overlap": 0.014085,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "43-4011.00",
+        "score": 0.31445
+      },
+      {
+        "onet_id": "11-3031.03",
+        "score": 0.271656
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00014",
+    "esco_title": "ICT technician",
+    "onet_id": "17-3024.01",
+    "onet_title": "Robotics Technicians",
+    "confidence_score": 0.380843,
+    "scores": {
+      "cosine": 0.514853,
+      "title_similarity": 0.588235,
+      "skill_overlap": 0.019231,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4021.00",
+        "score": 0.366857
+      },
+      {
+        "onet_id": "27-4012.00",
+        "score": 0.363737
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00008",
+    "esco_title": "dog trainer",
+    "onet_id": "39-2011.00",
+    "onet_title": "Animal Trainers",
+    "confidence_score": 0.481952,
+    "scores": {
+      "cosine": 0.74852,
+      "title_similarity": 0.538462,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "39-2021.00",
+        "score": 0.323567
+      },
+      {
+        "onet_id": "29-1131.00",
+        "score": 0.320532
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00021",
+    "esco_title": "car driving instructor",
+    "onet_id": "53-3053.00",
+    "onet_title": "Shuttle Drivers and Chauffeurs",
+    "confidence_score": 0.300175,
+    "scores": {
+      "cosine": 0.461889,
+      "title_similarity": 0.346154,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-2141.02",
+        "score": 0.299238
+      },
+      {
+        "onet_id": "53-3051.00",
+        "score": 0.289378
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00009",
+    "esco_title": "microsystem engineering technician",
+    "onet_id": "17-2199.06",
+    "onet_title": "Microsystems Engineers",
+    "confidence_score": 0.483151,
+    "scores": {
+      "cosine": 0.69666,
+      "title_similarity": 0.642857,
+      "skill_overlap": 0.020833,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-2199.05",
+        "score": 0.411824
+      },
+      {
+        "onet_id": "17-3024.00",
+        "score": 0.364062
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00030",
+    "esco_title": "economic policy officer",
+    "onet_id": "19-3011.00",
+    "onet_title": "Economists",
+    "confidence_score": 0.284054,
+    "scores": {
+      "cosine": 0.422654,
+      "title_similarity": 0.363636,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-3011.01",
+        "score": 0.281215
+      },
+      {
+        "onet_id": "11-1011.03",
+        "score": 0.277707
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00043",
+    "esco_title": "secondary school teacher",
+    "onet_id": "25-1022.00",
+    "onet_title": "Mathematical Science Teachers, Postsecondary",
+    "confidence_score": 0.403861,
+    "scores": {
+      "cosine": 0.564521,
+      "title_similarity": 0.558824,
+      "skill_overlap": 0.032787,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "25-1081.00",
+        "score": 0.387774
+      },
+      {
+        "onet_id": "25-1054.00",
+        "score": 0.383358
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00044",
+    "esco_title": "nuclear medicine radiographer",
+    "onet_id": "29-2033.00",
+    "onet_title": "Nuclear Medicine Technologists",
+    "confidence_score": 0.460592,
+    "scores": {
+      "cosine": 0.690675,
+      "title_similarity": 0.576271,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "29-1224.00",
+        "score": 0.359774
+      },
+      {
+        "onet_id": "19-4051.02",
+        "score": 0.354163
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00048",
+    "esco_title": "steam plant operator",
+    "onet_id": "51-8013.00",
+    "onet_title": "Power Plant Operators",
+    "confidence_score": 0.468253,
+    "scores": {
+      "cosine": 0.638845,
+      "title_similarity": 0.682927,
+      "skill_overlap": 0.040816,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-8092.00",
+        "score": 0.434871
+      },
+      {
+        "onet_id": "51-8021.00",
+        "score": 0.413793
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00052",
+    "esco_title": "water-based aquaculture worker",
+    "onet_id": "17-2051.02",
+    "onet_title": "Water/Wastewater Engineers",
+    "confidence_score": 0.361129,
+    "scores": {
+      "cosine": 0.5294,
+      "title_similarity": 0.428571,
+      "skill_overlap": 0.035714,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "45-2093.00",
+        "score": 0.352421
+      },
+      {
+        "onet_id": "11-9013.00",
+        "score": 0.351891
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00004",
+    "esco_title": "special educational needs teacher secondary school",
+    "onet_id": "25-2058.00",
+    "onet_title": "Special Education Teachers, Secondary School",
+    "confidence_score": 0.532609,
+    "scores": {
+      "cosine": 0.736371,
+      "title_similarity": 0.787234,
+      "skill_overlap": 0.023256,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "25-2057.00",
+        "score": 0.512991
+      },
+      {
+        "onet_id": "25-2056.00",
+        "score": 0.506261
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00005",
+    "esco_title": "textile quality technician",
+    "onet_id": "19-4031.00",
+    "onet_title": "Chemical Technicians",
+    "confidence_score": 0.457047,
+    "scores": {
+      "cosine": 0.690764,
+      "title_similarity": 0.521739,
+      "skill_overlap": 0.02439,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4021.00",
+        "score": 0.376532
+      },
+      {
+        "onet_id": "19-4013.00",
+        "score": 0.370431
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00012",
+    "esco_title": "mine manager",
+    "onet_id": "11-3051.02",
+    "onet_title": "Geothermal Production Managers",
+    "confidence_score": 0.388211,
+    "scores": {
+      "cosine": 0.585946,
+      "title_similarity": 0.47619,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-3051.06",
+        "score": 0.349645
+      },
+      {
+        "onet_id": "17-2151.00",
+        "score": 0.348063
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00013",
+    "esco_title": "electrical equipment assembler",
+    "onet_id": "51-2022.00",
+    "onet_title": "Electrical and Electronic Equipment Assemblers",
+    "confidence_score": 0.556686,
+    "scores": {
+      "cosine": 0.805302,
+      "title_similarity": 0.736842,
+      "skill_overlap": 0.022222,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-2023.00",
+        "score": 0.509636
+      },
+      {
+        "onet_id": "51-2092.00",
+        "score": 0.409131
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00016",
+    "esco_title": "residential home older adult care worker",
+    "onet_id": "39-9041.00",
+    "onet_title": "Residential Advisors",
+    "confidence_score": 0.353859,
+    "scores": {
+      "cosine": 0.521051,
+      "title_similarity": 0.466667,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "21-1022.00",
+        "score": 0.324533
+      },
+      {
+        "onet_id": "31-1121.00",
+        "score": 0.308565
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00017",
+    "esco_title": "horse breeder",
+    "onet_id": "45-2021.00",
+    "onet_title": "Animal Breeders",
+    "confidence_score": 0.358168,
+    "scores": {
+      "cosine": 0.516336,
+      "title_similarity": 0.5,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "29-1131.00",
+        "score": 0.316322
+      },
+      {
+        "onet_id": "39-2011.00",
+        "score": 0.291348
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00018",
+    "esco_title": "cutting machine operator",
+    "onet_id": "51-6062.00",
+    "onet_title": "Textile Cutting Machine Setters, Operators, and Tenders",
+    "confidence_score": 0.475685,
+    "scores": {
+      "cosine": 0.712242,
+      "title_similarity": 0.531646,
+      "skill_overlap": 0.044118,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-9032.00",
+        "score": 0.473028
+      },
+      {
+        "onet_id": "51-6031.00",
+        "score": 0.445492
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00022",
+    "esco_title": "braiding textile technician",
+    "onet_id": "51-6063.00",
+    "onet_title": "Textile Knitting and Weaving Machine Setters, Operators, and Tenders",
+    "confidence_score": 0.350784,
+    "scores": {
+      "cosine": 0.541268,
+      "title_similarity": 0.357895,
+      "skill_overlap": 0.028571,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4021.00",
+        "score": 0.349003
+      },
+      {
+        "onet_id": "19-4031.00",
+        "score": 0.334034
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00035",
+    "esco_title": "halal butcher",
+    "onet_id": "51-3021.00",
+    "onet_title": "Butchers and Meat Cutters",
+    "confidence_score": 0.399161,
+    "scores": {
+      "cosine": 0.608849,
+      "title_similarity": 0.473684,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-3023.00",
+        "score": 0.375666
+      },
+      {
+        "onet_id": "51-3022.00",
+        "score": 0.324077
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00040",
+    "esco_title": "head waiter/head waitress",
+    "onet_id": "35-3031.00",
+    "onet_title": "Waiters and Waitresses",
+    "confidence_score": 0.391757,
+    "scores": {
+      "cosine": 0.551524,
+      "title_similarity": 0.553191,
+      "skill_overlap": 0.017857,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "35-9031.00",
+        "score": 0.34812
+      },
+      {
+        "onet_id": "35-3041.00",
+        "score": 0.333461
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00041",
+    "esco_title": "public housing manager",
+    "onet_id": "11-9081.00",
+    "onet_title": "Lodging Managers",
+    "confidence_score": 0.390315,
+    "scores": {
+      "cosine": 0.539052,
+      "title_similarity": 0.578947,
+      "skill_overlap": 0.016667,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-9141.00",
+        "score": 0.324242
+      },
+      {
+        "onet_id": "11-2032.00",
+        "score": 0.31864
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00042",
+    "esco_title": "weaving machine supervisor",
+    "onet_id": "51-6031.00",
+    "onet_title": "Sewing Machine Operators",
+    "confidence_score": 0.458327,
+    "scores": {
+      "cosine": 0.635959,
+      "title_similarity": 0.68,
+      "skill_overlap": 0.014493,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-6063.00",
+        "score": 0.45076
+      },
+      {
+        "onet_id": "51-6062.00",
+        "score": 0.414961
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00046",
+    "esco_title": "education studies lecturer",
+    "onet_id": "25-1126.00",
+    "onet_title": "Philosophy and Religion Teachers, Postsecondary",
+    "confidence_score": 0.356282,
+    "scores": {
+      "cosine": 0.570098,
+      "title_similarity": 0.356164,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "21-2021.00",
+        "score": 0.335447
+      },
+      {
+        "onet_id": "25-1081.00",
+        "score": 0.306203
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00047",
+    "esco_title": "surveying technician",
+    "onet_id": "17-3031.00",
+    "onet_title": "Surveying and Mapping Technicians",
+    "confidence_score": 0.467369,
+    "scores": {
+      "cosine": 0.663039,
+      "title_similarity": 0.679245,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4043.00",
+        "score": 0.436309
+      },
+      {
+        "onet_id": "17-3027.01",
+        "score": 0.398428
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00050",
+    "esco_title": "restaurant host/restaurant hostess",
+    "onet_id": "35-9031.00",
+    "onet_title": "Hosts and Hostesses, Restaurant, Lounge, and Coffee Shop",
+    "confidence_score": 0.385996,
+    "scores": {
+      "cosine": 0.594214,
+      "title_similarity": 0.444444,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "35-3041.00",
+        "score": 0.334436
+      },
+      {
+        "onet_id": "53-6061.00",
+        "score": 0.322849
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00055",
+    "esco_title": "avionics inspector",
+    "onet_id": "49-2091.00",
+    "onet_title": "Avionics Technicians",
+    "confidence_score": 0.472083,
+    "scores": {
+      "cosine": 0.702242,
+      "title_similarity": 0.578947,
+      "skill_overlap": 0.017241,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "53-6051.01",
+        "score": 0.430064
+      },
+      {
+        "onet_id": "49-3011.00",
+        "score": 0.345266
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00056",
+    "esco_title": "onshore wind energy engineer",
+    "onet_id": "17-2199.10",
+    "onet_title": "Wind Energy Engineers",
+    "confidence_score": 0.487104,
+    "scores": {
+      "cosine": 0.68033,
+      "title_similarity": 0.734694,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-2199.03",
+        "score": 0.407716
+      },
+      {
+        "onet_id": "11-9199.09",
+        "score": 0.384753
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00058",
+    "esco_title": "optomechanical engineering technician",
+    "onet_id": "17-3029.08",
+    "onet_title": "Photonics Technicians",
+    "confidence_score": 0.428315,
+    "scores": {
+      "cosine": 0.625032,
+      "title_similarity": 0.551724,
+      "skill_overlap": 0.018182,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-3027.00",
+        "score": 0.42808
+      },
+      {
+        "onet_id": "17-3028.00",
+        "score": 0.39488
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00062",
+    "esco_title": "contact centre supervisor",
+    "onet_id": "11-1021.00",
+    "onet_title": "General and Operations Managers",
+    "confidence_score": 0.317159,
+    "scores": {
+      "cosine": 0.451569,
+      "title_similarity": 0.428571,
+      "skill_overlap": 0.018868,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "55-1015.00",
+        "score": 0.308345
+      },
+      {
+        "onet_id": "11-3012.00",
+        "score": 0.304907
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00065",
+    "esco_title": "mobile devices technician",
+    "onet_id": "17-3024.01",
+    "onet_title": "Robotics Technicians",
+    "confidence_score": 0.365674,
+    "scores": {
+      "cosine": 0.500236,
+      "title_similarity": 0.577778,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "49-3092.00",
+        "score": 0.364189
+      },
+      {
+        "onet_id": "17-3027.01",
+        "score": 0.362642
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00066",
+    "esco_title": "fisheries master",
+    "onet_id": "53-5021.00",
+    "onet_title": "Captains, Mates, and Pilots of Water Vessels",
+    "confidence_score": 0.367324,
+    "scores": {
+      "cosine": 0.577268,
+      "title_similarity": 0.366667,
+      "skill_overlap": 0.017857,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "53-5011.00",
+        "score": 0.322624
+      },
+      {
+        "onet_id": "53-5022.00",
+        "score": 0.318195
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00067",
+    "esco_title": "art director",
+    "onet_id": "27-1011.00",
+    "onet_title": "Art Directors",
+    "confidence_score": 0.462317,
+    "scores": {
+      "cosine": 0.604633,
+      "title_similarity": 0.8,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "29-1129.01",
+        "score": 0.298782
+      },
+      {
+        "onet_id": "27-1013.00",
+        "score": 0.294936
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00068",
+    "esco_title": "household appliances repair technician",
+    "onet_id": "49-9031.00",
+    "onet_title": "Home Appliance Repairers",
+    "confidence_score": 0.490827,
+    "scores": {
+      "cosine": 0.738486,
+      "title_similarity": 0.580645,
+      "skill_overlap": 0.018182,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "49-9071.00",
+        "score": 0.401729
+      },
+      {
+        "onet_id": "49-2094.00",
+        "score": 0.400438
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00045",
+    "esco_title": "mine development engineer",
+    "onet_id": "17-2051.00",
+    "onet_title": "Civil Engineers",
+    "confidence_score": 0.409861,
+    "scores": {
+      "cosine": 0.619722,
+      "title_similarity": 0.5,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-2199.00",
+        "score": 0.380443
+      },
+      {
+        "onet_id": "17-2071.00",
+        "score": 0.379387
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00027",
+    "esco_title": "aquaculture cage technician",
+    "onet_id": "19-4021.00",
+    "onet_title": "Biological Technicians",
+    "confidence_score": 0.368966,
+    "scores": {
+      "cosine": 0.512921,
+      "title_similarity": 0.530612,
+      "skill_overlap": 0.021277,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4012.00",
+        "score": 0.3521
+      },
+      {
+        "onet_id": "11-9013.00",
+        "score": 0.348787
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00026",
+    "esco_title": "motor vehicle engine assembler",
+    "onet_id": "51-2031.00",
+    "onet_title": "Engine and Other Machine Assemblers",
+    "confidence_score": 0.373069,
+    "scores": {
+      "cosine": 0.524599,
+      "title_similarity": 0.553846,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-2092.00",
+        "score": 0.365709
+      },
+      {
+        "onet_id": "51-2022.00",
+        "score": 0.353819
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00036",
+    "esco_title": "sommelier",
+    "onet_id": "35-3011.00",
+    "onet_title": "Bartenders",
+    "confidence_score": 0.275466,
+    "scores": {
+      "cosine": 0.424616,
+      "title_similarity": 0.315789,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "39-6012.00",
+        "score": 0.207189
+      },
+      {
+        "onet_id": "35-3041.00",
+        "score": 0.173245
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00053",
+    "esco_title": "mechatronics engineer",
+    "onet_id": "17-2199.05",
+    "onet_title": "Mechatronics Engineers",
+    "confidence_score": 0.583893,
+    "scores": {
+      "cosine": 0.804129,
+      "title_similarity": 0.883721,
+      "skill_overlap": 0.016949,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "17-2199.08",
+        "score": 0.46455
+      },
+      {
+        "onet_id": "17-3027.01",
+        "score": 0.403755
+      }
+    ]
+  },
+  {
+    "esco_id": "cluster_00059",
+    "esco_title": "aquaculture husbandry technician",
+    "onet_id": "19-4012.00",
+    "onet_title": "Agricultural Technicians",
+    "confidence_score": 0.39225,
+    "scores": {
+      "cosine": 0.541643,
+      "title_similarity": 0.607143,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "19-4021.00",
+        "score": 0.382339
+      },
+      {
+        "onet_id": "51-8099.01",
+        "score": 0.362481
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_import_export_specialist",
+    "esco_title": "import export specialist",
+    "onet_id": "13-1041.08",
+    "onet_title": "Customs Brokers",
+    "confidence_score": 0.355804,
+    "scores": {
+      "cosine": 0.588531,
+      "title_similarity": 0.307692,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "13-1199.00",
+        "score": 0.334409
+      },
+      {
+        "onet_id": "51-9198.00",
+        "score": 0.297978
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_import_export_manager",
+    "esco_title": "import export manager",
+    "onet_id": "13-1041.08",
+    "onet_title": "Customs Brokers",
+    "confidence_score": 0.340053,
+    "scores": {
+      "cosine": 0.568994,
+      "title_similarity": 0.277778,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-3071.04",
+        "score": 0.312009
+      },
+      {
+        "onet_id": "11-3051.00",
+        "score": 0.301603
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_wholesale_merchant",
+    "esco_title": "wholesale merchant",
+    "onet_id": "13-1199.06",
+    "onet_title": "Online Merchants",
+    "confidence_score": 0.376376,
+    "scores": {
+      "cosine": 0.517457,
+      "title_similarity": 0.588235,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "13-1022.00",
+        "score": 0.362011
+      },
+      {
+        "onet_id": "11-3071.04",
+        "score": 0.308009
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_leather",
+    "esco_title": "leather sorter",
+    "onet_id": "51-6041.00",
+    "onet_title": "Shoe and Leather Workers and Repairers",
+    "confidence_score": 0.4438,
+    "scores": {
+      "cosine": 0.69057,
+      "title_similarity": 0.461538,
+      "skill_overlap": 0.02069,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-6042.00",
+        "score": 0.349724
+      },
+      {
+        "onet_id": "51-7021.00",
+        "score": 0.348098
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_specialised_seller",
+    "esco_title": "specialised seller",
+    "onet_id": "53-7065.00",
+    "onet_title": "Stockers and Order Fillers",
+    "confidence_score": 0.329337,
+    "scores": {
+      "cosine": 0.495037,
+      "title_similarity": 0.409091,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "41-2031.00",
+        "score": 0.321175
+      },
+      {
+        "onet_id": "27-1026.00",
+        "score": 0.311855
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_technical_sales_representative",
+    "esco_title": "technical sales representative",
+    "onet_id": "41-9031.00",
+    "onet_title": "Sales Engineers",
+    "confidence_score": 0.349418,
+    "scores": {
+      "cosine": 0.556614,
+      "title_similarity": 0.355556,
+      "skill_overlap": 0.0,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "41-4011.00",
+        "score": 0.347697
+      },
+      {
+        "onet_id": "41-4012.00",
+        "score": 0.314649
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_rental_service_representative",
+    "esco_title": "rental service representative",
+    "onet_id": "41-2021.00",
+    "onet_title": "Counter and Rental Clerks",
+    "confidence_score": 0.367798,
+    "scores": {
+      "cosine": 0.579229,
+      "title_similarity": 0.37037,
+      "skill_overlap": 0.013699,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "43-4051.00",
+        "score": 0.361767
+      },
+      {
+        "onet_id": "53-6031.00",
+        "score": 0.321982
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_shop_manager",
+    "esco_title": "shop manager",
+    "onet_id": "11-2022.00",
+    "onet_title": "Sales Managers",
+    "confidence_score": 0.363973,
+    "scores": {
+      "cosine": 0.476708,
+      "title_similarity": 0.615385,
+      "skill_overlap": 0.008475,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "11-3071.04",
+        "score": 0.35628
+      },
+      {
+        "onet_id": "11-3051.00",
+        "score": 0.330137
+      }
+    ]
+  },
+  {
+    "esco_id": "rule_control_room_operator",
+    "esco_title": "mine control room operator",
+    "onet_id": "51-8092.00",
+    "onet_title": "Gas Plant Operators",
+    "confidence_score": 0.419842,
+    "scores": {
+      "cosine": 0.670861,
+      "title_similarity": 0.4,
+      "skill_overlap": 0.014706,
+      "llm_score": null
+    },
+    "method": "hybrid",
+    "alternatives": [
+      {
+        "onet_id": "51-8013.00",
+        "score": 0.401729
+      },
+      {
+        "onet_id": "51-8091.00",
+        "score": 0.401208
+      }
+    ]
+  }
+]

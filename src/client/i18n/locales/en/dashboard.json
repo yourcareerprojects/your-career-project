@@ -1,0 +1,312 @@
+{
+  "simulation": {
+    "menuLabel": "Career Simulation",
+    "pageTitle": "Your Career Simulation",
+    "resultsTitle": "Your Simulation Results",
+    "subtitle": {
+      "hasResults": "Review your latest generated career recommendations and explore each role in detail.",
+      "empty": "Start a simulation to receive personalized career recommendations and next steps based on your profile and goals."
+    },
+    "navigationGuard": {
+      "loadingTitle": "Simulation In Progress",
+      "unsavedTitle": "Unsaved Changes Detected",
+      "loadingMessage": "A simulation is currently loading. If you leave now, the simulation will likely stop and you may need to restart it when you come back.",
+      "unsavedMessage": "You have unsaved changes to your simulation. If you leave now, these changes will be lost and you will need to restart your simulation.",
+      "leaveAnyway": "Leave Anyway",
+      "stayOnPage": "Stay on Page",
+      "saveChanges": "Save Changes",
+      "beforeUnload": "A simulation is currently loading. Leaving now will likely stop it and you may need to restart."
+    },
+    "profileGate": {
+      "title": "Profile completion required",
+      "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to start a career simulation."
+    },
+    "info": {
+      "updateProfileHint": "If you are not happy with your simulation results, go back to your profile page and update your information there."
+    },
+    "tooltips": {
+      "completeProfileFirst": "Complete at least {{min}}% of your profile first",
+      "startSimulation": "Choose a goal and generate new career role suggestions",
+      "savedSimulations": "View and manage your saved simulations",
+      "saveResults": "Save this simulation to your saved simulations list",
+      "clearAndRestart": "Clear current results and start over",
+      "updateProfile": "Update your profile information",
+      "saveEdits": "Save your edits to this saved simulation"
+    },
+    "aria": {
+      "startSimulation": "Choose a goal and generate new career role suggestions",
+      "savedSimulations": "View and manage your saved simulations",
+      "saveResults": "Save this simulation to your saved simulations list",
+      "clearAndRestart": "Clear results and start a new simulation",
+      "goToProfile": "Go to your profile page",
+      "saveEdits": "Save your edits to this saved simulation"
+    },
+    "actions": {
+      "start": "Start Simulation",
+      "saveResults": "Save Results",
+      "clearAndRestart": "Clear results and start a new simulation",
+      "goToProfile": "Go to my profile",
+      "startNew": "Start New Simulation",
+      "openSavedSimulation": "Open saved simulation",
+      "open": "Open"
+    },
+    "saveDialog": {
+      "title": "Save Simulation",
+      "nameLabel": "Simulation Name"
+    },
+    "unsavedDialog": {
+      "title": "Unsaved Changes",
+      "description": "You have unsaved simulation results. Do you want to start a new simulation anyway?",
+      "warning": "All unsaved changes will be lost."
+    },
+    "deleteDialog": {
+      "title": "Delete Simulation",
+      "confirmation": "Are you sure you want to delete this simulation?",
+      "detailsTitle": "Simulation Details:",
+      "nameLabel": "Name:",
+      "descriptionLabel": "Description:",
+      "notSpecified": "Not specified",
+      "warning": "This action cannot be undone."
+    },
+    "unsavedWarning": "You have unsaved simulation results. Consider saving them before starting a new simulation.",
+    "loadingUpdating": "Updating the career simulation result...",
+    "loadedMeta": {
+      "savedOn": "Saved on {{date}}"
+    },
+    "evaluationFlow": {
+      "allRolesRated": "All {{total}} roles are rated. Adjust any card below, then open your ranking when you are ready.",
+      "continue": "Continue evaluating each role. Choose Keep, Skip, or Dislike for each. Up to three unevaluated roles are shown at a time. After you rate a role, the next suggestion appears in this row. After you complete the evaluation you can see your ranking.",
+      "start": "Start evaluating each role. Choose Keep, Skip, or Dislike for each. The next suggestions appear as you go. After you complete the evaluation you can see your ranking.",
+      "rateThisRole": "Rate this role",
+      "seeYourRanking": "See your ranking",
+      "changeYourRanking": "Change your ranking",
+      "yourRankingTitle": "{{title}} - your ranking",
+      "rolesEvaluated": "{{evaluated}}/{{total}} roles evaluated",
+      "noRolesInCategory": "No roles in this category.",
+      "dropHere": "Drop here",
+      "finalRankingDescription": "Final ranking for {{category}}. Groups reflect your Keep, Skip, and Dislike choices.",
+      "actions": {
+        "keep": "Keep",
+        "skip": "Skip",
+        "dislike": "Dislike",
+        "more": "More",
+        "save": "Save",
+        "saved": "Saved",
+        "saving": "Saving..."
+      },
+      "tooltips": {
+        "keepStrongFit": "Keep - strong fit",
+        "skipNotSure": "Skip - not sure",
+        "dislikePoorFit": "Dislike - poor fit",
+        "dragToReorder": "Drag to reorder or move group",
+        "moreDetails": "View details for this role",
+        "savedRemove": "Saved - click to remove from your saved list",
+        "saveToSavedList": "Save this role to your saved list"
+      }
+    },
+    "sloganTitle": "Your Slogan",
+    "preparingRoleEvaluation": "Preparing role evaluation...",
+    "categories": {
+      "nextRoles": "Next Career Roles",
+      "outsideRoles": "Outside-the-Box Roles"
+    },
+    "messages": {
+      "loadFailed": "Failed to load simulation",
+      "profileCompletionRequired": "Your profile must be at least {{min}}% complete to run a simulation. Update your profile and try again.",
+      "completeProfileToRun": "Complete at least {{min}}% of your profile to run a simulation.",
+      "failedTryAgain": "Simulation failed. Please try again.",
+      "failedCheckConnection": "Simulation failed. Please check your connection and try again.",
+      "saveCancelledByUser": "Save cancelled by user",
+      "savedSuccessfully": "Simulation saved successfully!",
+      "saveFailed": "Failed to save simulation",
+      "changesSavedSuccessfully": "Changes saved successfully!",
+      "saveChangesFailed": "Failed to save changes",
+      "loadedSuccessfully": "Simulation loaded successfully!",
+      "deletedSuccessfully": "Simulation deleted successfully!",
+      "deleteFailed": "Failed to delete simulation",
+      "noSavedCareerSteps": "No saved career steps available",
+      "careerStepNotFound": "Career step not found in saved list",
+      "careerStepRemoved": "Career step removed from saved",
+      "careerStepRemoveFailed": "Failed to remove career step",
+      "careerStepSaved": "Career step saved",
+      "alreadySaved": "Already saved",
+      "careerStepSaveFailed": "Failed to save career step",
+      "similaritySuffix": "({{percent}}% similar)"
+    },
+    "errors": {
+      "unexpected": "An unexpected error occurred.",
+      "critical": "A critical error occurred.",
+      "refreshOrContact": "Please refresh the page or contact support.",
+      "stateValidationFailed": "State validation failed",
+      "invalidSimulationData": "Invalid simulation data"
+    },
+    "defaultName": "Simulation",
+    "defaultNameWithIndex": "Simulation {{index}}"
+  },
+  "details": {
+    "resultNotFound": "Result details not found",
+    "simulationNotFound": "Simulation not found",
+    "stepDetailsNotFound": "Step details not found",
+    "context": {
+      "savedSimulation": "Saved Simulation",
+      "unsavedSimulation": "Unsaved Simulation",
+      "savedCareerStep": "Saved Career Step",
+      "savedSimulationCareerStep": "Saved Simulation Career Step"
+    },
+    "actions": {
+      "backToResults": "Back to Results",
+      "backToSimulation": "Back to Simulation",
+      "backToSimulations": "Back to Simulations",
+      "saveToSavedSteps": "Save to Saved Steps",
+      "removeFromSavedSteps": "Remove from Saved Steps",
+      "share": "Share",
+      "saving": "Saving...",
+      "loading": "Loading..."
+    },
+    "labels": {
+      "profileMatchScore": "Profile Match Score",
+      "matchScore": "Match Score",
+      "generated": "Generated",
+      "saved": "Saved",
+      "created": "Created",
+      "simulationDate": "Simulation Date",
+      "roleDescription": "Role Description",
+      "noDetailedDescription": "No detailed description available.",
+      "additionalInformation": "Additional Information",
+      "resourceHelpText": "This resource or advice is designed to help you in your career development journey.",
+      "actions": "Actions",
+      "selectedCareerGoal": "Selected Career Goal",
+      "profileEnrichmentTitle": "Profile enrichment from uploaded documents",
+      "profileEnrichmentFallback": "Document-derived signals were applied to improve recommendations.",
+      "nextCareerSteps": "Next Career Steps",
+      "outsideTheBoxRoles": "Outside the Box Roles",
+      "name": "Name",
+      "unknown": "Unknown"
+    },
+    "rating": {
+      "title": "Rating",
+      "actions": {
+        "keep": "Keep",
+        "skip": "Skip",
+        "dislike": "Dislike"
+      },
+      "tooltips": {
+        "keepStrongFit": "Keep - strong fit",
+        "skipNotSure": "Skip - not sure",
+        "dislikePoorFit": "Dislike - poor fit"
+      }
+    },
+    "roleSections": {
+      "whyThisRoleFitsYou": "Why this role fits you",
+      "roleDetails": "Role Details",
+      "requiredSkills": "Required Skills",
+      "optionalSkills": "Optional Skills",
+      "alsoKnownAs": "Also known as",
+      "alsoKnownAsEscoHidden": "Also known as (ESCO hidden labels)",
+      "roleInsights": "Role Insights",
+      "seniority": "Seniority",
+      "keyResponsibilities": "Key Responsibilities",
+      "skillDomains": "Skill Domains",
+      "showMore": "Show more",
+      "showLess": "Show less",
+      "includes": "Includes: {{items}}",
+      "noRequiredSkills": "No required skills listed for this role.",
+      "noRoleInsights": "No role insights (seniority, key responsibilities, or skill domains) are available for this step yet. They are loaded from the occupation database when a career path id or ESCO id is available."
+    },
+    "messages": {
+      "ratingSavedToSimulation": "Rating saved to simulation",
+      "ratingSavedToSavedSteps": "Rating saved to your saved steps",
+      "simulationUpdatedSuccessfully": "Simulation updated successfully!"
+    },
+    "errors": {
+      "loadResultDetailsFailed": "Failed to load result details. Please try again.",
+      "loadCareerStepDetailsFailed": "Failed to load career step details. Please try again.",
+      "loadStepDetailsFailed": "Failed to load step details. Please try again.",
+      "updateRatingFailed": "Failed to update rating",
+      "careerStepNotFoundInSimulation": "Career step not found in this simulation",
+      "updateSimulationFailed": "Failed to update simulation",
+      "savedStepNotFoundForRemoval": "Could not find the saved career step to remove"
+    },
+    "tooltips": {
+      "editSimulationDetails": "Edit simulation details",
+      "deleteSimulation": "Delete simulation"
+    },
+    "dialogs": {
+      "editSimulationTitle": "Edit Simulation"
+    },
+    "unsaveDialog": {
+      "title": "Remove saved career step?",
+      "message": "This will remove this career step from your saved career steps. This action cannot be undone.",
+      "confirm": "Remove"
+    }
+  },
+  "saved": {
+    "simulations": "Saved Simulations",
+    "careerSteps": "Saved Career Steps"
+  },
+  "savedLists": {
+    "savedSimulations": {
+      "subtitle": "Manage and review your saved career simulation",
+      "empty": "No saved simulations yet",
+      "emptyTitle": "No saved simulations found",
+      "emptySubtitle": "Run a career simulation and save your results to see them listed here",
+      "unnamed": "Unnamed Simulation",
+      "noTimestamp": "No timestamp",
+      "invalidDate": "Invalid date",
+      "aria": {
+        "loadSimulation": "Open saved simulation {{name}}",
+        "editSimulation": "Edit saved simulation {{name}}",
+        "deleteSimulation": "Delete saved simulation {{name}}"
+      },
+      "errors": {
+        "invalidSimulationId": "Invalid simulation ID",
+        "fetchFailed": "Failed to fetch saved simulations"
+      },
+      "actions": {
+        "more": "More",
+        "delete": "Delete"
+      }
+    },
+    "savedCareerSteps": {
+      "subtitle": "Manage and review your saved career opportunities from previous simulations",
+      "searchPlaceholder": "Search career steps...",
+      "resultsFound": "{{count}} career step found",
+      "resultsFound_other": "{{count}} career steps found",
+      "emptyTitle": "No saved career steps found",
+      "emptyAdjustSearch": "Try adjusting your search",
+      "emptyStartSimulation": "Start a career simulation to save interesting career steps",
+      "selectAllOnPage": "Select all on this page",
+      "rateThisRole": "Rate this role",
+      "onDate": "on {{date}}",
+      "tooltips": {
+        "moreDetails": "View details for this role",
+        "savedRemove": "Saved - click to remove from your saved list",
+        "keepStrongFit": "Keep - strong fit",
+        "skipNotSure": "Skip - not sure",
+        "dislikePoorFit": "Dislike - poor fit"
+      },
+      "actions": {
+        "retry": "Retry",
+        "removeSelected": "Remove Selected ({{count}})",
+        "keep": "Keep",
+        "skip": "Skip",
+        "dislike": "Dislike",
+        "more": "More",
+        "saved": "Saved"
+      },
+      "messages": {
+        "removedFromSavedList": "Career step removed from saved list",
+        "bulkRemoved": "{{count}} career steps removed",
+        "bulkPartiallyRemoved": "{{removed}} of {{count}} career steps removed"
+      },
+      "errors": {
+        "fetchFailed": "Failed to load saved career steps",
+        "bulkRemoveFailed": "Failed to remove selected career steps",
+        "bulkRemoveNoneRemoved": "None of the selected career steps could be removed"
+      },
+      "dialogs": {
+        "bulkRemoveMessage": "This will remove the selected career steps from your saved career steps. This action cannot be undone."
+      }
+    }
+  }
+}

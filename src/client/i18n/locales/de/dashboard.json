@@ -1,0 +1,312 @@
+{
+  "simulation": {
+    "menuLabel": "Berufssimulation",
+    "pageTitle": "Deine Berufssimulation",
+    "resultsTitle": "Deine Simulationsergebnisse",
+    "subtitle": {
+      "hasResults": "Prüfe deine zuletzt generierten Berufsempfehlungen und erkunde jede Rolle im Detail.",
+      "empty": "Starte eine Simulation, um personalisierte Berufsempfehlungen und nächste Schritte basierend auf deinem Profil zu erhalten."
+    },
+    "navigationGuard": {
+      "loadingTitle": "Simulation läuft",
+      "unsavedTitle": "Ungespeicherte  Änderungen erkannt",
+      "loadingMessage": "Eine Simulation wird gerade geladen. Wenn du jetzt die Seite verlässt, wird sie wahrscheinlich abgebrochen und du musst sie später neu starten.",
+      "unsavedMessage": "Du hast ungespeicherte Änderungen an deiner Simulation. Wenn du jetzt die Seite verlässt, gehen diese verloren und du musst die Simulation neu starten.",
+      "leaveAnyway": "Trotzdem verlassen",
+      "stayOnPage": "Auf Seite bleiben",
+      "saveChanges": "Änderungen speichern",
+      "beforeUnload": "Eine Simulation wird gerade geladen. Wenn du jetzt die Seite verlässt, wird sie wahrscheinlich abgebrochen und du musst sie neu starten."
+    },
+    "profileGate": {
+      "title": "Vollständiges Profil erforderlich",
+      "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um eine Berufssimulation zu starten."
+    },
+    "info": {
+      "updateProfileHint": "Wenn du mit deinen Simulationsergebnissen nicht zufrieden bist, gehe zu deinem Profil zurück und aktualisiere dort deine Angaben."
+    },
+    "tooltips": {
+      "completeProfileFirst": "Vervollständige zuerst mindestens {{min}}% deines Profils",
+      "startSimulation": "Generiere neue Berufsvorschläge",
+      "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
+      "saveResults": "Diese Simulation zu deinen gespeicherten Simulationen hinzufügen",
+      "clearAndRestart": "Aktuelle Ergebnisse löschen und neu starten",
+      "updateProfile": "Profildaten aktualisieren",
+      "saveEdits": "Deine Änderungen an dieser gespeicherten Simulation speichern"
+    },
+    "aria": {
+      "startSimulation": "Generiere neue Berufsvorschläge",
+      "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
+      "saveResults": "Diese Simulation zu deinen gespeicherten Simulationen hinzufügen",
+      "clearAndRestart": "Ergebnisse löschen und neue Simulation starten",
+      "goToProfile": "Zur Profilseite gehen",
+      "saveEdits": "Deine Änderungen an dieser gespeicherten Simulation speichern"
+    },
+    "actions": {
+      "start": "Simulation starten",
+      "saveResults": "Ergebnisse speichern",
+      "clearAndRestart": "Ergebnisse löschen und neue Simulation starten",
+      "goToProfile": "Zu meinem Profil",
+      "startNew": "Neue Simulation starten",
+      "openSavedSimulation": "Gespeicherte Simulation öffnen",
+      "open": "Öffnen"
+    },
+    "saveDialog": {
+      "title": "Simulation speichern",
+      "nameLabel": "Name der Simulation"
+    },
+    "unsavedDialog": {
+      "title": "Ungespeicherte Änderungen",
+      "description": "Du hast ungespeicherte Simulationsergebnisse. Möchtest du trotzdem eine neue Simulation starten?",
+      "warning": "Alle ungespeicherten Änderungen gehen verloren."
+    },
+    "deleteDialog": {
+      "title": "Simulation löschen",
+      "confirmation": "Möchtest du diese Simulation wirklich löschen?",
+      "detailsTitle": "Simulationsdetails:",
+      "nameLabel": "Name:",
+      "descriptionLabel": "Beschreibung:",
+      "notSpecified": "Nicht angegeben",
+      "warning": "Diese Aktion kann nicht rückgängig gemacht werden."
+    },
+    "unsavedWarning": "Du hast ungespeicherte Simulationsergebnisse. Speichere sie am besten, bevor du eine neue Simulation startest.",
+    "loadingUpdating": "Berufssimulation wird aktualisiert...",
+    "loadedMeta": {
+      "savedOn": "Gespeichert am {{date}}"
+    },
+    "evaluationFlow": {
+      "allRolesRated": "Alle {{total}} Rollen sind bewertet. Du kannst nun dein Ranking öffnen.",
+      "continue": "Bewerte jede Rolle mit Cool, Weiß nicht oder Uncool. Die nächsten Vorschläge erscheinen währenddessen. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
+      "start": "Bewerte jede Rolle mit Cool, Weiß nicht oder Uncool. Die nächsten Vorschläge erscheinen währenddessen. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
+      "rateThisRole": "Diese Rolle bewerten",
+      "seeYourRanking": "Dein Ranking ansehen",
+      "changeYourRanking": "Dein Ranking ändern",
+      "yourRankingTitle": "{{title}} - dein Ranking",
+      "rolesEvaluated": "{{evaluated}}/{{total}} Rollen bewertet",
+      "noRolesInCategory": "Keine Rollen in dieser Kategorie.",
+      "dropHere": "Hier ablegen",
+      "finalRankingDescription": "Finales Ranking für {{category}}. Die Gruppen spiegeln deine Auswahl Cool, Weiß nicht und Uncool wider.",
+      "actions": {
+        "keep": "Cool",
+        "skip": "Weiß nicht",
+        "dislike": "Uncool",
+        "more": "Mehr",
+        "save": "Speichern",
+        "saved": "Gespeichert",
+        "saving": "Wird gespeichert..."
+      },
+      "tooltips": {
+        "keepStrongFit": "Cool - passt sehr gut",
+        "skipNotSure": "Weiß nicht - unsicher",
+        "dislikePoorFit": "Uncool - passt schlecht",
+        "dragToReorder": "Zum Neuordnen oder Verschieben zwischen Gruppen ziehen",
+        "moreDetails": "Details zu dieser Rolle anzeigen",
+        "savedRemove": "Gespeichert - klicken, um aus der gespeicherten Liste zu entfernen",
+        "saveToSavedList": "Diese Rolle in deiner gespeicherten Liste speichern"
+      }
+    },
+    "sloganTitle": "Dein Slogan",
+    "preparingRoleEvaluation": "Rollenbewertung wird vorbereitet...",
+    "categories": {
+      "nextRoles": "Naheliegende Berufsideen",
+      "outsideRoles": "Ungewöhnliche Berufsideen"
+    },
+    "messages": {
+      "loadFailed": "Simulation konnte nicht geladen werden",
+      "profileCompletionRequired": "Dein Profil muss mindestens zu {{min}}% vollständig sein, um eine Simulation auszuführen. Aktualisiere dein Profil und versuche es erneut.",
+      "completeProfileToRun": "Vervollständige mindestens {{min}}% deines Profils, um eine Simulation zu starten.",
+      "failedTryAgain": "Simulation fehlgeschlagen. Bitte versuche es erneut.",
+      "failedCheckConnection": "Simulation fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.",
+      "saveCancelledByUser": "Speichern vom Benutzer abgebrochen",
+      "savedSuccessfully": "Simulation erfolgreich gespeichert!",
+      "saveFailed": "Simulation konnte nicht gespeichert werden",
+      "changesSavedSuccessfully": "Änderungen erfolgreich gespeichert!",
+      "saveChangesFailed": "Änderungen konnten nicht gespeichert werden",
+      "loadedSuccessfully": "Simulation erfolgreich geladen!",
+      "deletedSuccessfully": "Simulation erfolgreich gelöscht!",
+      "deleteFailed": "Simulation konnte nicht gelöscht werden",
+      "noSavedCareerSteps": "Keine gespeicherten Berufsschritte verfügbar",
+      "careerStepNotFound": "Berufsschritt wurde in der gespeicherten Liste nicht gefunden",
+      "careerStepRemoved": "Berufsschritt aus Gespeichert entfernt",
+      "careerStepRemoveFailed": "Berufsschritt konnte nicht entfernt werden",
+      "careerStepSaved": "Berufsschritt gespeichert",
+      "alreadySaved": "Bereits gespeichert",
+      "careerStepSaveFailed": "Berufsschritt konnte nicht gespeichert werden",
+      "similaritySuffix": "({{percent}}% ähnlich)"
+    },
+    "errors": {
+      "unexpected": "Ein unerwarteter Fehler ist aufgetreten.",
+      "critical": "Ein kritischer Fehler ist aufgetreten.",
+      "refreshOrContact": "Bitte aktualisiere die Seite oder kontaktiere den Support.",
+      "stateValidationFailed": "Statusprüfung fehlgeschlagen",
+      "invalidSimulationData": "Ungültige Simulationsdaten"
+    },
+    "defaultName": "Simulation",
+    "defaultNameWithIndex": "Simulation {{index}}"
+  },
+  "details": {
+    "resultNotFound": "Ergebnisdetails nicht gefunden",
+    "simulationNotFound": "Simulation nicht gefunden",
+    "stepDetailsNotFound": "Schrittdetails nicht gefunden",
+    "context": {
+      "savedSimulation": "Gespeicherte Simulation",
+      "unsavedSimulation": "Ungespeicherte Simulation",
+      "savedCareerStep": "Gespeicherter Berufsschritt",
+      "savedSimulationCareerStep": "Berufsschritt aus gespeicherter Simulation"
+    },
+    "actions": {
+      "backToResults": "Zurück zu Ergebnissen",
+      "backToSimulation": "Zurück zur Simulation",
+      "backToSimulations": "Zurück zu Simulationen",
+      "saveToSavedSteps": "Berufsschritt speichern",
+      "removeFromSavedSteps": "Speicherung verwerfen",
+      "share": "Teilen",
+      "saving": "Wird gespeichert...",
+      "loading": "Wird geladen..."
+    },
+    "labels": {
+      "profileMatchScore": "Profil Übereinstimmung",
+      "matchScore": "Übereinstimmung",
+      "generated": "Erstellt",
+      "saved": "Gespeichert",
+      "created": "Erstellt",
+      "simulationDate": "Simulationsdatum",
+      "roleDescription": "Rollenbeschreibung",
+      "noDetailedDescription": "Keine detaillierte Beschreibung verfügbar.",
+      "additionalInformation": "Zusätzliche Informationen",
+      "resourceHelpText": "Diese Ressource bzw. Empfehlung unterstützt dich in deiner beruflichen Entwicklung.",
+      "actions": "Aktionen",
+      "selectedCareerGoal": "Dein Slogan",
+      "profileEnrichmentTitle": "Profilanreicherung aus hochgeladenen Dokumenten",
+      "profileEnrichmentFallback": "Dokumentbasierte Signale wurden angewendet, um Empfehlungen zu verbessern.",
+      "nextCareerSteps": "Naheliegende Berufsideen",
+      "outsideTheBoxRoles": "Ungewöhnliche Berufsideen",
+      "name": "Name",
+      "unknown": "Unbekannt"
+    },
+    "rating": {
+      "title": "Bewertung",
+      "actions": {
+        "keep": "Cool",
+        "skip": "Weiß nicht",
+        "dislike": "Uncool"
+      },
+      "tooltips": {
+        "keepStrongFit": "Cool - passt sehr gut",
+        "skipNotSure": "Weiß nicht - unsicher",
+        "dislikePoorFit": "Uncool - passt schlecht"
+      }
+    },
+    "roleSections": {
+      "whyThisRoleFitsYou": "Warum diese Rolle zu dir passt",
+      "roleDetails": "Rollendetails",
+      "requiredSkills": "Erforderliche Fähigkeiten",
+      "optionalSkills": "Optionale Fähigkeiten",
+      "alsoKnownAs": "Auch bekannt als",
+      "alsoKnownAsEscoHidden": "Auch bekannt als (versteckte Bezeichnungen)",
+      "roleInsights": "Rollen Insights",
+      "seniority": "Seniorität",
+      "keyResponsibilities": "Zentrale Aufgaben",
+      "skillDomains": "Stärken",
+      "showMore": "Mehr anzeigen",
+      "showLess": "Weniger anzeigen",
+      "includes": "Enthält: {{items}}",
+      "noRequiredSkills": "Für diese Rolle sind keine erforderlichen Fähigkeiten aufgeführt.",
+      "noRoleInsights": "Für diesen Schritt liegen noch keine Rollen-Insights (Seniorität, zentrale Aufgaben oder Stärken) vor. Sie werden aus der Berufe-Datenbank geladen, wenn eine Career-Path-ID oder eine ESCO-ID vorhanden ist."
+    },
+    "messages": {
+      "ratingSavedToSimulation": "Bewertung in Simulation gespeichert",
+      "ratingSavedToSavedSteps": "Bewertung in deinen gespeicherten Schritten gespeichert",
+      "simulationUpdatedSuccessfully": "Simulation erfolgreich aktualisiert!"
+    },
+    "errors": {
+      "loadResultDetailsFailed": "Ergebnisdetails konnten nicht geladen werden. Bitte versuche es erneut.",
+      "loadCareerStepDetailsFailed": "Details zum Berufsschritt konnten nicht geladen werden. Bitte versuche es erneut.",
+      "loadStepDetailsFailed": "Schrittdetails konnten nicht geladen werden. Bitte versuche es erneut.",
+      "updateRatingFailed": "Bewertung konnte nicht aktualisiert werden",
+      "careerStepNotFoundInSimulation": "Berufsschritt in dieser Simulation nicht gefunden",
+      "updateSimulationFailed": "Simulation konnte nicht aktualisiert werden",
+      "savedStepNotFoundForRemoval": "Der gespeicherte Berufsschritt zum Entfernen konnte nicht gefunden werden"
+    },
+    "tooltips": {
+      "editSimulationDetails": "Simulationsdetails bearbeiten",
+      "deleteSimulation": "Simulation löschen"
+    },
+    "dialogs": {
+      "editSimulationTitle": "Simulation bearbeiten"
+    },
+    "unsaveDialog": {
+      "title": "Gespeicherten Berufsschritt entfernen?",
+      "message": "Dadurch wird dieser Berufsschritt aus deinen gespeicherten Berufsschritten entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "confirm": "Entfernen"
+    }
+  },
+  "saved": {
+    "simulations": "Gespeicherte Simulationen",
+    "careerSteps": "Gespeicherte Berufsschritte"
+  },
+  "savedLists": {
+    "savedSimulations": {
+      "subtitle": "Verwalte und prüfe deine gespeicherten Berufssimulationen",
+      "empty": "Noch keine gespeicherten Simulationen",
+      "emptyTitle": "Keine gespeicherten Simulationen gefunden",
+      "emptySubtitle": "Führe eine Berufssimulation aus und speichere deine Ergebnisse, um sie hier zu sehen",
+      "unnamed": "Unbenannte Simulation",
+      "noTimestamp": "Kein Zeitstempel",
+      "invalidDate": "Ungültiges Datum",
+      "aria": {
+        "loadSimulation": "Gespeicherte Simulation {{name}} öffnen",
+        "editSimulation": "Gespeicherte Simulation {{name}} bearbeiten",
+        "deleteSimulation": "Gespeicherte Simulation {{name}} löschen"
+      },
+      "errors": {
+        "invalidSimulationId": "Ungültige Simulations-ID",
+        "fetchFailed": "Gespeicherte Simulationen konnten nicht geladen werden"
+      },
+      "actions": {
+        "more": "Mehr",
+        "delete": "Löschen"
+      }
+    },
+    "savedCareerSteps": {
+      "subtitle": "Verwalte und prüfe deine gespeicherten Berufsoptionen aus vorherigen Simulationen",
+      "searchPlaceholder": "Berufsschritte durchsuchen...",
+      "resultsFound": "{{count}} Berufsschritt gefunden",
+      "resultsFound_other": "{{count}} Berufsschritte gefunden",
+      "emptyTitle": "Keine gespeicherten Berufsschritte gefunden",
+      "emptyAdjustSearch": "Passe deine Suche an",
+      "emptyStartSimulation": "Starte eine Berufssimulation, um interessante Berufsschritte zu speichern",
+      "selectAllOnPage": "Alle auf dieser Seite auswählen",
+      "rateThisRole": "Diese Rolle bewerten",
+      "onDate": "am {{date}}",
+      "tooltips": {
+        "moreDetails": "Details zu dieser Rolle anzeigen",
+        "savedRemove": "Gespeichert - klicken, um aus der gespeicherten Liste zu entfernen",
+        "keepStrongFit": "Cool - passt sehr gut",
+        "skipNotSure": "Weiß nicht - unsicher",
+        "dislikePoorFit": "Uncool - passt schlecht"
+      },
+      "actions": {
+        "retry": "Erneut versuchen",
+        "removeSelected": "Auswahl entfernen ({{count}})",
+        "keep": "Cool",
+        "skip": "Weiß nicht",
+        "dislike": "Uncool",
+        "more": "Mehr",
+        "saved": "Gespeichert"
+      },
+      "messages": {
+        "removedFromSavedList": "Berufsschritt aus der gespeicherten Liste entfernt",
+        "bulkRemoved": "{{count}} Berufsschritte entfernt",
+        "bulkPartiallyRemoved": "{{removed}} von {{count}} Berufsschritten entfernt"
+      },
+      "errors": {
+        "fetchFailed": "Gespeicherte Berufsschritte konnten nicht geladen werden",
+        "bulkRemoveFailed": "Ausgewählte Berufsschritte konnten nicht entfernt werden",
+        "bulkRemoveNoneRemoved": "Keiner der ausgewählten Berufsschritte konnte entfernt werden"
+      },
+      "dialogs": {
+        "bulkRemoveMessage": "Dadurch werden die ausgewählten Berufsempfehlungen aus deinen gespeicherten Berufsschritten entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+      }
+    }
+  }
+}
