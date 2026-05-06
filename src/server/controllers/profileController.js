@@ -1073,6 +1073,11 @@ function computeProfileCompletion(profile) {
 
 // Career simulation: hybrid scoring + Phase 2 prioritized lists (no 6-dim path scorer)
 exports.runSimulation = async (req, res) => {
+  console.time('TOTAL');
+  let step1Started = false;
+  let step2Started = false;
+  let step3Started = false;
+  let step4Started = false;
   try {
     res.setTimeout(180000); // 3 minutes for embedding + scoring
     const startedAt = Date.now();
@@ -1083,13 +1088,19 @@ exports.runSimulation = async (req, res) => {
     }
 
     // Fetch user profile
+    console.time('STEP_1_load');
+    step1Started = true;
     const user = await User.findById(userId).lean();
     if (!user) {
+      console.timeEnd('STEP_1_load');
+      step1Started = false;
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     const completionBreakdown = computeProfileCompletion(user.profile);
     if (completionBreakdown.overall < MIN_SIMULATION_PROFILE_COMPLETION_PCT) {
+      console.timeEnd('STEP_1_load');
+      step1Started = false;
       return res.status(403).json({
         success: false,
         message: `Your profile is ${completionBreakdown.overall}% complete. Complete at least ${MIN_SIMULATION_PROFILE_COMPLETION_PCT}% of your profile to run a simulation.`,
@@ -1168,6 +1179,8 @@ exports.runSimulation = async (req, res) => {
     } catch (e) {
       console.warn('User identity embedding cache failed (non-fatal):', e.message);
     }
+    console.timeEnd('STEP_1_load');
+    step1Started = false;
 
     const userSkills = readDimensionRawItems(enrichedInputs.structuredUserInfo?.skills);
     const userSkillsInDevelopment = readDimensionRawItems(enrichedInputs.structuredUserInfo?.skillsInDevelopment);
@@ -1366,7 +1379,14 @@ exports.runSimulation = async (req, res) => {
       identityEmbeddingText: String(profile?.who_are_you?.identity_embedding_text || '').trim(),
     };
 
+    console.time('STEP_2_enrichment');
+    step2Started = true;
     const userProfileForHybrid = buildUserProfileForHybrid(userProfileForScoring);
+    console.timeEnd('STEP_2_enrichment');
+    step2Started = false;
+
+    console.time('STEP_3_scoring');
+    step3Started = true;
     const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, 200);
     const scoredPaths = [];
     for (let i = 0; i < allCareerPaths.length; i += SCORE_CHUNK_SIZE) {
@@ -1410,7 +1430,11 @@ exports.runSimulation = async (req, res) => {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
       throw phase2Err;
     }
+    console.timeEnd('STEP_3_scoring');
+    step3Started = false;
 
+    console.time('STEP_4_response');
+    step4Started = true;
     // Attach deterministic server-generated step IDs (stable across saves/removals)
     const prioritizedLists = attachDeterministicStepIdsToPrioritizedLists(prioritizedListsRaw, simulationId);
 
@@ -1501,6 +1525,8 @@ exports.runSimulation = async (req, res) => {
       targetedLimit: TARGETED_PATH_LIMIT,
       fallbackLimit: FALLBACK_PATH_LIMIT,
     });
+    console.timeEnd('STEP_4_response');
+    step4Started = false;
 
     return res.json({
       success: true,
@@ -1509,6 +1535,22 @@ exports.runSimulation = async (req, res) => {
       profileCompletion: completion,
     });
   } catch (err) {
+    if (step4Started) {
+      console.timeEnd('STEP_4_response');
+      step4Started = false;
+    }
+    if (step3Started) {
+      console.timeEnd('STEP_3_scoring');
+      step3Started = false;
+    }
+    if (step2Started) {
+      console.timeEnd('STEP_2_enrichment');
+      step2Started = false;
+    }
+    if (step1Started) {
+      console.timeEnd('STEP_1_load');
+      step1Started = false;
+    }
     logControllerError('Simulation error', err);
     const message = err.message || 'Simulation failed.';
     const isDev = process.env.NODE_ENV !== 'production';
@@ -1518,6 +1560,8 @@ exports.runSimulation = async (req, res) => {
       error: message,
       ...(isDev && { stack: err.stack }),
     });
+  } finally {
+    console.timeEnd('TOTAL');
   }
 };
 
