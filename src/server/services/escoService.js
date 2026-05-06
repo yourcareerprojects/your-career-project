@@ -346,9 +346,10 @@ async function getCachedCareerPaths(filter = {}, options = {}) {
   const {
     includeLocalizedSkills = false,
     language = 'en',
+    projection = null,
     ...queryOptions
   } = options || {};
-  const docs = await CareerPath.find(filter, null, queryOptions).lean();
+  const docs = await CareerPath.find(filter, projection, queryOptions).lean();
   if (!includeLocalizedSkills) return docs;
   return attachSkillsToCareerPaths(docs, language);
 }

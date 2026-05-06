@@ -16,6 +16,7 @@ const {
   ensureDocumentEnrichmentRefreshJobQueued,
 } = require('../services/simulationJobService');
 const { enrichCareerPathWithHybridScores } = require('../services/scoring/careerPathScorer');
+const { buildUserProfileForHybrid } = require('../services/scoring/hybridUserProfileForMatching');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
 const { generatePrioritizedListsPhase2 } = require('../services/simulation/prioritizedListGenerator');
@@ -1233,10 +1234,27 @@ exports.runSimulation = async (req, res) => {
     const picked = [];
     const seen = new Set();
 
+    const simulationCareerPathProjection = {
+      _id: 1,
+      escoId: 1,
+      title: 1,
+      description: 1,
+      requiredSkills: 1,
+      requiredSkillKeys: 1,
+      altTitles: 1,
+      hiddenTitles: 1,
+      seniority: 1,
+      keyResponsibilities: 1,
+      skillDomains: 1,
+      skillModel: 1,
+      roleIdentity: 1,
+      roleVectors: 1,
+    };
+
     if (userSkillKeys.length > 0) {
       const skillMatched = await escoService.getCachedCareerPaths(
         { requiredSkillKeys: { $in: userSkillKeys } },
-        { limit: TARGETED_PATH_LIMIT }
+        { limit: TARGETED_PATH_LIMIT, projection: simulationCareerPathProjection }
       );
       for (const cp of skillMatched) {
         const id = cp.escoId || cp._id;
@@ -1248,7 +1266,10 @@ exports.runSimulation = async (req, res) => {
 
     // Fallback/coverage: add more occupations so the sim still works for sparse profiles.
     if (picked.length < MIN_CANDIDATE_POOL) {
-      const extra = await escoService.getCachedCareerPaths({}, { limit: FALLBACK_PATH_LIMIT });
+      const extra = await escoService.getCachedCareerPaths(
+        {},
+        { limit: FALLBACK_PATH_LIMIT, projection: simulationCareerPathProjection }
+      );
       for (const cp of extra) {
         const id = cp.escoId || cp._id;
         if (!id || seen.has(id)) continue;
@@ -1345,14 +1366,14 @@ exports.runSimulation = async (req, res) => {
       identityEmbeddingText: String(profile?.who_are_you?.identity_embedding_text || '').trim(),
     };
 
+    const userProfileForHybrid = buildUserProfileForHybrid(userProfileForScoring);
     const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, 200);
     const scoredPaths = [];
     for (let i = 0; i < allCareerPaths.length; i += SCORE_CHUNK_SIZE) {
       const chunk = allCareerPaths.slice(i, i + SCORE_CHUNK_SIZE);
       const chunkResults = await Promise.all(
-        chunk.map(async (cp, chunkIndex) => {
-          const index = i + chunkIndex;
-          const scored = await enrichCareerPathWithHybridScores(userProfileForScoring, cp);
+        chunk.map(async (cp) => {
+          const scored = await enrichCareerPathWithHybridScores(userProfileForHybrid, cp);
           return { ...cp, ...scored };
         })
       );

@@ -2,7 +2,6 @@ const { getEnglishField } = require('../../utils/i18nFields');
 const { mmrSelect, embedTextSafe, embedTextBatchSafe, buildCareerStepEmbeddingText, cosineSimilarity, EMBEDDING_DIMS } = require('../embedding/embeddingService');
 const { getEmbeddingForMatching, getHybridVectorForMode, getStructuredVectorForMode } = require('../embedding/roleVectorService');
 const {
-  scoreOutOfTheBoxBatch,
   passesExplorationCriteria,
   EXPLORATION_IDENTITY_THRESHOLD,
   EXPLORATION_STRUCTURE_UPPER_BOUND,
@@ -124,7 +123,7 @@ function buildStepObject(scoredPath, { category }) {
   // Preserve full roleVectors for mode-specific hybrid computation (MMR, diversity)
   const rv = scoredPath.roleVectors;
   if (rv && typeof rv === 'object') {
-    step.roleVectors = { ...rv };
+    step.roleVectors = rv;
     if (rv.hybrid_vector && Array.isArray(rv.hybrid_vector) && rv.hybrid_vector.length > 0) {
       step.hybrid_vector = rv.hybrid_vector;
     }
@@ -293,27 +292,6 @@ async function computePairwiseSimilarityPercentile(steps, embedMap, percentile) 
 async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options = {}) {
   const careerGoal = userProfile && userProfile.careerGoal ? String(userProfile.careerGoal) : '';
   const careerGoalLower = careerGoal.toLowerCase();
-  const userProfileForHybrid = {
-    userSkills: userProfile?.userSkills || [],
-    userSkillsInDevelopment: userProfile?.userSkillsInDevelopment || [],
-    userWorkExperience: userProfile?.userWorkExperience || [],
-    userEducation: userProfile?.userEducation || {},
-    userCareerPreferences: userProfile?.userCareerPreferences || {},
-    userInterests: userProfile?.userInterests || [],
-    careerGoal,
-    bio: userProfile?.bio || '',
-    userIdentityAnswers:
-      userProfile?.userIdentityAnswers && typeof userProfile.userIdentityAnswers === 'object'
-        ? userProfile.userIdentityAnswers
-        : {},
-    dateOfBirth: userProfile?.dateOfBirth || null,
-    currentStatus: userProfile?.currentStatus || '',
-    yearsOfExperience: userProfile?.yearsOfExperience,
-    highestDegree: userProfile?.highestDegree || '',
-    mostSeniorWorkExperience: userProfile?.mostSeniorWorkExperience || '',
-    embeddingOptimizedUserIdentityText: userProfile?.embeddingOptimizedUserIdentityText,
-    embeddingUserIdentitySourceFingerprint: userProfile?.embeddingUserIdentitySourceFingerprint,
-  };
 
   // Next candidates: HybridFinalNEXT only (same signal as production `scoreNextRole` after seniority penalty)
   const nextCandidates = safeArray(scoredPaths)
@@ -365,7 +343,21 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     return true;
   });
 
-  const batchScored = await scoreOutOfTheBoxBatch(userProfileForHybrid, outsidePoolRaw);
+  const batchScored = outsidePoolRaw
+    .map((role) => ({
+      role,
+      result: {
+        identitySimilarity: role.identitySimilarityOutOfTheBox,
+        structuredSimilarity: role.structuredSimilarityOutOfTheBox,
+        hybridScoreFinal: role.hybridScoreOutOfTheBox,
+        hybridCosine: role.hybridCosineOutOfTheBox,
+      },
+    }))
+    .filter(({ result }) =>
+      Number.isFinite(result.identitySimilarity) &&
+      Number.isFinite(result.structuredSimilarity) &&
+      Number.isFinite(result.hybridScoreFinal)
+    );
 
   // Relative cutoff by default: choose c so that roughly target pass-rate satisfy identitySimilarity >= c.
   // Allows per-user calibration while preserving optional absolute override.
