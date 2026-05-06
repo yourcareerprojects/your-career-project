@@ -48,10 +48,11 @@ function resolveDeps(overrideDeps) {
 async function executeCareerSimulation(reqLike, resLike, options = {}) {
   const jobId = options.jobId ?? null;
   const ctx = options.context || 'worker';
+  const isForkChild = ctx === 'fork-child';
   const deps = resolveDeps(options.deps);
   logStructured('[simulation-engine]', { jobId, event: 'simulation_start', context: ctx });
   try {
-    await runCareerSimulationImpl(reqLike, resLike, deps);
+    await runCareerSimulationImpl(reqLike, resLike, deps, { isForkChild });
     logStructured('[simulation-engine]', { jobId, event: 'simulation_invoke_completed', context: ctx });
   } catch (err) {
     logStructured('[simulation-engine]', {
@@ -65,7 +66,7 @@ async function executeCareerSimulation(reqLike, resLike, options = {}) {
 }
 
 
-async function runCareerSimulationImpl(reqLike, resLike, deps) {
+async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {}) {
   const {
     computeProfileCompletion,
     MIN_SIMULATION_PROFILE_COMPLETION_PCT,
@@ -245,9 +246,12 @@ async function runCareerSimulationImpl(reqLike, resLike, deps) {
     // Fetch cached career paths.
     // Data quality + relevance: first try a targeted pull using normalized requiredSkillKeys.
     const escoService = require('../escoService');
-    const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, 900);
-    const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, 1200);
-    const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, 350);
+    const targetedDefault = runtimeOpts.isForkChild ? 500 : 900;
+    const fallbackDefault = runtimeOpts.isForkChild ? 700 : 1200;
+    const minPoolDefault = runtimeOpts.isForkChild ? 280 : 350;
+    const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, targetedDefault);
+    const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, fallbackDefault);
+    const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, minPoolDefault);
 
     const userSkillKeys = userSkills.map(normalizeSkillKey).filter(Boolean);
     const picked = [];

@@ -293,17 +293,6 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   const careerGoal = userProfile && userProfile.careerGoal ? String(userProfile.careerGoal) : '';
   const careerGoalLower = careerGoal.toLowerCase();
 
-  // Next candidates: HybridFinalNEXT only (same signal as production `scoreNextRole` after seniority penalty)
-  const nextCandidates = safeArray(scoredPaths)
-    .filter((p) => {
-      const title = stepTitleLower(p);
-      const hybridFinal = getHybridFinalNextScore(p);
-      if (hybridFinal == null || hybridFinal <= 0) return false;
-      if (careerGoalLower && title.includes(careerGoalLower)) return false;
-      return true;
-    })
-    .map((p) => buildStepObject(p, { category: 'nextCareerRoles' }));
-
   const poolSize =
     typeof options.nextMmrCandidatePoolSize === 'number' && options.nextMmrCandidatePoolSize > 0
       ? options.nextMmrCandidatePoolSize
@@ -314,10 +303,22 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
       ? options.outsideMmrCandidatePoolSize
       : DEFAULT_OUTSIDE_MMR_CANDIDATE_POOL_SIZE;
 
-  const sortedByHybridNext = [...nextCandidates].sort(
+  // Next candidates: HybridFinalNEXT only. Sort/dedupe on lean path objects first, then build steps
+  // with roleVectors only for the top-N pool — avoids holding ~1k× full embedding blobs in memory.
+  const nextEligibleRaw = safeArray(scoredPaths).filter((p) => {
+    const title = stepTitleLower(p);
+    const hybridFinal = getHybridFinalNextScore(p);
+    if (hybridFinal == null || hybridFinal <= 0) return false;
+    if (careerGoalLower && title.includes(careerGoalLower)) return false;
+    return true;
+  });
+
+  const sortedByHybridNext = [...nextEligibleRaw].sort(
     (a, b) => (b.hybridScoreNextRole ?? -Infinity) - (a.hybridScoreNextRole ?? -Infinity)
   );
-  const nextMmrPool = filterUniqueByTitle(sortedByHybridNext).slice(0, poolSize);
+  const nextMmrPool = filterUniqueByTitle(sortedByHybridNext)
+    .slice(0, poolSize)
+    .map((p) => buildStepObject(p, { category: 'nextCareerRoles' }));
 
   // Next roles: MMR on top-N HybridFinalNEXT pool (base relevance = hybrid final, not 6-dim blend)
   const nextDiverse = await rerankWithDiversity(nextMmrPool, {
@@ -385,11 +386,23 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
 
   const explorationOpts = { identityThreshold, structureUpperBound: structureUpper, structureLowerBound: structureLower };
 
-  let explorationCandidates = batchScored
-    .filter(({ result }) =>
-      passesExplorationCriteria(result.identitySimilarity, result.structuredSimilarity, explorationOpts)
-    )
-    .map(({ role, result }) => {
+  const explorationVectorCapRaw = Number(process.env.SIMULATION_EXPLORATION_VECTOR_CAP || '500');
+  const explorationVectorCap = Number.isFinite(explorationVectorCapRaw)
+    ? Math.max(outsidePoolSize * 4, Math.min(2000, explorationVectorCapRaw))
+    : Math.max(outsidePoolSize * 4, 500);
+
+  const explorationPassing = batchScored.filter(({ result }) =>
+    passesExplorationCriteria(result.identitySimilarity, result.structuredSimilarity, explorationOpts)
+  );
+
+  const explorationSorted = [...explorationPassing].sort(
+    (a, b) =>
+      ((b.result.hybridScoreFinal ?? -Infinity) - (a.result.hybridScoreFinal ?? -Infinity))
+  );
+
+  const explorationCapped = explorationSorted.slice(0, explorationVectorCap);
+
+  let explorationCandidates = explorationCapped.map(({ role, result }) => {
       const step = buildStepObject(role, { category: 'outsideTheBoxRoles' });
       step.structuredSimilarity = result.structuredSimilarity;
       step.identitySimilarity = result.identitySimilarity;

@@ -16,6 +16,20 @@ function forkParentLog(payload) {
   );
 }
 
+function buildChildEnv() {
+  const env = { ...process.env };
+  const mbRaw = env.SIMULATION_FORK_MAX_OLD_SPACE_MB;
+  if (mbRaw != null && String(mbRaw).trim() !== '') {
+    const megabytes = Number(mbRaw);
+    if (Number.isFinite(megabytes) && megabytes > 0) {
+      const chunk = `--max-old-space-size=${Math.floor(megabytes)}`;
+      const prev = String(env.NODE_OPTIONS || '').trim();
+      env.NODE_OPTIONS = prev ? `${prev} ${chunk}` : chunk;
+    }
+  }
+  return env;
+}
+
 /**
  * Run the simulation-only entry in a subprocess. Does not mutate the job document.
  * Wall-clock limit matches {@link getSimulationJobExecutionLimitMs} unless overridden.
@@ -31,7 +45,7 @@ function runSimulationInChildProcess(jobId, options = {}) {
 
     const child = fork(runnerPath, [id], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-      env: { ...process.env },
+      env: buildChildEnv(),
     });
 
     const killTimer = setTimeout(() => {
@@ -92,7 +106,11 @@ function runSimulationInChildProcess(jobId, options = {}) {
       }
 
       if (signal) {
-        finish(new Error(`Child process exited with signal ${signal}`));
+        const hint =
+          signal === 'SIGABRT'
+            ? ' (often Node heap OOM on small hosts; try a larger Render plan, set SIMULATION_FORK_MAX_OLD_SPACE_MB, or reduce SIMULATION_*_PATH_LIMIT / SIMULATION_EXPLORATION_VECTOR_CAP)'
+            : '';
+        finish(new Error(`Child process exited with signal ${signal}${hint}`));
         return;
       }
 
