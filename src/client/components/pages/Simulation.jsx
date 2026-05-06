@@ -91,6 +91,7 @@ import useUpdateSimulation from '../../hooks/useUpdateSimulation';
 import useChangeDetection from '../../hooks/useChangeDetection';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
+import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
 
 /** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
 const Simulation = () => {
@@ -110,6 +111,14 @@ const Simulation = () => {
   const [simError, setSimError] = useState('');
   // Career goal autocomplete (server-side search, supports ESCO altLabels)
   const [simulationDate, setSimulationDate] = useState(null);
+
+  const simulationRunAbortRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      simulationRunAbortRef.current?.abort();
+    };
+  }, []);
 
   const { data: savedSimulations = [] } = useSavedSimulationsListQuery();
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
@@ -1051,7 +1060,10 @@ const Simulation = () => {
 
       const token = localStorage.getItem('token');
       const jobId = startData.jobId;
-      const pollDeadlineMs = Date.now() + (10 * 60 * 1000);
+      simulationRunAbortRef.current?.abort();
+      const runAbort = new AbortController();
+      simulationRunAbortRef.current = runAbort;
+
       let data = null;
       const fetchCompletedJobResult = async () => {
         // The status can flip to completed just before the result document is visible.
@@ -1074,51 +1086,41 @@ const Simulation = () => {
         return null;
       };
 
-      while (Date.now() < pollDeadlineMs) {
-        const pollTs = Date.now();
-        const statusRes = await fetch(
-          `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/status?lang=${encodeURIComponent(requestLang)}&_ts=${pollTs}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            cache: 'no-store',
-          }
+      const outcome = await waitForSimulationJobCompletion({
+        jobId,
+        token,
+        lang: requestLang,
+        signal: runAbort.signal,
+        onJobPhase: (phase) => {
+          if (phase === 'queued') setSimulationJobState('queued');
+          else if (phase === 'running') setSimulationJobState('running');
+        },
+      });
+
+      if (outcome.kind === 'aborted') {
+        return;
+      }
+
+      if (outcome.kind === 'poll_http_error') {
+        setSimError(
+          outcome.message || t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
         );
-        const statusData = await statusRes.json();
-        if (!statusRes.ok) {
-          setSimError(
-            statusData?.message ||
-            statusData?.error ||
-            t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
-          );
+        return;
+      }
+
+      if (outcome.kind === 'failed') {
+        setSimError(
+          outcome.error || t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
+        );
+        return;
+      }
+
+      if (outcome.kind === 'completed') {
+        data = await fetchCompletedJobResult();
+        if (!data) {
+          setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
           return;
         }
-
-        const jobStatus = statusData?.job?.status;
-        if (jobStatus === 'queued' || jobStatus === 'pending') {
-          setSimulationJobState('queued');
-        } else if (jobStatus === 'running') {
-          setSimulationJobState('running');
-        }
-        if (jobStatus === 'completed') {
-          data = await fetchCompletedJobResult();
-          if (!data) {
-            setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
-            return;
-          }
-          break;
-        }
-
-        if (jobStatus === 'failed') {
-          setSimError(
-            statusData?.job?.error ||
-            t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
-          );
-          return;
-        }
-
-        // Keep polling while pending/running.
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
       if (!data) {

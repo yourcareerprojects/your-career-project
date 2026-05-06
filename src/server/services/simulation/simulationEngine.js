@@ -244,7 +244,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps) {
 
     // Fetch cached career paths.
     // Data quality + relevance: first try a targeted pull using normalized requiredSkillKeys.
-    const escoService = require('../services/escoService');
+    const escoService = require('../escoService');
     const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, 900);
     const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, 1200);
     const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, 350);

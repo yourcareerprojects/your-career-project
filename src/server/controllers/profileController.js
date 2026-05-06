@@ -1377,6 +1377,150 @@ exports.getSimulationJobStatus = async (req, res) => {
   }
 };
 
+exports.streamSimulationJobEvents = async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const jobId = req.params.jobId;
+    const snapshot = await SimulationJob.findOne({ _id: jobId, userId })
+      .select({ status: 1, progress: 1, error: 1 })
+      .lean();
+    if (!snapshot) {
+      return res.status(404).json({ success: false, message: 'Simulation job not found.' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    let closed = false;
+    let lastFp = '';
+    let pollDelayMs = 1000;
+    const maxPollDelayMs = 5000;
+    let pollTimer = null;
+    let heartbeatTimer = null;
+    const heartbeatIntervalMs = Math.max(
+      5000,
+      Number(process.env.SIMULATION_JOB_SSE_HEARTBEAT_MS || 15000)
+    );
+
+    const fingerprint = (j) => `${j.status}:${j.progress ?? 0}`;
+
+    const writeData = (payload) => {
+      if (closed) return;
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const writeHeartbeat = () => {
+      if (closed) return;
+      res.write('event: heartbeat\ndata: {}\n\n');
+    };
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    const endStream = () => {
+      cleanup();
+      try {
+        res.end();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    function pushIfChanged(j) {
+      const fp = fingerprint(j);
+      if (fp === lastFp) return false;
+      lastFp = fp;
+      const payload = { status: j.status, progress: j.progress ?? 0 };
+      if (j.error) payload.error = j.error;
+      writeData(payload);
+      return true;
+    }
+
+    pushIfChanged(snapshot);
+    if (snapshot.status === 'completed' || snapshot.status === 'failed') {
+      return endStream();
+    }
+
+    heartbeatTimer = setInterval(writeHeartbeat, heartbeatIntervalMs);
+
+    req.once('close', () => {
+      cleanup();
+    });
+
+    const schedulePoll = (delayMs) => {
+      if (closed) return;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = setTimeout(runPoll, delayMs);
+    };
+
+    async function runPoll() {
+      if (closed) return;
+      pollTimer = null;
+      try {
+        const j = await SimulationJob.findOne({ _id: jobId, userId })
+          .select({ status: 1, progress: 1, error: 1 })
+          .lean();
+        if (!j) {
+          writeData({ status: 'failed', error: 'Simulation job not found.', progress: 0 });
+          return endStream();
+        }
+
+        const fp = fingerprint(j);
+        if (fp !== lastFp) {
+          lastFp = fp;
+          pollDelayMs = 1000;
+          const payload = { status: j.status, progress: j.progress ?? 0 };
+          if (j.error) payload.error = j.error;
+          writeData(payload);
+        } else {
+          pollDelayMs = Math.min(Math.round(pollDelayMs * 1.5), maxPollDelayMs);
+        }
+
+        if (j.status === 'completed' || j.status === 'failed') {
+          return endStream();
+        }
+
+        schedulePoll(pollDelayMs);
+      } catch (err) {
+        writeData({ status: 'failed', error: err.message || 'Stream error', progress: 0 });
+        endStream();
+      }
+    }
+
+    schedulePoll(pollDelayMs);
+  } catch (err) {
+    logControllerError('Simulation job SSE stream error', err);
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: 'Failed to stream simulation job events.', error: err.message });
+    }
+    try {
+      res.end();
+    } catch {
+      /* ignore */
+    }
+  }
+};
+
 exports.getSimulationJobResult = async (req, res) => {
   try {
     res.set({

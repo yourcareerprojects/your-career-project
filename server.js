@@ -77,7 +77,17 @@ function sendSpaIndex(res) {
 
 // Middleware (order: security headers → compression → CORS → parsers)
 app.use(helmet());
-app.use(compression());
+app.use(
+  compression({
+    filter: (req, res) => {
+      const pathOnly = req.originalUrl.split('?')[0];
+      if (/\/simulation\/jobs\/[^/]+\/events$/.test(pathOnly)) {
+        return false;
+      }
+      return compression.filter(req, res);
+    },
+  })
+);
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

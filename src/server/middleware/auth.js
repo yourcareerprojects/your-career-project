@@ -6,7 +6,25 @@ const {
   sanitizeLegacyNarrativeProfileById,
 } = require('../utils/legacyProfileSanitizer');
 
-module.exports = async (req, res, next) => {
+/**
+ * EventSource cannot send Authorization headers; allow `?access_token=` for routes that opt in
+ * (e.g. simulation job SSE). Ignored when Authorization is already present.
+ */
+function attachAccessTokenFromQuery(req, res, next) {
+  const existing = req.header('Authorization');
+  const q = req.query?.access_token;
+  if (
+    q &&
+    typeof q === 'string' &&
+    q.trim() &&
+    (!existing || !String(existing).trim())
+  ) {
+    req.headers.authorization = `Bearer ${q.trim()}`;
+  }
+  next();
+}
+
+const authMiddleware = async (req, res, next) => {
   try {
     // Get token from header
     const authHeader = req.header('Authorization') || '';
@@ -75,4 +93,7 @@ module.exports = async (req, res, next) => {
       error: 'Token is not valid'
     });
   }
-}; 
+};
+
+authMiddleware.attachAccessTokenFromQuery = attachAccessTokenFromQuery;
+module.exports = authMiddleware; 

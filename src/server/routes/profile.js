@@ -196,6 +196,12 @@ router.delete('/profile-picture',
 router.post('/simulation', auth, profileController.startSimulation);
 router.post('/simulation/start', auth, profileController.startSimulation);
 router.get('/simulation/jobs/:jobId/status', auth, profileController.getSimulationJobStatus);
+router.get(
+  '/simulation/jobs/:jobId/events',
+  auth.attachAccessTokenFromQuery,
+  auth,
+  profileController.streamSimulationJobEvents
+);
 router.get('/simulation/jobs/:jobId/result', auth, profileController.getSimulationJobResult);
 // Get last simulation result endpoint
 router.get('/simulation/last', auth, profileController.getLastSimulationResult);
