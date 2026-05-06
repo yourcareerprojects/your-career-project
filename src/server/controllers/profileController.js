@@ -11,7 +11,10 @@ const path = require('path');
 const crypto = require('crypto');
 const SimulationPrioritizedItem = require('../models/SimulationPrioritizedItem');
 const SimulationJob = require('../models/SimulationJob');
-const { createSimulationJob } = require('../services/simulationJobService');
+const {
+  createSimulationJob,
+  ensureDocumentEnrichmentRefreshJobQueued,
+} = require('../services/simulationJobService');
 const { enrichCareerPathWithHybridScores } = require('../services/scoring/careerPathScorer');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
@@ -1124,10 +1127,16 @@ exports.runSimulation = async (req, res) => {
       const enrichmentResult = await getEnrichedSimulationInputs({
         userId,
         baseInputs: activeInputs,
-        force: false
+        force: false,
+        cacheOnly: true,
       });
       enrichedInputs = enrichmentResult.inputs || activeInputs;
       enrichment = enrichmentResult.enrichment || null;
+      if (enrichmentResult.cacheMiss) {
+        ensureDocumentEnrichmentRefreshJobQueued({ userId, language: req.language || 'en' }).catch((err) => {
+          console.warn('Failed to queue document enrichment refresh job:', err?.message || err);
+        });
+      }
     } catch (e) {
       console.warn('Document enrichment failed (non-fatal):', e.message);
     }
@@ -1542,19 +1551,40 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
   if (!job) return null;
 
   try {
-    const result = await runSimulationViaController(String(job.userId), job.language || 'en');
-    if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.results) {
+    const jobType = job.payload?.jobType || 'simulation_run';
+    if (jobType === 'document_enrichment_refresh') {
+      const user = await User.findById(job.userId).lean();
+      const baseInputs = user?.profile?.careerSimulationInputs || {};
+      await getEnrichedSimulationInputs({
+        userId: String(job.userId),
+        baseInputs,
+        force: true,
+        cacheOnly: false,
+      });
       job.status = 'completed';
       job.progress = 100;
-      job.result = result.payload;
+      job.result = {
+        success: true,
+        jobType,
+        refreshedAt: new Date().toISOString(),
+      };
       job.completedAt = new Date();
       job.error = '';
     } else {
-      job.status = 'failed';
-      job.progress = 100;
-      job.completedAt = new Date();
-      job.error = result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`;
-      job.result = result.payload || null;
+      const result = await runSimulationViaController(String(job.userId), job.language || 'en');
+      if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.results) {
+        job.status = 'completed';
+        job.progress = 100;
+        job.result = result.payload;
+        job.completedAt = new Date();
+        job.error = '';
+      } else {
+        job.status = 'failed';
+        job.progress = 100;
+        job.completedAt = new Date();
+        job.error = result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`;
+        job.result = result.payload || null;
+      }
     }
   } catch (err) {
     job.status = 'failed';
@@ -1580,7 +1610,7 @@ exports.startSimulation = async (req, res) => {
     const job = await createSimulationJob({
       userId,
       language,
-      payload: req.body || {},
+      payload: { ...(req.body || {}), jobType: 'simulation_run' },
     });
 
     return res.json({

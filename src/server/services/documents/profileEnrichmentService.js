@@ -19,13 +19,13 @@ function docIdString(doc) {
  * Returns inputs merged with document-derived enrichment.
  * If no docs or parsing fails, returns baseInputs unchanged.
  */
-async function getEnrichedSimulationInputs({ userId, baseInputs, force = false }) {
+async function getEnrichedSimulationInputs({ userId, baseInputs, force = false, cacheOnly = false }) {
   const user = await User.findById(userId);
-  if (!user) return { inputs: baseInputs, enrichment: null };
+  if (!user) return { inputs: baseInputs, enrichment: null, cacheMiss: false };
 
   const doc = pickLatestCvDoc(user.profile);
   if (!doc || !doc.path) {
-    return { inputs: baseInputs, enrichment: null };
+    return { inputs: baseInputs, enrichment: null, cacheMiss: false };
   }
 
   const docId = docIdString(doc);
@@ -35,7 +35,7 @@ async function getEnrichedSimulationInputs({ userId, baseInputs, force = false }
 
   let enrichment = cacheHasSameDoc && cacheFresh ? cache : null;
 
-  if (!enrichment || force) {
+  if ((!enrichment || force) && !cacheOnly) {
     let text = '';
     try {
       text = await parseDocumentToText(doc.path);
@@ -62,6 +62,10 @@ async function getEnrichedSimulationInputs({ userId, baseInputs, force = false }
     await user.save();
   }
 
+  if (!enrichment) {
+    return { inputs: baseInputs, enrichment: null, cacheMiss: true };
+  }
+
   const mergedInputs = mapExtractedToSimulationInputs(
     {
       skills: enrichment.extractedSkills,
@@ -73,7 +77,7 @@ async function getEnrichedSimulationInputs({ userId, baseInputs, force = false }
     baseInputs
   );
 
-  return { inputs: mergedInputs, enrichment };
+  return { inputs: mergedInputs, enrichment, cacheMiss: false };
 }
 
 module.exports = {
