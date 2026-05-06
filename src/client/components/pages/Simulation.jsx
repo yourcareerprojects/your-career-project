@@ -1053,6 +1053,26 @@ const Simulation = () => {
       const jobId = startData.jobId;
       const pollDeadlineMs = Date.now() + (10 * 60 * 1000);
       let data = null;
+      const fetchCompletedJobResult = async () => {
+        // The status can flip to completed just before the result document is visible.
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          const resultRes = await fetch(
+            `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: 'no-store',
+            }
+          );
+          // eslint-disable-next-line no-await-in-loop
+          const resultData = await resultRes.json();
+          if (resultRes.ok && resultData?.results) return resultData;
+          if (resultRes.status !== 409) return null;
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        return null;
+      };
 
       while (Date.now() < pollDeadlineMs) {
         const pollTs = Date.now();
@@ -1080,20 +1100,9 @@ const Simulation = () => {
           setSimulationJobState('running');
         }
         if (jobStatus === 'completed') {
-          const resultRes = await fetch(
-            `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              cache: 'no-store',
-            }
-          );
-          data = await resultRes.json();
-          if (!resultRes.ok) {
-            setSimError(
-              data?.message ||
-              data?.error ||
-              t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
-            );
+          data = await fetchCompletedJobResult();
+          if (!data) {
+            setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
             return;
           }
           break;
@@ -1113,8 +1122,43 @@ const Simulation = () => {
       }
 
       if (!data) {
-        setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
-        return;
+        // Final reconciliation before showing failure:
+        // 1) Re-check status/result for this job
+        // 2) Fallback to the last simulation endpoint
+        const finalStatusRes = await fetch(
+          `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/status?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          }
+        );
+        const finalStatusData = await finalStatusRes.json();
+        if (finalStatusRes.ok && finalStatusData?.job?.status === 'completed') {
+          data = await fetchCompletedJobResult();
+        }
+
+        if (!data) {
+          const lastRes = await fetch(
+            `/api/profile/simulation/last?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: 'no-store',
+            }
+          );
+          const lastData = await lastRes.json();
+          if (lastRes.ok && lastData?.results) {
+            data = {
+              results: lastData.results,
+              careerGoal: lastData.selectedGoal || '',
+              profileCompletion: profileCompletion || 0,
+            };
+          }
+        }
+
+        if (!data) {
+          setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
+          return;
+        }
       }
 
       if (data && data.results) {
