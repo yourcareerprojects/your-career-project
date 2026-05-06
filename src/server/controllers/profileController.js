@@ -88,6 +88,12 @@ function normalizeDisplayStringArray(arr = []) {
     .filter(Boolean);
 }
 
+function toPositiveIntEnv(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
 function normalizeEscoIdForLookup(value) {
   if (value == null) return '';
   return String(value).trim().replace(/\/+\s*$/g, '');
@@ -1065,6 +1071,7 @@ function computeProfileCompletion(profile) {
 exports.runSimulation = async (req, res) => {
   try {
     res.setTimeout(180000); // 3 minutes for embedding + scoring
+    const startedAt = Date.now();
 
     const userId = req.user && (req.user.id || req.user.userId);
     if (!userId) {
@@ -1209,6 +1216,9 @@ exports.runSimulation = async (req, res) => {
     // Fetch cached career paths.
     // Data quality + relevance: first try a targeted pull using normalized requiredSkillKeys.
     const escoService = require('../services/escoService');
+    const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, 900);
+    const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, 1200);
+    const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, 350);
 
     const userSkillKeys = userSkills.map(normalizeSkillKey).filter(Boolean);
     const picked = [];
@@ -1217,7 +1227,7 @@ exports.runSimulation = async (req, res) => {
     if (userSkillKeys.length > 0) {
       const skillMatched = await escoService.getCachedCareerPaths(
         { requiredSkillKeys: { $in: userSkillKeys } },
-        { limit: 2000 }
+        { limit: TARGETED_PATH_LIMIT }
       );
       for (const cp of skillMatched) {
         const id = cp.escoId || cp._id;
@@ -1228,14 +1238,14 @@ exports.runSimulation = async (req, res) => {
     }
 
     // Fallback/coverage: add more occupations so the sim still works for sparse profiles.
-    if (picked.length < 500) {
-      const extra = await escoService.getCachedCareerPaths({}, { limit: 2000 });
+    if (picked.length < MIN_CANDIDATE_POOL) {
+      const extra = await escoService.getCachedCareerPaths({}, { limit: FALLBACK_PATH_LIMIT });
       for (const cp of extra) {
         const id = cp.escoId || cp._id;
         if (!id || seen.has(id)) continue;
         seen.add(id);
         picked.push(cp);
-        if (picked.length >= 2000) break;
+        if (picked.length >= FALLBACK_PATH_LIMIT) break;
       }
     }
 
@@ -1326,7 +1336,7 @@ exports.runSimulation = async (req, res) => {
       identityEmbeddingText: String(profile?.who_are_you?.identity_embedding_text || '').trim(),
     };
 
-    const SCORE_CHUNK_SIZE = 150;
+    const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, 200);
     const scoredPaths = [];
     for (let i = 0; i < allCareerPaths.length; i += SCORE_CHUNK_SIZE) {
       const chunk = allCareerPaths.slice(i, i + SCORE_CHUNK_SIZE);
@@ -1450,6 +1460,16 @@ exports.runSimulation = async (req, res) => {
           date: new Date()
         }
       }
+    });
+
+    const totalMs = Date.now() - startedAt;
+    console.log('[profileController] simulation completed', {
+      userId: String(userId),
+      totalMs,
+      candidatePoolSize: allCareerPaths.length,
+      scoreChunkSize: SCORE_CHUNK_SIZE,
+      targetedLimit: TARGETED_PATH_LIMIT,
+      fallbackLimit: FALLBACK_PATH_LIMIT,
     });
 
     return res.json({
