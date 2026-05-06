@@ -11,10 +11,6 @@ const connectDB = require('../config/database');
 const { getSimulationJobReadOnly } = require('../src/server/services/simulationJobService');
 const { executeCareerSimulation } = require('../src/server/services/simulation/simulationEngine');
 
-function ipcPayload(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
-
 function childLog(event, payload) {
   console.log(
     JSON.stringify({
@@ -64,14 +60,61 @@ function startSimulationHeapWatchdog(abortController) {
   };
 }
 
+function cloneForIpc(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+/**
+ * Wait for IPC to flush before exiting. Exiting immediately after process.send() often drops
+ * the message on the floor (parent sees code 0 + "exited without result").
+ */
 async function sendExit(payload, exitCode) {
-  if (typeof process.send === 'function') {
-    try {
-      process.send(ipcPayload(payload));
-    } catch (e) {
-      console.error('[simulation-runner] process.send failed', e?.message || e);
-    }
+  let toSend = payload;
+  try {
+    toSend = cloneForIpc(payload);
+  } catch (e) {
+    toSend = {
+      type: 'error',
+      error: `IPC serialization failed: ${e?.message || e}`,
+      ...(typeof e?.stack === 'string' ? { stack: e.stack } : {}),
+    };
+    exitCode = 1;
   }
+
+  if (typeof process.send === 'function') {
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve(undefined);
+      };
+      const watchdog = setTimeout(() => {
+        console.error('[simulation-runner] IPC send watchdog — proceeding to exit');
+        finish();
+      }, 8000);
+
+      try {
+        const ok = process.send(toSend, (err) => {
+          clearTimeout(watchdog);
+          if (err) {
+            console.error('[simulation-runner] process.send callback error', err?.message || err);
+          }
+          finish();
+        });
+        if (ok === false) {
+          clearTimeout(watchdog);
+          console.error('[simulation-runner] process.send returned false (channel full or closed)');
+          finish();
+        }
+      } catch (e) {
+        clearTimeout(watchdog);
+        console.error('[simulation-runner] process.send threw', e?.message || e);
+        finish();
+      }
+    });
+  }
+
   try {
     await mongoose.connection.close();
   } catch (_) {
@@ -173,10 +216,10 @@ async function main() {
     await sendExit(
       {
         type: 'success',
-        result: ipcPayload({
+        result: {
           statusCode: result.statusCode,
           payload: result.payload,
-        }),
+        },
       },
       0
     );
@@ -198,22 +241,12 @@ async function main() {
 }
 
 main().catch(async (err) => {
-  const message = err?.message || String(err);
-  if (typeof process.send === 'function') {
-    try {
-      process.send({
-        type: 'error',
-        error: message,
-        ...(typeof err?.stack === 'string' ? { stack: err.stack } : {}),
-      });
-    } catch (_) {
-      /* noop */
-    }
-  }
-  try {
-    await mongoose.connection.close();
-  } catch (_) {
-    /* noop */
-  }
-  process.exit(1);
+  await sendExit(
+    {
+      type: 'error',
+      error: err?.message || String(err),
+      ...(typeof err?.stack === 'string' ? { stack: err.stack } : {}),
+    },
+    1
+  );
 });

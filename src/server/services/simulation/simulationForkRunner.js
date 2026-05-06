@@ -123,7 +123,7 @@ function runSimulationInChildProcess(jobId, options = {}) {
         if (!settled) {
           finish(new Error('Child process exited without result'));
         }
-      }, 150);
+      }, 4000);
     });
   });
 }
