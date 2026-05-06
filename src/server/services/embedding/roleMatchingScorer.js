@@ -257,17 +257,30 @@ async function scoreOutOfTheBox(userProfile, role) {
   const rv = role.roleVectors || role;
   const roleIdentity = rv.identity_vector;
 
-  // Always compute and return structuredSimilarity and identitySimilarity when vectors exist (exploration filter).
+  // Exploration filter needs identity + structured cosines. Roles without fused structured sub-vectors
+  // still have a valid OOTB hybrid score (finalVectors / legacy fusion); omitting similarities dropped
+  // them from Phase 2 and yielded empty outside-the-box lists.
   let structuredSimilarity = null;
   let identitySimilarity = null;
-  if (
-    roleStructured &&
+  const hasIdentityLength =
     roleIdentity &&
     Array.isArray(roleIdentity) &&
-    roleIdentity.length === EMBEDDING_DIMS
-  ) {
+    roleIdentity.length === EMBEDDING_DIMS &&
+    userIdentity &&
+    typeof userIdentity.length === 'number' &&
+    userIdentity.length === EMBEDDING_DIMS;
+
+  const userStructuredOk =
+    userStructured &&
+    typeof userStructured.length === 'number' &&
+    userStructured.length === EMBEDDING_DIMS;
+
+  if (roleStructured && hasIdentityLength && userStructuredOk) {
     structuredSimilarity = cosineSimilarity(userStructured, roleStructured);
     identitySimilarity = cosineSimilarity(userIdentity, new Float32Array(roleIdentity));
+  } else if (hasIdentityLength && userStructuredOk) {
+    identitySimilarity = cosineSimilarity(userIdentity, new Float32Array(roleIdentity));
+    structuredSimilarity = (EXPLORATION_STRUCTURE_LOWER_BOUND + EXPLORATION_STRUCTURE_UPPER_BOUND) / 2;
   }
 
   const result = {

@@ -13,6 +13,9 @@ const DEFAULT_NEXT_MMR_CANDIDATE_POOL_SIZE = 150;
 
 /** Top-N roles by HybridFinalOOTB before OUT_OF_THE_BOX MMR (diversity pass). */
 const DEFAULT_OUTSIDE_MMR_CANDIDATE_POOL_SIZE = 150;
+
+/** When next-role picks are structurally diverse, P75 pairwise similarity is low and 1 − P75 becomes a harsh novelty floor that can clear every OOTB candidate. */
+const MAX_OUTSIDE_NOVELTY_THRESHOLD_VS_NEXT = 0.35;
 const DEFAULT_EXPLORATION_IDENTITY_PASS_RATE = 0.60;
 
 function safeArray(value) {
@@ -459,7 +462,8 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     if (typeof options.outsideNoveltyVsNextThreshold === 'number' && Number.isFinite(options.outsideNoveltyVsNextThreshold)) {
       return Math.min(1, Math.max(0, options.outsideNoveltyVsNextThreshold));
     }
-    return Math.min(1, Math.max(0, 1 - defaultSimilarityThreshold));
+    const computed = Math.min(1, Math.max(0, 1 - defaultSimilarityThreshold));
+    return Math.min(computed, MAX_OUTSIDE_NOVELTY_THRESHOLD_VS_NEXT);
   })();
 
   for (const s of explorationCandidates) {
