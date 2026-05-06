@@ -17,7 +17,7 @@ function forkParentLog(payload) {
 }
 
 function buildChildEnv() {
-  const env = { ...process.env };
+  const env = { ...process.env, SIMULATION_RUNNER_SUBPROCESS: '1' };
   const mbRaw = env.SIMULATION_FORK_MAX_OLD_SPACE_MB;
   if (mbRaw != null && String(mbRaw).trim() !== '') {
     const megabytes = Number(mbRaw);
@@ -108,7 +108,7 @@ function runSimulationInChildProcess(jobId, options = {}) {
       if (signal) {
         const hint =
           signal === 'SIGABRT'
-            ? ' (often Node heap OOM on small hosts; try a larger Render plan, set SIMULATION_FORK_MAX_OLD_SPACE_MB, or reduce SIMULATION_*_PATH_LIMIT / SIMULATION_EXPLORATION_VECTOR_CAP)'
+            ? ' (often Node heap OOM on small hosts; try a larger Render plan, set SIMULATION_FORK_MAX_OLD_SPACE_MB, lower SIMULATION_VECTOR_CACHE_SIZE, set SIMULATION_SCORE_CONCURRENCY=1, or reduce SIMULATION_*_PATH_LIMIT / SIMULATION_EXPLORATION_VECTOR_CAP)'
             : '';
         finish(new Error(`Child process exited with signal ${signal}${hint}`));
         return;

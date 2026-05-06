@@ -418,8 +418,13 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     console.time('STEP_3_scoring');
     step3Started = true;
-    const scoreChunkDefault = runtimeOpts.isForkChild ? 32 : 200;
+    const scoreChunkDefault = runtimeOpts.isForkChild ? 24 : 200;
     const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, scoreChunkDefault);
+    const scoreConcDefault = runtimeOpts.isForkChild ? 1 : 12;
+    const SCORE_CONCURRENCY = Math.max(
+      1,
+      toPositiveIntEnv(process.env.SIMULATION_SCORE_CONCURRENCY, scoreConcDefault)
+    );
 
     const abortSignal = runtimeOpts.abortSignal || null;
     function assertNotAborted() {
@@ -552,11 +557,17 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       }
 
       assertNotAborted();
-      /* eslint-disable no-await-in-loop */
-      const scoredChunk = await Promise.all(
-        chunkRows.map((cp) => enrichCareerPathWithHybridScores(userProfileForHybrid, cp))
-      );
-      /* eslint-enable no-await-in-loop */
+      const scoredChunk = [];
+      for (let bi = 0; bi < chunkRows.length; bi += SCORE_CONCURRENCY) {
+        assertNotAborted();
+        const batch = chunkRows.slice(bi, bi + SCORE_CONCURRENCY);
+        /* eslint-disable no-await-in-loop */
+        const partial = await Promise.all(
+          batch.map((cp) => enrichCareerPathWithHybridScores(userProfileForHybrid, cp))
+        );
+        /* eslint-enable no-await-in-loop */
+        for (let pi = 0; pi < partial.length; pi += 1) scoredChunk.push(partial[pi]);
+      }
 
       for (let j = 0; j < chunkRows.length; j += 1) {
         const cp = chunkRows[j];
@@ -566,6 +577,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
           vectorCache.set(sid, cp.roleVectors);
         }
         scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
+        if (sid) vectorRunDedup.delete(sid);
       }
     }
 
@@ -601,6 +613,8 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     } catch (phase2Err) {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
       throw phase2Err;
+    } finally {
+      vectorRunDedup.clear();
     }
     console.timeEnd('STEP_3_scoring');
     step3Started = false;
@@ -694,6 +708,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       totalMs,
       candidatePoolSize: picked.length,
       scoreChunkSize: SCORE_CHUNK_SIZE,
+      scoreConcurrency: SCORE_CONCURRENCY,
       targetedLimit: TARGETED_PATH_LIMIT,
       fallbackLimit: FALLBACK_PATH_LIMIT,
     });

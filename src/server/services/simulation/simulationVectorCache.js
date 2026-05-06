@@ -62,18 +62,29 @@ class RoleVectorsLRUCache {
 
 let singleton = /** @type {RoleVectorsLRUCache | null} */ (null);
 
-function parseCacheTtlMs() {
+function parseCacheTtlMs(defaultTtlMs) {
   const raw = process.env.SIMULATION_VECTOR_CACHE_TTL_MS;
-  if (raw == null || raw === '') return 20 * 60 * 1000;
+  if (raw == null || raw === '') return defaultTtlMs;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return n;
 }
 
+/** Child process peaks heap fast; bounded cache avoids holding hundreds of MB of embeddings */
+function defaultMaxCacheEntries() {
+  const fromEnv = process.env.SIMULATION_VECTOR_CACHE_SIZE;
+  if (fromEnv != null && fromEnv !== '') {
+    const n = Number(fromEnv);
+    return Number.isFinite(n) ? n : 128;
+  }
+  return process.env.SIMULATION_RUNNER_SUBPROCESS === '1' ? 96 : 256;
+}
+
 function getSimulationRoleVectorCache() {
   if (singleton) return singleton;
-  const maxSize = parsePositiveIntEnv('SIMULATION_VECTOR_CACHE_SIZE', 2000);
-  const ttlMs = parseCacheTtlMs();
+  const maxSize = Math.max(0, Math.floor(defaultMaxCacheEntries()));
+  const defaultTtl = process.env.SIMULATION_RUNNER_SUBPROCESS === '1' ? 10 * 60 * 1000 : 15 * 60 * 1000;
+  const ttlMs = parseCacheTtlMs(defaultTtl);
   singleton = new RoleVectorsLRUCache(maxSize, ttlMs);
   return singleton;
 }
