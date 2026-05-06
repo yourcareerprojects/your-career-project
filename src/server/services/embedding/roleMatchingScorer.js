@@ -52,8 +52,8 @@ const PROMOTION_GUARDRAIL_PENALTY = 0.55;
 // STRUCTURE_LOWER_BOUND: Min structural similarity. Below = too unrelated (random).
 /** @type {number} Min identity similarity for exploration (default 0.50) */
 const EXPLORATION_IDENTITY_THRESHOLD = 0.50;
-/** @type {number} Max structural similarity for exploration (default 0.75) */
-const EXPLORATION_STRUCTURE_UPPER_BOUND = 0.75;
+/** @type {number} Max structured cosine for exploration; 0.75 cleared almost all ESCO-aligned paths in Phase 2. */
+const EXPLORATION_STRUCTURE_UPPER_BOUND = 0.90;
 /** @type {number} Min structural similarity for exploration (default 0.40) */
 const EXPLORATION_STRUCTURE_LOWER_BOUND = 0.40;
 

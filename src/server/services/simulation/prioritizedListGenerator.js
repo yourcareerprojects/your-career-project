@@ -14,8 +14,12 @@ const DEFAULT_NEXT_MMR_CANDIDATE_POOL_SIZE = 150;
 /** Top-N roles by HybridFinalOOTB before OUT_OF_THE_BOX MMR (diversity pass). */
 const DEFAULT_OUTSIDE_MMR_CANDIDATE_POOL_SIZE = 150;
 
-/** When next-role picks are structurally diverse, P75 pairwise similarity is low and 1 − P75 becomes a harsh novelty floor that can clear every OOTB candidate. */
-const MAX_OUTSIDE_NOVELTY_THRESHOLD_VS_NEXT = 0.35;
+/** Cap how much novelty-vs-next we require (lower max threshold = easier pass). Previous 0.35 still emptied pools. */
+const MAX_OUTSIDE_NOVELTY_THRESHOLD_VS_NEXT = 0.22;
+
+/** Skip `title.includes(careerGoal)` when goal is short — common tokens remove nearly the entire pool. */
+const MIN_CAREER_GOAL_CHARS_FOR_TITLE_SUBSTRING_FILTER = 14;
+
 const DEFAULT_EXPLORATION_IDENTITY_PASS_RATE = 0.60;
 
 function safeArray(value) {
@@ -242,6 +246,15 @@ function stepTitleLower(p) {
   return String(getEnglishField(p.title)).toLowerCase();
 }
 
+/** Dedup / exclusion key: English title when present, else stable id (i18n-only titles were blank and dropped the whole OOTB pool). */
+function stepPoolExclusionKey(p) {
+  const t = stepTitleLower(p).trim();
+  if (t) return t;
+  if (p?.escoId) return `esco:${String(p.escoId).trim().toLowerCase()}`;
+  if (p?._id) return `id:${String(p._id)}`;
+  return '';
+}
+
 function filterUniqueByTitle(steps) {
   const seen = new Set();
   const out = [];
@@ -312,7 +325,7 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     const title = stepTitleLower(p);
     const hybridFinal = getHybridFinalNextScore(p);
     if (hybridFinal == null || hybridFinal <= 0) return false;
-    if (careerGoalLower && title.includes(careerGoalLower)) return false;
+    if (excludeTitleMatchingCareerGoal && title.includes(careerGoalLower)) return false;
     return true;
   });
 
@@ -346,7 +359,7 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     mode: 'NEXT_ROLE'
   });
 
-  const nextTitleSet = new Set(nextDiverse.map((s) => stepTitleLower(s)));
+  const nextTitleSet = new Set(nextDiverse.map((s) => stepPoolExclusionKey(s)).filter(Boolean));
 
   // Outside-the-box pool: exploration criteria (identity-aligned structural shift).
   // No 6dim score band filter. Filter by: identity >= threshold, structure in [lower, upper].
@@ -354,10 +367,10 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   const structureLower = options.explorationStructureLowerBound ?? EXPLORATION_STRUCTURE_LOWER_BOUND;
 
   const outsidePoolRaw = safeArray(scoredPaths).filter((p) => {
-    const title = stepTitleLower(p);
-    if (!title) return false;
-    if (nextTitleSet.has(title)) return false;
-    if (careerGoalLower && title.includes(careerGoalLower)) return false;
+    const key = stepPoolExclusionKey(p);
+    if (!key) return false;
+    if (nextTitleSet.has(key)) return false;
+    if (excludeTitleMatchingCareerGoal && key.includes(careerGoalLower)) return false;
     return true;
   });
 
@@ -403,14 +416,43 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
 
   const explorationOpts = { identityThreshold, structureUpperBound: structureUpper, structureLowerBound: structureLower };
 
+  /** Strict exploration often yields zero passes (structured cosine > legacy upper bound). Cascade until we have a pool. */
+  let explorationPassing = batchScored.filter(({ result }) =>
+    passesExplorationCriteria(result.identitySimilarity, result.structuredSimilarity, explorationOpts)
+  );
+
+  if (explorationPassing.length === 0 && batchScored.length > 0) {
+    const relaxedStructural = {
+      ...explorationOpts,
+      structureUpperBound: Math.min(0.97, Math.max(explorationOpts.structureUpperBound, EXPLORATION_STRUCTURE_UPPER_BOUND + 0.05)),
+      structureLowerBound: Math.max(0.12, explorationOpts.structureLowerBound - 0.2),
+    };
+    explorationPassing = batchScored.filter(({ result }) =>
+      passesExplorationCriteria(result.identitySimilarity, result.structuredSimilarity, relaxedStructural)
+    );
+  }
+
+  if (explorationPassing.length === 0 && batchScored.length > 0) {
+    const loweredIdFloor = Math.max(0.4, explorationOpts.identityThreshold - 0.09);
+    explorationPassing = batchScored.filter(
+      ({ result }) =>
+        Number.isFinite(result.identitySimilarity) &&
+        result.identitySimilarity >= loweredIdFloor &&
+        Number.isFinite(result.hybridScoreFinal) &&
+        result.hybridScoreFinal > 0
+    );
+  }
+
+  if (explorationPassing.length === 0 && batchScored.length > 0) {
+    explorationPassing = [...batchScored].sort(
+      (a, b) => (b.result.hybridScoreFinal ?? -Infinity) - (a.result.hybridScoreFinal ?? -Infinity)
+    );
+  }
+
   const explorationVectorCapRaw = Number(process.env.SIMULATION_EXPLORATION_VECTOR_CAP || '500');
   const explorationVectorCap = Number.isFinite(explorationVectorCapRaw)
     ? Math.max(outsidePoolSize * 4, Math.min(2000, explorationVectorCapRaw))
     : Math.max(outsidePoolSize * 4, 500);
-
-  const explorationPassing = batchScored.filter(({ result }) =>
-    passesExplorationCriteria(result.identitySimilarity, result.structuredSimilarity, explorationOpts)
-  );
 
   const explorationSorted = [...explorationPassing].sort(
     (a, b) =>
@@ -481,7 +523,12 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     if (noveltyVsNext >= noveltyThresholdVsNext) outsideNovelVsNext.push(s);
   }
 
-  const sortedByHybridOotb = [...outsideNovelVsNext].sort(
+  let ootbNovelPool = outsideNovelVsNext;
+  if (ootbNovelPool.length === 0 && explorationCandidates.length > 0) {
+    ootbNovelPool = [...explorationCandidates];
+  }
+
+  const sortedByHybridOotb = [...ootbNovelPool].sort(
     (a, b) => (getHybridFinalOotbScore(b) ?? -Infinity) - (getHybridFinalOotbScore(a) ?? -Infinity)
   );
   const outsideMmrPool = filterUniqueByTitle(sortedByHybridOotb).slice(0, outsidePoolSize);
@@ -491,7 +538,7 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   const outsideDiverse = await mmrSelect(outsideMmrPool, {
     k: options.outsideK || 25,
     lambda: options.outsideLambda ?? 0.65,
-    minNovelty: options.outsideMinNovelty ?? 0.15,
+    minNovelty: options.outsideMinNovelty ?? 0.06,
     normalizationMode: 'global',
     embedFn: (it) => Promise.resolve(outsidePrecomputed.get(it) ?? embedMap.get(it)),
     scoreFn: (it) => {
