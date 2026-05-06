@@ -213,13 +213,27 @@ async function main() {
 
     childLog('simulation_end', { jobId: String(jobId), statusCode: result.statusCode });
 
+    const rp = result.payload;
+    const httpOk =
+      typeof result.statusCode === 'number' && result.statusCode >= 200 && result.statusCode < 300;
+
+    /** Full success bodies are megabytes → Node IPC loses them silently; worker hydrates from User.lastSimulationResult. */
+    let forkResultPayload;
+    if (httpOk && rp && rp.success === true && rp.results) {
+      forkResultPayload = { statusCode: result.statusCode, hydratePayloadFromUser: true };
+    } else if (rp && typeof rp === 'object') {
+      const lean = { ...rp };
+      if (Object.prototype.hasOwnProperty.call(lean, 'results')) delete lean.results;
+      if (Object.prototype.hasOwnProperty.call(lean, 'prioritizedLists')) delete lean.prioritizedLists;
+      forkResultPayload = { statusCode: result.statusCode, payload: lean };
+    } else {
+      forkResultPayload = { statusCode: result.statusCode, payload: rp };
+    }
+
     await sendExit(
       {
         type: 'success',
-        result: {
-          statusCode: result.statusCode,
-          payload: result.payload,
-        },
+        result: forkResultPayload,
       },
       0
     );

@@ -1156,6 +1156,34 @@ function simulationOrchestrationLog(event, extra = {}) {
   );
 }
 
+/**
+ * Fork subprocess IPC cannot reliably carry multi‑MB bodies. Successful runs persist on `User.lastSimulationResult`;
+ * the worker rebuilds the same shape `executeCareerSimulation` returns over HTTP.
+ */
+async function buildSimulationForkJobResultPayload(jobDoc, { attempts = 3, delayMs = 200 } = {}) {
+  const userId = jobDoc?.userId;
+  if (!userId) return null;
+  const lang = jobDoc.language || 'en';
+  for (let tryIdx = 0; tryIdx < attempts; tryIdx += 1) {
+    /* eslint-disable no-await-in-loop */
+    const user = await User.findById(userId).select({ profile: 1, lastSimulationResult: 1 }).lean();
+    /* eslint-enable no-await-in-loop */
+    const lsr = user?.lastSimulationResult;
+    if (user && lsr?.results) {
+      const careerGoal = localizedContentService.normalizeForResponse(lsr.selectedGoal, lang) || '';
+      const profileCompletion = computeProfileCompletion(user.profile).overall;
+      return {
+        success: true,
+        results: lsr.results,
+        careerGoal,
+        profileCompletion,
+      };
+    }
+    if (tryIdx + 1 < attempts) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return null;
+}
+
 async function processOneSimulationJob({ onlyJobId = null } = {}) {
   const jobExecutionLimitMs = getSimulationJobExecutionLimitMs();
   const reclaimed = await reclaimStaleRunningSimulationJobs();
@@ -1255,9 +1283,22 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
       const result = await runSimulationInChildProcess(jobId, {
         wallClockLimitMs: jobExecutionLimitMs,
       });
-      if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.results) {
+
+      const httpOk = typeof result.statusCode === 'number' && result.statusCode >= 200 && result.statusCode < 300;
+
+      let completedPayload = null;
+      if (httpOk && result.hydratePayloadFromUser === true) {
+        completedPayload = await buildSimulationForkJobResultPayload(job);
+      }
+      if (httpOk && !completedPayload?.results && result.payload?.results) {
+        completedPayload = result.payload;
+      }
+
+      const hasSimulationResults = !!(completedPayload && completedPayload.results);
+
+      if (httpOk && hasSimulationResults) {
         simulationOrchestrationLog('job_finished', { jobId: String(jobId), jobType, outcome: 'simulation_ok' });
-        await markJobCompleted(result.payload);
+        await markJobCompleted(completedPayload);
       } else {
         const errMsg =
           result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`;
@@ -1277,19 +1318,45 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
       }
     }
   } catch (error) {
-    simulationOrchestrationLog('job_failed', {
-      jobId: String(jobId),
-      jobType,
-      outcome: 'exception',
-      error: error?.message || String(error),
-    });
-    console.error('[simulation-job] error', error);
-    try {
-      await markJobFailed(error);
-    } catch (persistErr) {
-      console.error(`[simulation-job] failed to persist job failure job=${String(jobId)}`, persistErr);
+    const errText = error?.message || String(error);
+    let ipcMissRecovered = false;
+
+    if (
+      jobType === 'simulation_run' &&
+      errText.includes('Child process exited without result')
+    ) {
+      const hydrated = await buildSimulationForkJobResultPayload(job);
+      if (hydrated?.results) {
+        ipcMissRecovered = true;
+        simulationOrchestrationLog('job_recovered_ipc_miss', {
+          jobId: String(jobId),
+          jobType,
+          note: 'Child exited cleanly but IPC missing; hydrated from User.lastSimulationResult.',
+        });
+        try {
+          await markJobCompleted(hydrated);
+        } catch (recErr) {
+          ipcMissRecovered = false;
+          console.error('[simulation-job] recovery persist failed job=%s', String(jobId), recErr);
+        }
+      }
     }
-    logControllerError('Simulation async job failed', error, { jobId: String(jobId) });
+
+    if (!ipcMissRecovered) {
+      simulationOrchestrationLog('job_failed', {
+        jobId: String(jobId),
+        jobType,
+        outcome: 'exception',
+        error: errText,
+      });
+      console.error('[simulation-job] error', error);
+      try {
+        await markJobFailed(error);
+      } catch (persistErr) {
+        console.error(`[simulation-job] failed to persist job failure job=${String(jobId)}`, persistErr);
+      }
+      logControllerError('Simulation async job failed', error, { jobId: String(jobId) });
+    }
   } finally {
     try {
       const row = await SimulationJob.findOne({ _id: jobId }).select({ status: 1 }).lean();
