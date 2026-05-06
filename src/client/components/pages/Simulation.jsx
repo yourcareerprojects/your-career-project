@@ -1051,14 +1051,16 @@ const Simulation = () => {
 
       const token = localStorage.getItem('token');
       const jobId = startData.jobId;
-      const pollDeadlineMs = Date.now() + (5 * 60 * 1000);
+      const pollDeadlineMs = Date.now() + (10 * 60 * 1000);
       let data = null;
 
       while (Date.now() < pollDeadlineMs) {
+        const pollTs = Date.now();
         const statusRes = await fetch(
-          `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/status?lang=${encodeURIComponent(requestLang)}`,
+          `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/status?lang=${encodeURIComponent(requestLang)}&_ts=${pollTs}`,
           {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
           }
         );
         const statusData = await statusRes.json();
@@ -1079,9 +1081,10 @@ const Simulation = () => {
         }
         if (jobStatus === 'completed') {
           const resultRes = await fetch(
-            `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}`,
+            `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
             {
-              headers: { Authorization: `Bearer ${token}` }
+              headers: { Authorization: `Bearer ${token}` },
+              cache: 'no-store',
             }
           );
           data = await resultRes.json();

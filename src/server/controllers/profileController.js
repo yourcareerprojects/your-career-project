@@ -1575,6 +1575,12 @@ exports.startSimulation = async (req, res) => {
 
 exports.getSimulationJobStatus = async (req, res) => {
   try {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Surrogate-Control': 'no-store',
+    });
     const userId = getAuthUserId(req);
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -1594,6 +1600,12 @@ exports.getSimulationJobStatus = async (req, res) => {
 
 exports.getSimulationJobResult = async (req, res) => {
   try {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Surrogate-Control': 'no-store',
+    });
     const userId = getAuthUserId(req);
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
