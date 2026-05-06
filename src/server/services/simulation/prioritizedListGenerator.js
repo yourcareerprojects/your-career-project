@@ -308,6 +308,9 @@ async function computePairwiseSimilarityPercentile(steps, embedMap, percentile) 
 async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options = {}) {
   const careerGoal = userProfile && userProfile.careerGoal ? String(userProfile.careerGoal) : '';
   const careerGoalLower = careerGoal.toLowerCase();
+  const excludeTitleMatchingCareerGoal =
+    typeof careerGoalLower === 'string' &&
+    careerGoalLower.trim().length >= MIN_CAREER_GOAL_CHARS_FOR_TITLE_SUBSTRING_FILTER;
 
   const poolSize =
     typeof options.nextMmrCandidatePoolSize === 'number' && options.nextMmrCandidatePoolSize > 0
