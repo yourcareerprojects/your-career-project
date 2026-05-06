@@ -103,6 +103,7 @@ const Simulation = () => {
   
   // State for simulation
   const [simLoading, setSimLoading] = useState(false);
+  const [simulationJobState, setSimulationJobState] = useState('idle'); // idle | queued | running
   const [simResults, setSimResults] = useState(null);
   const [loadingLast, setLoadingLast] = useState(true);
   const [backendGoal, setBackendGoal] = useState('');
@@ -1019,6 +1020,7 @@ const Simulation = () => {
     }
 
     setSimLoading(true);
+    setSimulationJobState('queued');
     setSimResults(null);
     setSimError('');
     setHasUnsavedChanges(false);
@@ -1029,7 +1031,7 @@ const Simulation = () => {
     clearSimulationFromStorage();
     
     try {
-      const res = await fetch(`/api/profile/simulation?lang=${encodeURIComponent(requestLang)}`, {
+      const startRes = await fetch(`/api/profile/simulation?lang=${encodeURIComponent(requestLang)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1037,8 +1039,82 @@ const Simulation = () => {
         },
         body: JSON.stringify({})
       });
-      const data = await res.json();
-      if (res.ok && data && data.results) {
+      const startData = await startRes.json();
+      if (!startRes.ok || !startData?.jobId) {
+        const startErrorMsg =
+          startData?.message ||
+          startData?.error ||
+          t('simulation.messages.failedTryAgain', { ns: 'dashboard' });
+        setSimError(startErrorMsg);
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      const jobId = startData.jobId;
+      const pollDeadlineMs = Date.now() + (5 * 60 * 1000);
+      let data = null;
+
+      while (Date.now() < pollDeadlineMs) {
+        const statusRes = await fetch(
+          `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/status?lang=${encodeURIComponent(requestLang)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+        const statusData = await statusRes.json();
+        if (!statusRes.ok) {
+          setSimError(
+            statusData?.message ||
+            statusData?.error ||
+            t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
+          );
+          return;
+        }
+
+        const jobStatus = statusData?.job?.status;
+        if (jobStatus === 'queued' || jobStatus === 'pending') {
+          setSimulationJobState('queued');
+        } else if (jobStatus === 'running') {
+          setSimulationJobState('running');
+        }
+        if (jobStatus === 'completed') {
+          const resultRes = await fetch(
+            `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            }
+          );
+          data = await resultRes.json();
+          if (!resultRes.ok) {
+            setSimError(
+              data?.message ||
+              data?.error ||
+              t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
+            );
+            return;
+          }
+          break;
+        }
+
+        if (jobStatus === 'failed') {
+          setSimError(
+            statusData?.job?.error ||
+            t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
+          );
+          return;
+        }
+
+        // Keep polling while pending/running.
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      if (!data) {
+        setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
+        return;
+      }
+
+      if (data && data.results) {
         invalidateLastSimulationQuery();
         const careerGoalFromProfile = localizeAiText(data.careerGoal || '');
         setSimResults(data.results);
@@ -1075,7 +1151,7 @@ const Simulation = () => {
         const errorMsg =
           (data && data.message) ||
           (data && data.error) ||
-          (res.status === 403
+          (startRes.status === 403
             ? t('simulation.messages.completeProfileToRun', {
                 ns: 'dashboard',
                 min: MIN_PROFILE_COMPLETION_REQUIRED,
@@ -1086,6 +1162,7 @@ const Simulation = () => {
     } catch (err) {
       setSimError(t('simulation.messages.failedCheckConnection', { ns: 'dashboard' }));
     } finally {
+      setSimulationJobState('idle');
       setSimLoading(false);
     }
   };
@@ -2203,10 +2280,26 @@ const Simulation = () => {
               {/* Loading State */}
               {loadingLast || simLoading ? (
                 <Box sx={{ textAlign: 'center', mt: 6 }}>
-                  <CircularProgress />
+                  <CircularProgress size={30} />
+                  {simLoading && (
+                    <Box sx={{ maxWidth: 440, mx: 'auto', mt: 2 }}>
+                      <LinearProgress
+                        variant="indeterminate"
+                        sx={{
+                          height: 6,
+                          borderRadius: 999,
+                          mb: 1.25,
+                        }}
+                      />
+                    </Box>
+                  )}
                   {simLoading && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      {t('simulation.loadingUpdating', { ns: 'dashboard' })}
+                      {simulationJobState === 'queued'
+                        ? t('simulation.loadingQueued', { ns: 'dashboard' })
+                        : simulationJobState === 'running'
+                          ? t('simulation.loadingRunning', { ns: 'dashboard' })
+                          : t('simulation.loadingUpdating', { ns: 'dashboard' })}
                     </Typography>
                   )}
                 </Box>

@@ -70,6 +70,8 @@
     },
     "unsavedWarning": "Du hast ungespeicherte Simulationsergebnisse. Speichere sie am besten, bevor du eine neue Simulation startest.",
     "loadingUpdating": "Berufssimulation wird aktualisiert...",
+    "loadingQueued": "Simulation in Warteschlange. Worker wird vorbereitet...",
+    "loadingRunning": "Simulation wird ausgeführt. Empfehlungen werden erstellt...",
     "loadedMeta": {
       "savedOn": "Gespeichert am {{date}}"
     },

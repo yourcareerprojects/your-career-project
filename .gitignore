@@ -23,7 +23,6 @@ yarn-error.log*
 dist/
 build/
 public/dist/
-public/
 out/
 coverage/
 

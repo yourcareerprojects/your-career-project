@@ -27,6 +27,7 @@
     "build:responsibilities:force": "node scripts/buildKeyResponsibilities.js --force",
     "build:responsibilities:dry": "node scripts/buildKeyResponsibilities.js --dry-run",
     "build:responsibilities:heuristic": "node scripts/buildKeyResponsibilities.js --heuristic",
+    "worker:simulation-jobs": "node scripts/simulationJobWorker.js",
     "rebuild:role-embeddings": "node scripts/rebuildRoleEmbeddings.js",
     "rebuild:role-embeddings:dry": "node scripts/rebuildRoleEmbeddings.js --dry-run",
     "migrate:careerpath-translations": "node scripts/migrateCareerPathTranslations.js",

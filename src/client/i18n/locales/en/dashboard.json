@@ -70,6 +70,8 @@
     },
     "unsavedWarning": "You have unsaved simulation results. Consider saving them before starting a new simulation.",
     "loadingUpdating": "Updating the career simulation result...",
+    "loadingQueued": "Simulation queued. Preparing worker...",
+    "loadingRunning": "Simulation running. Generating recommendations...",
     "loadedMeta": {
       "savedOn": "Saved on {{date}}"
     },

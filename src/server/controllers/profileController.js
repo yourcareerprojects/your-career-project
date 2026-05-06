@@ -10,10 +10,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const SimulationPrioritizedItem = require('../models/SimulationPrioritizedItem');
+const SimulationJob = require('../models/SimulationJob');
+const { createSimulationJob } = require('../services/simulationJobService');
 const { enrichCareerPathWithHybridScores } = require('../services/scoring/careerPathScorer');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
 const { generatePrioritizedListsPhase2 } = require('../services/simulation/prioritizedListGenerator');
+const { EMBEDDING_DIMS } = require('../services/embedding/embeddingService');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
 const {
   ensureUserIdentityEmbeddingCachedByUserId,
@@ -1238,6 +1241,69 @@ exports.runSimulation = async (req, res) => {
 
     const allCareerPaths = picked;
 
+    // Fail fast with actionable errors when production data wasn't seeded/migrated.
+    // Without stored role vectors, `scoreNextRole` / `scoreOutOfTheBox` return null for every role,
+    // which cascades into empty `nextSteps` / `outsideTheBox`.
+    const hasRoleIdentityText = (cp) => {
+      const text = cp?.roleIdentity?.role_identity_text;
+      return typeof text === 'string' && text.trim().length > 0;
+    };
+    const hasRequiredRoleVectors = (cp) => {
+      const rv = cp?.roleVectors;
+      if (!rv) return false;
+
+      // `getStructuredVectorForMode` checks `dims !== EMBEDDING_DIMS` and returns null.
+      const dims = (typeof rv.dims === 'number' ? rv.dims : EMBEDDING_DIMS);
+      if (dims !== EMBEDDING_DIMS) return false;
+
+      const idOk = Array.isArray(rv.identity_vector) && rv.identity_vector.length === EMBEDDING_DIMS;
+      if (!idOk) return false;
+
+      const structuredKeys = [
+        'structured_vector_occupation_group',
+        'structured_vector_skill_domains',
+        'structured_vector_responsibilities',
+        'structured_vector_required_skills',
+        'structured_vector_optional_skills',
+      ];
+      const structuredOk = structuredKeys.every(
+        (k) => Array.isArray(rv[k]) && rv[k].length === EMBEDDING_DIMS
+      );
+      return structuredOk;
+    };
+
+    const careerPathCount = allCareerPaths.length;
+    const roleIdentityReadyCount = allCareerPaths.filter(hasRoleIdentityText).length;
+    const roleVectorsReadyCount = allCareerPaths.filter(hasRequiredRoleVectors).length;
+
+    if (careerPathCount === 0) {
+      return res.status(503).json({
+        success: false,
+        message: 'Simulation has no `CareerPath` data to score in this environment.',
+        hint:
+          'Run an ESCO sync to populate the DB first. Example: `node scripts/syncEscoOccupations.js --limit 5000 --pageSize 200 --enrich`.',
+        diagnostics: { careerPathCount },
+      });
+    }
+
+    if (roleVectorsReadyCount === 0) {
+      return res.status(503).json({
+        success: false,
+        message: 'Simulation cannot generate career recommendations because `CareerPath` role embeddings are missing.',
+        hint: [
+          '1) Build role identity texts (required by embedding scripts): `node scripts/buildRoleIdentityTexts.js --changed-only`.',
+          '2) Rebuild role vectors: `npm run rebuild:role-embeddings`.',
+          'If you recently deployed and changed embedding dimensions, run the scripts with --force.',
+        ].join(' '),
+        diagnostics: {
+          careerPathCount,
+          roleIdentityReadyCount,
+          roleVectorsReadyCount,
+          expectedEmbeddingDims: EMBEDDING_DIMS,
+        },
+      });
+    }
+
     const userProfileForScoring = {
       userSkills,
       userSkillDomains,
@@ -1404,6 +1470,154 @@ exports.runSimulation = async (req, res) => {
     });
   }
 };
+
+function getAuthUserId(reqLike) {
+  return reqLike?.user?.id || reqLike?.user?.userId || null;
+}
+
+async function runSimulationViaController(userId, language = 'en') {
+  const reqLike = {
+    user: { id: userId, userId },
+    body: {},
+    language,
+    method: 'POST',
+    path: '/api/profile/simulation',
+  };
+
+  return new Promise((resolve) => {
+    const resLike = {
+      statusCode: 200,
+      headersSent: false,
+      setTimeout: () => {},
+      status(code) {
+        this.statusCode = Number(code) || 500;
+        return this;
+      },
+      json(payload) {
+        resolve({ statusCode: this.statusCode || 200, payload });
+        return this;
+      },
+    };
+
+    exports.runSimulation(reqLike, resLike).catch((err) => {
+      resolve({
+        statusCode: 500,
+        payload: { success: false, message: 'Simulation failed.', error: err?.message || String(err) },
+      });
+    });
+  });
+}
+
+async function processOneSimulationJob({ onlyJobId = null } = {}) {
+  const claimFilter = onlyJobId
+    ? { _id: onlyJobId, status: { $in: ['queued', 'pending'] } }
+    : { status: { $in: ['queued', 'pending'] } };
+
+  const job = await SimulationJob.findOneAndUpdate(
+    claimFilter,
+    { $set: { status: 'running', startedAt: new Date(), progress: 10, error: '' } },
+    { sort: { createdAt: 1 }, new: true }
+  );
+
+  if (!job) return null;
+
+  try {
+    const result = await runSimulationViaController(String(job.userId), job.language || 'en');
+    if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.results) {
+      job.status = 'completed';
+      job.progress = 100;
+      job.result = result.payload;
+      job.completedAt = new Date();
+      job.error = '';
+    } else {
+      job.status = 'failed';
+      job.progress = 100;
+      job.completedAt = new Date();
+      job.error = result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`;
+      job.result = result.payload || null;
+    }
+  } catch (err) {
+    job.status = 'failed';
+    job.progress = 100;
+    job.completedAt = new Date();
+    job.error = err?.message || String(err);
+    job.result = null;
+    logControllerError('Simulation async job failed', err, { jobId: String(job._id) });
+  }
+
+  await job.save();
+  return job;
+}
+
+exports.startSimulation = async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const language = req.language || 'en';
+    const job = await createSimulationJob({
+      userId,
+      language,
+      payload: req.body || {},
+    });
+
+    return res.json({
+      status: 'queued',
+      jobId: String(job._id),
+    });
+  } catch (err) {
+    logControllerError('Start simulation job error', err);
+    return res.status(500).json({ success: false, message: 'Failed to start simulation job.', error: err.message });
+  }
+};
+
+exports.getSimulationJobStatus = async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const job = await SimulationJob.findOne({ _id: req.params.jobId, userId })
+      .select({ status: 1, progress: 1, createdAt: 1, startedAt: 1, completedAt: 1, error: 1 })
+      .lean();
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Simulation job not found.' });
+    }
+    return res.json({ success: true, job });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch simulation job status.', error: err.message });
+  }
+};
+
+exports.getSimulationJobResult = async (req, res) => {
+  try {
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const job = await SimulationJob.findOne({ _id: req.params.jobId, userId }).lean();
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Simulation job not found.' });
+    }
+    if (job.status !== 'completed') {
+      return res.status(409).json({
+        success: false,
+        message: 'Simulation job is not completed yet.',
+        status: job.status,
+        error: job.error || '',
+      });
+    }
+    return res.json(job.result || { success: false, message: 'Simulation result payload missing.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch simulation job result.', error: err.message });
+  }
+};
+
+exports.processOneSimulationJob = processOneSimulationJob;
 
 // New endpoint: get last simulation result for logged-in user
 exports.getLastSimulationResult = async (req, res) => {

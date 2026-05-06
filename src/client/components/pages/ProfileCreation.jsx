@@ -5,8 +5,25 @@ import { Box, Typography, Paper, Alert, Button } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import DocumentUploadForm from '../profile/DocumentUploadForm';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
-import { invalidateProfileCompletionQuery } from '../../hooks/useProfileQueries';
+import { invalidateFullProfileQuery, invalidateProfileCompletionQuery } from '../../hooks/useProfileQueries';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+
+/** Ensures profile PUTs surface failures instead of navigating away with stale React Query cache. */
+async function throwIfSaveNotOk(res) {
+  if (res.ok) return;
+  let message = `Request failed (${res.status})`;
+  try {
+    const data = await res.json();
+    const fromServer =
+      (typeof data?.message === 'string' && data.message.trim()) ||
+      (typeof data?.error === 'string' && data.error.trim()) ||
+      (Array.isArray(data?.errors) && data.errors[0] && String(data.errors[0].msg || '').trim());
+    if (fromServer) message = fromServer;
+  } catch (_) {
+    /* ignore JSON parse errors */
+  }
+  throw new Error(message);
+}
 
 const ProfileCreation = () => {
   const { t } = useTranslation('onboarding');
@@ -104,7 +121,8 @@ const ProfileCreation = () => {
       const currentProfileRes = await fetch(`/api/profile?${getProfileApiLangQuery()}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      const currentProfileData = currentProfileRes.ok ? await currentProfileRes.json() : {};
+      await throwIfSaveNotOk(currentProfileRes);
+      const currentProfileData = await currentProfileRes.json();
       const existingStructured = currentProfileData?.profile?.structuredUserInfo || {};
       const existingIdentity = currentProfileData?.profile?.userIdentity || {};
       const existingSeniority = currentProfileData?.profile?.seniority || {};
@@ -115,7 +133,7 @@ const ProfileCreation = () => {
       }
 
       if (profileData?.name?.trim()) {
-        await fetch(`/api/profile/name?${getProfileApiLangQuery()}`, {
+        const nameRes = await fetch(`/api/profile/name?${getProfileApiLangQuery()}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -123,9 +141,10 @@ const ProfileCreation = () => {
           },
           body: JSON.stringify({ name: profileData.name.trim() })
         });
+        await throwIfSaveNotOk(nameRes);
       }
 
-      await fetch(`/api/profile/structured-user-info?${getProfileApiLangQuery()}`, {
+      const structuredRes = await fetch(`/api/profile/structured-user-info?${getProfileApiLangQuery()}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -183,8 +202,9 @@ const ProfileCreation = () => {
             : (Array.isArray(structuredUserInfo.domains) ? structuredUserInfo.domains.filter(Boolean) : [])
         })
       });
+      await throwIfSaveNotOk(structuredRes);
 
-      await fetch(`/api/profile/user-identity?${getProfileApiLangQuery()}`, {
+      const identityRes = await fetch(`/api/profile/user-identity?${getProfileApiLangQuery()}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -201,6 +221,7 @@ const ProfileCreation = () => {
           workingLifeAchievement: reviewMode === 'merge' ? (userIdentity.workingLifeAchievement || existingIdentity.workingLifeAchievement || '') : (userIdentity.workingLifeAchievement || '')
         })
       });
+      await throwIfSaveNotOk(identityRes);
 
       if (
         extractedSeniority.currentStatus ||
@@ -208,7 +229,7 @@ const ProfileCreation = () => {
         extractedSeniority.highestDegree ||
         extractedSeniority.mostSeniorWorkExperience
       ) {
-        await fetch(`/api/profile/seniority?${getProfileApiLangQuery()}`, {
+        const seniorityRes = await fetch(`/api/profile/seniority?${getProfileApiLangQuery()}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -229,12 +250,15 @@ const ProfileCreation = () => {
               : (extractedSeniority.mostSeniorWorkExperience || '')
           })
         });
+        await throwIfSaveNotOk(seniorityRes);
       }
       setProfileExists(true);
       invalidateProfileCompletionQuery();
+      await invalidateFullProfileQuery();
       navigate('/profile');
     } catch (err) {
-      setError(t('profileCreation.errors.saveFailed'));
+      const detail = err && typeof err.message === 'string' ? err.message : '';
+      setError(detail ? `${t('profileCreation.errors.saveFailed')} ${detail}` : t('profileCreation.errors.saveFailed'));
     } finally {
       setLoading(false);
     }
