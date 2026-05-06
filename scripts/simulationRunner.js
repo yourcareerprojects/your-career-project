@@ -26,6 +26,44 @@ function childLog(event, payload) {
   );
 }
 
+/**
+ * Cooperative memory guard for the child process (where simulation heap grows).
+ * Aborts the in-flight run before V8 SIGABRT on small instances.
+ */
+function startSimulationHeapWatchdog(abortController) {
+  const limitMb = Number(process.env.SIMULATION_HEAP_LIMIT_MB || '450');
+  const intervalMs = Number(process.env.SIMULATION_HEAP_CHECK_INTERVAL_MS || '10000');
+  if (!Number.isFinite(limitMb) || limitMb <= 0) {
+    return () => {};
+  }
+  if (!Number.isFinite(intervalMs) || intervalMs < 250) {
+    return () => {};
+  }
+
+  const iv = setInterval(() => {
+    const heapMb = process.memoryUsage().heapUsed / (1024 * 1024);
+    if (heapMb <= limitMb) return;
+    childLog('memory_watchdog_triggered', {
+      heapUsedMb: Math.round(heapMb * 100) / 100,
+      heapLimitConfiguredMb: limitMb,
+      checkIntervalMs: intervalMs,
+    });
+    console.warn(
+      `[simulation-runner-child] MEMORY_LIMIT exceeded heapUsedMb=${Math.round(heapMb * 100) / 100} limitMb=${limitMb}`
+    );
+    try {
+      abortController.abort();
+    } catch (_) {
+      /* noop */
+    }
+    clearInterval(iv);
+  }, intervalMs);
+
+  return () => {
+    clearInterval(iv);
+  };
+}
+
 async function sendExit(payload, exitCode) {
   if (typeof process.send === 'function') {
     try {
@@ -88,38 +126,47 @@ async function main() {
       language: job.language || 'en',
     };
 
-    const result = await new Promise((resolve, reject) => {
-      let settled = false;
-      const resLike = {
-        statusCode: 200,
-        setTimeout() {
-          /* child has no Express server timeout semantics */
-        },
-        status(code) {
-          this.statusCode = Number(code) || 500;
-          return this;
-        },
-        json(obj) {
-          if (settled) return this;
-          settled = true;
-          resolve({
-            statusCode: this.statusCode || 200,
-            payload: obj,
-          });
-          return this;
-        },
-      };
+    const heapAc = new AbortController();
+    const stopHeapWatchdog = startSimulationHeapWatchdog(heapAc);
 
-      executeCareerSimulation(reqLike, resLike, {
-        jobId: String(jobId),
-        context: 'fork-child',
-      }).catch((err) => {
-        if (!settled) {
-          settled = true;
-          reject(err);
-        }
+    let result;
+    try {
+      result = await new Promise((resolve, reject) => {
+        let settled = false;
+        const resLike = {
+          statusCode: 200,
+          setTimeout() {
+            /* child has no Express server timeout semantics */
+          },
+          status(code) {
+            this.statusCode = Number(code) || 500;
+            return this;
+          },
+          json(obj) {
+            if (settled) return this;
+            settled = true;
+            resolve({
+              statusCode: this.statusCode || 200,
+              payload: obj,
+            });
+            return this;
+          },
+        };
+
+        executeCareerSimulation(reqLike, resLike, {
+          jobId: String(jobId),
+          context: 'fork-child',
+          abortSignal: heapAc.signal,
+        }).catch((err) => {
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        });
       });
-    });
+    } finally {
+      stopHeapWatchdog();
+    }
 
     childLog('simulation_end', { jobId: String(jobId), statusCode: result.statusCode });
 

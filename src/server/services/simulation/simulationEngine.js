@@ -6,7 +6,10 @@
  */
 
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const User = require('../../models/User');
+const CareerPath = require('../../models/CareerPath');
+const { getSimulationRoleVectorCache } = require('./simulationVectorCache');
 const {
   ensureDocumentEnrichmentRefreshJobQueued,
 } = require('../simulationJobService');
@@ -52,7 +55,10 @@ async function executeCareerSimulation(reqLike, resLike, options = {}) {
   const deps = resolveDeps(options.deps);
   logStructured('[simulation-engine]', { jobId, event: 'simulation_start', context: ctx });
   try {
-    await runCareerSimulationImpl(reqLike, resLike, deps, { isForkChild });
+    await runCareerSimulationImpl(reqLike, resLike, deps, {
+      isForkChild,
+      abortSignal: options.abortSignal || null,
+    });
     logStructured('[simulation-engine]', { jobId, event: 'simulation_invoke_completed', context: ctx });
   } catch (err) {
     logStructured('[simulation-engine]', {
@@ -246,9 +252,9 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     // Fetch cached career paths.
     // Data quality + relevance: first try a targeted pull using normalized requiredSkillKeys.
     const escoService = require('../escoService');
-    const targetedDefault = runtimeOpts.isForkChild ? 500 : 900;
-    const fallbackDefault = runtimeOpts.isForkChild ? 700 : 1200;
-    const minPoolDefault = runtimeOpts.isForkChild ? 280 : 350;
+    const targetedDefault = runtimeOpts.isForkChild ? 350 : 900;
+    const fallbackDefault = runtimeOpts.isForkChild ? 500 : 1200;
+    const minPoolDefault = runtimeOpts.isForkChild ? 240 : 350;
     const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, targetedDefault);
     const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, fallbackDefault);
     const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, minPoolDefault);
@@ -257,7 +263,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const picked = [];
     const seen = new Set();
 
-    const simulationCareerPathProjection = {
+    const simulationCareerPathMetaProjection = {
       _id: 1,
       escoId: 1,
       title: 1,
@@ -271,13 +277,17 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       skillDomains: 1,
       skillModel: 1,
       roleIdentity: 1,
+    };
+
+    const simulationCareerPathVectorProjection = {
+      ...simulationCareerPathMetaProjection,
       roleVectors: 1,
     };
 
     if (userSkillKeys.length > 0) {
       const skillMatched = await escoService.getCachedCareerPaths(
         { requiredSkillKeys: { $in: userSkillKeys } },
-        { limit: TARGETED_PATH_LIMIT, projection: simulationCareerPathProjection }
+        { limit: TARGETED_PATH_LIMIT, projection: simulationCareerPathMetaProjection }
       );
       for (const cp of skillMatched) {
         const id = cp.escoId || cp._id;
@@ -291,7 +301,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     if (picked.length < MIN_CANDIDATE_POOL) {
       const extra = await escoService.getCachedCareerPaths(
         {},
-        { limit: FALLBACK_PATH_LIMIT, projection: simulationCareerPathProjection }
+        { limit: FALLBACK_PATH_LIMIT, projection: simulationCareerPathMetaProjection }
       );
       for (const cp of extra) {
         const id = cp.escoId || cp._id;
@@ -301,8 +311,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         if (picked.length >= FALLBACK_PATH_LIMIT) break;
       }
     }
-
-    const allCareerPaths = picked;
 
     // Fail fast with actionable errors when production data wasn't seeded/migrated.
     // Without stored role vectors, `scoreNextRole` / `scoreOutOfTheBox` return null for every role,
@@ -335,9 +343,22 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       return structuredOk;
     };
 
-    const careerPathCount = allCareerPaths.length;
-    const roleIdentityReadyCount = allCareerPaths.filter(hasRoleIdentityText).length;
-    const roleVectorsReadyCount = allCareerPaths.filter(hasRequiredRoleVectors).length;
+    const careerPathCount = picked.length;
+    const roleIdentityReadyCount = picked.filter(hasRoleIdentityText).length;
+    let roleVectorsProbe = null;
+    if (picked.length > 0) {
+      const probeIdSample = picked
+        .slice(0, Math.min(picked.length, 96))
+        .map((p) => p._id)
+        .filter(Boolean);
+      roleVectorsProbe = await CareerPath.findOne({
+        _id: { $in: probeIdSample },
+        roleVectors: { $exists: true, $ne: null },
+      })
+        .select({ roleVectors: 1 })
+        .lean();
+    }
+    const roleVectorsReadyCount = roleVectorsProbe && hasRequiredRoleVectors(roleVectorsProbe) ? careerPathCount : 0;
 
     if (careerPathCount === 0) {
       return resLike.status(503).json({
@@ -397,18 +418,158 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     console.time('STEP_3_scoring');
     step3Started = true;
-    const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, 200);
-    const scoredPaths = [];
-    for (let i = 0; i < allCareerPaths.length; i += SCORE_CHUNK_SIZE) {
-      const chunk = allCareerPaths.slice(i, i + SCORE_CHUNK_SIZE);
-      const chunkResults = await Promise.all(
-        chunk.map(async (cp) => {
-          const scored = await enrichCareerPathWithHybridScores(userProfileForHybrid, cp);
-          return { ...cp, ...scored };
-        })
-      );
-      scoredPaths.push(...chunkResults);
+    const scoreChunkDefault = runtimeOpts.isForkChild ? 32 : 200;
+    const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, scoreChunkDefault);
+
+    const abortSignal = runtimeOpts.abortSignal || null;
+    function assertNotAborted() {
+      if (abortSignal && abortSignal.aborted) {
+        const e = new Error('memory_limit_exceeded');
+        e.code = 'MEMORY_LIMIT_EXCEEDED';
+        throw e;
+      }
     }
+
+    /** Subset of CareerPath fields needed after scoring (no roleVectors / hybrid_vector). */
+    const LEAN_SCORED_CP_KEYS = [
+      '_id',
+      'escoId',
+      'title',
+      'description',
+      'requiredSkills',
+      'requiredSkillKeys',
+      'altTitles',
+      'hiddenTitles',
+      'seniority',
+      'keyResponsibilities',
+      'skillDomains',
+      'skillModel',
+      'roleIdentity',
+    ];
+
+    function buildLeanScoredCareerPath(cpDoc, scored) {
+      const lean = {};
+      for (let ki = 0; ki < LEAN_SCORED_CP_KEYS.length; ki += 1) {
+        const k = LEAN_SCORED_CP_KEYS[ki];
+        if (Object.prototype.hasOwnProperty.call(cpDoc, k)) {
+          lean[k] = cpDoc[k];
+        }
+      }
+      if (scored && typeof scored === 'object') {
+        for (const [k, v] of Object.entries(scored)) {
+          if (k === 'roleVectors' || k === 'hybrid_vector') continue;
+          lean[k] = v;
+        }
+      }
+      delete lean.roleVectors;
+      delete lean.hybrid_vector;
+      return lean;
+    }
+
+    const vectorCache = getSimulationRoleVectorCache();
+    /** Per-run embeddings + vector dedup across phase2 hydrate calls */
+    const vectorRunDedup = new Map();
+    const metaById = new Map(picked.map((p) => [String(p._id), p]));
+    const pathIds = picked.map((p) => p._id).filter(Boolean);
+
+    async function fetchRoleVectorsMapForIds(rawIds) {
+      const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
+      const out = new Map();
+      const needQuery = [];
+
+      for (let ui = 0; ui < unique.length; ui += 1) {
+        const sid = unique[ui];
+        if (vectorRunDedup.has(sid)) {
+          out.set(sid, vectorRunDedup.get(sid));
+          continue;
+        }
+        const cached = vectorCache.get(sid);
+        if (cached !== undefined) {
+          vectorRunDedup.set(sid, cached);
+          out.set(sid, cached);
+          continue;
+        }
+        needQuery.push(sid);
+      }
+
+      if (needQuery.length > 0) {
+        const objectIds = [];
+        for (let ni = 0; ni < needQuery.length; ni += 1) {
+          try {
+            objectIds.push(new mongoose.Types.ObjectId(needQuery[ni]));
+          } catch {
+            /* invalid id — leave off out until merge */
+          }
+        }
+        if (objectIds.length > 0) {
+          const docs = await CareerPath.find({ _id: { $in: objectIds } })
+            .select({ _id: 1, roleVectors: 1 })
+            .lean();
+          const foundDoc = new Map(docs.map((d) => [String(d._id), d]));
+          for (let qi = 0; qi < needQuery.length; qi += 1) {
+            const sid = needQuery[qi];
+            const d = foundDoc.get(sid);
+            const rv = d ? d.roleVectors : undefined;
+            if (rv !== undefined && rv !== null) {
+              vectorCache.set(sid, rv);
+            }
+            vectorRunDedup.set(sid, rv);
+            out.set(sid, rv);
+          }
+        } else {
+          for (let qi = 0; qi < needQuery.length; qi += 1) {
+            const sid = needQuery[qi];
+            vectorRunDedup.set(sid, undefined);
+            out.set(sid, undefined);
+          }
+        }
+      }
+
+      return out;
+    }
+
+    async function phase2RoleVectorLoader(ids) {
+      return fetchRoleVectorsMapForIds(ids);
+    }
+
+    const scoredPaths = [];
+    for (let i = 0; i < pathIds.length; i += SCORE_CHUNK_SIZE) {
+      assertNotAborted();
+      const sliceIds = pathIds.slice(i, i + SCORE_CHUNK_SIZE);
+      const vMap = await fetchRoleVectorsMapForIds(sliceIds);
+
+      const chunkRows = [];
+      for (let si = 0; si < sliceIds.length; si += 1) {
+        const id = sliceIds[si];
+        const sid = String(id);
+        const meta = metaById.get(sid);
+        if (!meta) continue;
+        if (!vMap.has(sid)) {
+          chunkRows.push({ ...meta });
+        } else {
+          chunkRows.push({ ...meta, roleVectors: vMap.get(sid) });
+        }
+      }
+
+      assertNotAborted();
+      /* eslint-disable no-await-in-loop */
+      const scoredChunk = await Promise.all(
+        chunkRows.map((cp) => enrichCareerPathWithHybridScores(userProfileForHybrid, cp))
+      );
+      /* eslint-enable no-await-in-loop */
+
+      for (let j = 0; j < chunkRows.length; j += 1) {
+        const cp = chunkRows[j];
+        const scored = scoredChunk[j];
+        const sid = cp && cp._id != null ? String(cp._id) : '';
+        if (sid && cp && cp.roleVectors != null) {
+          vectorCache.set(sid, cp.roleVectors);
+        }
+        scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
+      }
+    }
+
+    assertNotAborted();
 
     let prioritizedListsRaw;
     try {
@@ -434,7 +595,8 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         identityEmbeddingText: String(profile?.who_are_you?.identity_embedding_text || '').trim(),
       }, {
         nextK: 25,
-        outsideK: 25
+        outsideK: 25,
+        vectorLoader: phase2RoleVectorLoader,
       });
     } catch (phase2Err) {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
@@ -530,7 +692,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     console.log('[simulation-engine] simulation_completed', {
       userId: String(userId),
       totalMs,
-      candidatePoolSize: allCareerPaths.length,
+      candidatePoolSize: picked.length,
       scoreChunkSize: SCORE_CHUNK_SIZE,
       targetedLimit: TARGETED_PATH_LIMIT,
       fallbackLimit: FALLBACK_PATH_LIMIT,

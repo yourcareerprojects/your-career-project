@@ -316,9 +316,23 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   const sortedByHybridNext = [...nextEligibleRaw].sort(
     (a, b) => (b.hybridScoreNextRole ?? -Infinity) - (a.hybridScoreNextRole ?? -Infinity)
   );
-  const nextMmrPool = filterUniqueByTitle(sortedByHybridNext)
-    .slice(0, poolSize)
-    .map((p) => buildStepObject(p, { category: 'nextCareerRoles' }));
+  const nextPoolRaw = filterUniqueByTitle(sortedByHybridNext).slice(0, poolSize);
+
+  const vectorLoader =
+    typeof options.vectorLoader === 'function' ? options.vectorLoader : null;
+  if (vectorLoader && nextPoolRaw.length > 0) {
+    const needIds = nextPoolRaw.map((p) => p._id).filter(Boolean);
+    const loaded = await vectorLoader(needIds);
+    for (const p of nextPoolRaw) {
+      const k = String(p._id || '');
+      if (loaded.has(k)) {
+        const rv = loaded.get(k);
+        if (rv !== undefined) p.roleVectors = rv;
+      }
+    }
+  }
+
+  const nextMmrPool = nextPoolRaw.map((p) => buildStepObject(p, { category: 'nextCareerRoles' }));
 
   // Next roles: MMR on top-N HybridFinalNEXT pool (base relevance = hybrid final, not 6-dim blend)
   const nextDiverse = await rerankWithDiversity(nextMmrPool, {
@@ -401,6 +415,18 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   );
 
   const explorationCapped = explorationSorted.slice(0, explorationVectorCap);
+
+  if (vectorLoader && explorationCapped.length > 0) {
+    const needIds = explorationCapped.map(({ role }) => role._id).filter(Boolean);
+    const loaded = await vectorLoader(needIds);
+    for (const { role } of explorationCapped) {
+      const k = String(role._id || '');
+      if (loaded.has(k)) {
+        const rv = loaded.get(k);
+        if (rv !== undefined) role.roleVectors = rv;
+      }
+    }
+  }
 
   let explorationCandidates = explorationCapped.map(({ role, result }) => {
       const step = buildStepObject(role, { category: 'outsideTheBoxRoles' });
