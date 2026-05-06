@@ -1,5 +1,5 @@
 const { getEnglishField } = require('../../utils/i18nFields');
-const { mmrSelect, embedTextSafe, embedTextBatchSafe, buildCareerStepEmbeddingText, cosineSimilarity, weightedFusion, EMBEDDING_DIMS } = require('../embedding/embeddingService');
+const { mmrSelect, embedTextSafe, embedTextBatchSafe, buildCareerStepEmbeddingText, cosineSimilarity, EMBEDDING_DIMS } = require('../embedding/embeddingService');
 const { getEmbeddingForMatching, getHybridVectorForMode, getStructuredVectorForMode } = require('../embedding/roleVectorService');
 const {
   scoreOutOfTheBoxBatch,
@@ -156,18 +156,10 @@ async function precomputeStepEmbeddings(steps, mode) {
   const map = new Map();
   const needEmbed = [];
 
-  const wStructured = mode === 'OUT_OF_THE_BOX' ? 0.45 : 0.75;
-  const wIdentity = mode === 'OUT_OF_THE_BOX' ? 0.55 : 0.25;
-
   for (const step of steps) {
-    const vec = getStructuredVectorForMode(step, mode);
-    const rv = step.roleVectors || step;
-    const identityVec = rv.identity_vector;
-    const dims = rv.dims || EMBEDDING_DIMS;
-
-    if (vec && identityVec && Array.isArray(identityVec) && identityVec.length === dims) {
-      const hybrid = weightedFusion(vec, new Float32Array(identityVec), { w1: wStructured, w2: wIdentity });
-      if (hybrid) map.set(step, hybrid);
+    const vec = await getEmbeddingForStepWithMode(step, mode);
+    if (vec) {
+      map.set(step, vec);
     } else {
       const hybrid = step.roleVectors?.hybrid_vector || step.hybrid_vector;
       if (hybrid && Array.isArray(hybrid) && hybrid.length === EMBEDDING_DIMS) {

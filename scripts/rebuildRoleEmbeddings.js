@@ -20,6 +20,7 @@
  *     structured_vector_seniority: null (deprecated),
  *     identity_vector: number[],
  *     hybrid_vector: number[],
+ *     finalVectors: { default: number[], nextRole: number[], outOfTheBox: number[] },
  *     built_at: Date,
  *     dims: 3072
  *   }
@@ -96,6 +97,12 @@ async function main() {
           { 'roleVectors.dims': { $ne: EMBEDDING_DIMS } },
           { 'roleVectors.hybrid_vector': { $exists: false } },
           { 'roleVectors.hybrid_vector': { $size: 0 } },
+          { 'roleVectors.finalVectors.default': { $exists: false } },
+          { 'roleVectors.finalVectors.default': { $size: 0 } },
+          { 'roleVectors.finalVectors.nextRole': { $exists: false } },
+          { 'roleVectors.finalVectors.nextRole': { $size: 0 } },
+          { 'roleVectors.finalVectors.outOfTheBox': { $exists: false } },
+          { 'roleVectors.finalVectors.outOfTheBox': { $size: 0 } },
         ],
       };
 
@@ -160,6 +167,9 @@ async function main() {
           console.log(`\n--- Sample #${built} [${doc.title}] ---`);
           console.log(`  identity_vector: ${result.identity_vector.length} dims`);
           console.log(`  hybrid_vector:   ${result.hybrid_vector.length} dims`);
+          console.log(`  final.default:  ${result.finalVectors.default.length} dims`);
+          console.log(`  final.nextRole: ${result.finalVectors.nextRole.length} dims`);
+          console.log(`  final.ootb:     ${result.finalVectors.outOfTheBox.length} dims`);
         }
       } catch (err) {
         errors++;

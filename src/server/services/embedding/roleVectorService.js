@@ -6,8 +6,9 @@
  *     skill_domains → occupation_group → responsibilities → required_skills → optional_skills
  *   - identity_vector: embedding of role identity text
  *   - hybrid_vector: 0.6 * (NEXT_ROLE fusion of sub-vectors) + 0.4 * identity (legacy getEmbeddingForMatching)
+ *   - finalVectors: precomputed L2-normalized role vectors per mode for runtime dot-product scoring
  *
- * Weighted structured vectors (NEXT_ROLE vs OUT_OF_THE_BOX) are NOT stored; computed at scoring time.
+ * finalVectors are precomputed and stored during build. Runtime scoring should use these directly.
  *
  * Fully deterministic. No external calls.
  *
@@ -25,6 +26,11 @@ const {
 const STRUCTURED_WEIGHT = 0.6;
 const IDENTITY_WEIGHT = 0.4;
 const { EMBEDDING_DIMS } = require('./embeddingService');
+const MODE_TO_FINAL_VECTOR_KEY = {
+  DEFAULT: 'default',
+  NEXT_ROLE: 'nextRole',
+  OUT_OF_THE_BOX: 'outOfTheBox',
+};
 
 /** Fusion / embed order: skill domains, occupation group, key responsibilities, required skills, optional skills */
 const CATEGORY_ORDER = ['skill_domains', 'occupation_group', 'responsibilities', 'required_skills', 'optional_skills'];
@@ -39,6 +45,16 @@ const STRUCTURED_VECTOR_FIELD_BY_CATEGORY = {
 
 function structuredSubVectorKeysInOrder() {
   return CATEGORY_ORDER.map((k) => STRUCTURED_VECTOR_FIELD_BY_CATEGORY[k]);
+}
+
+const warnedMissingFinalVectors = new Set();
+
+function warnMissingPrecomputedFinalVectors(roleLike, mode) {
+  const id = String(roleLike?._id || roleLike?.escoId || roleLike?.title?.en || roleLike?.title || 'unknown');
+  const key = `${id}:${mode}`;
+  if (warnedMissingFinalVectors.has(key)) return;
+  warnedMissingFinalVectors.add(key);
+  console.warn(`Missing precomputed finalVectors (${mode})`);
 }
 
 /**
@@ -81,6 +97,11 @@ async function buildStructuredVectorFromCategories(doc, weights) {
  *   structured_vector_seniority: null,
  *   identity_vector: number[],
  *   hybrid_vector: number[],
+ *   finalVectors: {
+ *     default: number[],
+ *     nextRole: number[],
+ *     outOfTheBox: number[],
+ *   },
  *   built_at: Date,
  *   dims: number
  * } | null>} null if identity text is missing
@@ -110,6 +131,11 @@ async function buildRoleVectors(doc) {
       structured_vector_seniority: null,
       identity_vector: idArr,
       hybrid_vector: idArr,
+      finalVectors: {
+        default: idArr,
+        nextRole: idArr,
+        outOfTheBox: idArr,
+      },
       built_at: new Date(),
       dims,
     };
@@ -140,11 +166,19 @@ async function buildRoleVectors(doc) {
     w1: STRUCTURED_WEIGHT,
     w2: IDENTITY_WEIGHT,
   });
+  const nextRoleVec = weightedFusion(structuredVec, identityVec, { w1: 0.75, w2: 0.25 });
+  const outOfTheBoxVec = weightedFusion(structuredVec, identityVec, { w1: 0.45, w2: 0.55 });
+  if (!hybridVec || !nextRoleVec || !outOfTheBoxVec) return null;
 
   const out = {
     structured_vector_seniority: null,
     identity_vector: Array.from(identityVec),
     hybrid_vector: Array.from(hybridVec),
+    finalVectors: {
+      default: Array.from(hybridVec),
+      nextRole: Array.from(nextRoleVec),
+      outOfTheBox: Array.from(outOfTheBoxVec),
+    },
     built_at: new Date(),
     dims,
   };
@@ -180,18 +214,27 @@ async function getEmbeddingForMatching(step, fallbackEmbedFn) {
  * @returns {Promise<Float32Array>}
  */
 async function getHybridVectorForMode(step, mode, fallbackEmbedFn) {
-  const vec = getStructuredVectorForMode(step, mode);
-  const rv = step.roleVectors || step;
-  const identityVec = rv.identity_vector;
-  const dims = rv.dims || EMBEDDING_DIMS;
-
-  if (vec && identityVec && Array.isArray(identityVec) && identityVec.length === dims) {
-    const { wStructured, wIdentity } = mode === 'OUT_OF_THE_BOX'
-      ? { wStructured: 0.45, wIdentity: 0.55 }
-      : { wStructured: 0.75, wIdentity: 0.25 };
-    return weightedFusion(vec, new Float32Array(identityVec), { w1: wStructured, w2: wIdentity });
+  const precomputed = getPrecomputedFinalVector(step, mode);
+  if (precomputed) {
+    return precomputed;
   }
+  warnMissingPrecomputedFinalVectors(step, mode);
   return fallbackEmbedFn(step);
+}
+
+function getPrecomputedFinalVector(role, mode = 'DEFAULT') {
+  const rv = role?.roleVectors || role;
+  if (!rv || typeof rv !== 'object') return null;
+
+  const dims = rv.dims || EMBEDDING_DIMS;
+  if (dims !== EMBEDDING_DIMS) return null;
+
+  const finalKey = MODE_TO_FINAL_VECTOR_KEY[mode] || MODE_TO_FINAL_VECTOR_KEY.DEFAULT;
+  const vec = rv.finalVectors?.[finalKey];
+  if (Array.isArray(vec) && vec.length === dims) {
+    return new Float32Array(vec);
+  }
+  return null;
 }
 
 /**
@@ -258,6 +301,8 @@ module.exports = {
   buildStructuredVectorFromCategories,
   getEmbeddingForMatching,
   getHybridVectorForMode,
+  getPrecomputedFinalVector,
+  warnMissingPrecomputedFinalVectors,
   getStructuredVectorForMode,
   STRUCTURED_WEIGHT,
   IDENTITY_WEIGHT,

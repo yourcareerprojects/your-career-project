@@ -96,6 +96,12 @@ const RoleVectorsSchema = new mongoose.Schema({
   identity_vector: { type: [Number], default: null },
   // Weighted fusion: 0.6 * structured + 0.4 * identity, L2-normalized (legacy; mode-specific fusion at scoring)
   hybrid_vector: { type: [Number], default: null },
+  // Precomputed final vectors for runtime scoring (all L2-normalized, flat numeric arrays)
+  finalVectors: {
+    default: { type: [Number], default: null },
+    nextRole: { type: [Number], default: null },
+    outOfTheBox: { type: [Number], default: null },
+  },
   // When these vectors were last built
   built_at: { type: Date },
   // Embedding dimension (3072 for text-embedding-3-large)

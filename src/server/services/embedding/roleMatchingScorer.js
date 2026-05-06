@@ -5,7 +5,7 @@
  *   - scoreNextRole: conservative, skill-adjacent (NEXT_ROLE)
  *   - scoreOutOfTheBox: explorative, identity-adjacent (OUT_OF_THE_BOX)
  *
- * Each applies mode-specific hybrid fusion, cosine similarity, and seniority penalty.
+ * Each applies mode-specific precomputed hybrid vectors, dot-product similarity, and seniority penalty.
  * Deterministic scoring; user/role embedding API calls occur inside vector builders.
  *
  * EXPLORATION CONCEPT (OUT_OF_THE_BOX):
@@ -20,7 +20,7 @@
 
 const { cosineSimilarity, weightedFusion, EMBEDDING_DIMS } = require('./embeddingService');
 const { getEnglishField } = require('../../utils/i18nFields');
-const { getStructuredVectorForMode } = require('./roleVectorService');
+const { getStructuredVectorForMode, getPrecomputedFinalVector, warnMissingPrecomputedFinalVectors } = require('./roleVectorService');
 const {
   buildUserHybridVector,
   buildUserStructuredVector,
@@ -57,15 +57,24 @@ const EXPLORATION_STRUCTURE_UPPER_BOUND = 0.75;
 /** @type {number} Min structural similarity for exploration (default 0.40) */
 const EXPLORATION_STRUCTURE_LOWER_BOUND = 0.40;
 
+function dot(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    sum += a[i] * b[i];
+  }
+  return sum;
+}
+
 /**
- * Build mode-specific hybrid vector for a role at scoring time.
- * Does NOT overwrite stored hybrid_vector.
+ * Legacy fallback: build mode-specific hybrid vector for a role at scoring time.
+ * Used only when precomputed finalVectors are unavailable.
  *
  * @param {object} role – Role with roleVectors (sub-vectors, identity_vector)
  * @param {'NEXT_ROLE'|'OUT_OF_THE_BOX'} mode
  * @returns {Float32Array|null}
  */
-function buildRoleHybridForMode(role, mode) {
+function buildRoleHybridForModeLegacy(role, mode) {
   const rv = role.roleVectors || role;
   const dims = rv.dims || EMBEDDING_DIMS;
 
@@ -80,6 +89,13 @@ function buildRoleHybridForMode(role, mode) {
 
   const fused = weightedFusion(structuredVec, identity, { w1: wStructured, w2: wIdentity });
   return fused;
+}
+
+function getRoleScoreVector(role, mode) {
+  const precomputed = getPrecomputedFinalVector(role, mode);
+  if (precomputed) return precomputed;
+  warnMissingPrecomputedFinalVectors(role, mode);
+  return buildRoleHybridForModeLegacy(role, mode);
 }
 
 /**
@@ -164,8 +180,8 @@ function computeSeniorityPenalty(diff, mode) {
  *
  * Flow:
  *   1. Apply hard constraints
- *   2. Build mode-specific hybrid vectors (user + role)
- *   3. Compute cosine similarity
+ *   2. Build user mode vector and load precomputed role final vector
+ *   3. Compute dot-product similarity (both vectors are normalized)
  *   4. Apply seniority penalty: score = cosine * (1 - 0.12 * level_diff)
  *
  * @param {object} userProfile – { userSkills, userWorkExperience, userEducation, userCareerPreferences, userInterests, careerGoal }
@@ -177,10 +193,10 @@ async function scoreNextRole(userProfile, role) {
   if (!constrained) return null;
 
   const userHybrid = await buildUserHybridVector(userProfile, 'NEXT_ROLE');
-  const roleHybrid = buildRoleHybridForMode(role, 'NEXT_ROLE');
+  const roleHybrid = getRoleScoreVector(role, 'NEXT_ROLE');
   if (!roleHybrid) return null;
 
-  const hybridCosine = cosineSimilarity(userHybrid, roleHybrid);
+  const hybridCosine = dot(userHybrid, roleHybrid);
 
   const userLevel = inferUserSeniorityLevel(userProfile);
   const roleLevel = getRoleSeniorityLevel(role);
@@ -206,8 +222,8 @@ async function scoreNextRole(userProfile, role) {
  *
  * Flow:
  *   1. Apply hard constraints
- *   2. Build mode-specific hybrid vectors (user + role)
- *   3. Compute cosine similarity
+ *   2. Build user mode vector and load precomputed role final vector
+ *   3. Compute dot-product similarity (both vectors are normalized)
  *   4. Apply seniority penalty: score = cosine * (1 - penalty)
  *
  * Also computes structuredSimilarity and identitySimilarity when vectors exist (exploration filters / analytics).
@@ -221,10 +237,10 @@ async function scoreOutOfTheBox(userProfile, role) {
   if (!constrained) return null;
 
   const userHybrid = await buildUserHybridVector(userProfile, 'OUT_OF_THE_BOX');
-  const roleHybrid = buildRoleHybridForMode(role, 'OUT_OF_THE_BOX');
+  const roleHybrid = getRoleScoreVector(role, 'OUT_OF_THE_BOX');
   if (!roleHybrid) return null;
 
-  const hybridCosine = cosineSimilarity(userHybrid, roleHybrid);
+  const hybridCosine = dot(userHybrid, roleHybrid);
 
   const userLevel = inferUserSeniorityLevel(userProfile);
   const roleLevel = getRoleSeniorityLevel(role);
@@ -317,7 +333,7 @@ module.exports = {
   scoreOutOfTheBoxBatch,
   computeSeniorityPenalty,
   passesExplorationCriteria,
-  buildRoleHybridForMode,
+  buildRoleHybridForMode: buildRoleHybridForModeLegacy,
   applyHardConstraints,
   getRoleSeniorityLevel,
   HYBRID_NEXT_ROLE,
