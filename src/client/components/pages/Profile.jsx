@@ -351,6 +351,25 @@ const Profile = ({
     fetchLoginSecurity();
   };
 
+  /**
+   * This page manages `completion` locally instead of subscribing with `useProfileCompletionQuery()`.
+   * After manual saves, invalidating the query alone leaves the local percentage stale until reload.
+   */
+  const refreshCompletionAfterMutation = async () => {
+    try {
+      const completionData = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
+        staleTime: 0,
+        cacheTime: PROFILE_QUERY_CACHE_TIME_MS,
+      });
+      if (completionData?.completion) {
+        setCompletion(completionData.completion);
+        seedProfileCompletionQueryData(completionData);
+      }
+    } catch (refreshErr) {
+      console.error('Profile completion refresh after mutation failed:', refreshErr);
+    }
+  };
+
   const profileCompletionHeader = useMemo(() => {
     if (!completion) return null;
     const pct = completion.overall ?? 0;
@@ -530,6 +549,7 @@ const Profile = ({
         };
       });
       invalidateProfileCachesAfterMutation();
+      await refreshCompletionAfterMutation();
       setEditStructuredInfo(false);
     } catch (err) {
       const data = err.response?.data;
@@ -668,6 +688,7 @@ const Profile = ({
         }
       }));
       invalidateProfileCachesAfterMutation();
+      await refreshCompletionAfterMutation();
       setEditSection(null);
     } catch (err) {
       const responseData = err.response?.data;
@@ -701,6 +722,7 @@ const Profile = ({
         }
       }));
       invalidateProfileCachesAfterMutation();
+      await refreshCompletionAfterMutation();
       setEditSection(null);
     } catch (err) {
       const responseData = err.response?.data;
@@ -2146,7 +2168,7 @@ const Profile = ({
         </Typography>
         <DocumentUploadForm
           documents={documents ? documents.map(doc => ({ ...doc, id: doc.id || doc._id })) : []}
-          onDocumentsUpdate={(updatedDocs) => {
+          onDocumentsUpdate={async (updatedDocs) => {
             setProfile(prev => ({
               ...prev,
               profile: {
@@ -2154,6 +2176,8 @@ const Profile = ({
                 documents: updatedDocs
               }
             }));
+            invalidateProfileCachesAfterMutation();
+            await refreshCompletionAfterMutation();
           }}
           loading={loading}
           showSectionTitle={false}

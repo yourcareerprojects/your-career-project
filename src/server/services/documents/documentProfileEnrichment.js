@@ -160,6 +160,11 @@ async function parseDocumentToText(filePath) {
     return text;
   }
 
+  if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
+    const { extractImageTextViaOcr } = require('./pdfImageOcr');
+    return extractImageTextViaOcr(buf);
+  }
+
   if ((ext === '.docx' || ext === '.doc') && mammoth && ext === '.docx') {
     const res = await mammoth.extractRawText({ buffer: buf });
     return res.value || '';

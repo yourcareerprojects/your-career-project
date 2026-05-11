@@ -471,7 +471,7 @@
     "extraction": {
       "semanticInterpretationSuccess": "Interpreted profile signals from your CV using semantic analysis.",
       "semanticInterpretationNone": "No profile signals could be interpreted from the document.",
-      "noPdfTextLayer": "No readable text could be extracted from this PDF (including OCR). Export again as a PDF with selectable text, or upload DOCX."
+      "noDocumentText": "No readable text could be extracted from this document, even with OCR. Export it again as a PDF with selectable text, upload a DOCX file, or use a clearer JPG/PNG image."
     },
     "common": {
       "cancel": "Cancel",
@@ -481,7 +481,7 @@
     "errors": {
       "filesRejected": "Some files could not be uploaded. Please try again.",
       "fileTooLarge": "File too large. Maximum file size is 10MB.",
-      "invalidType": "Unsupported file type. Please upload PDF, DOC, or DOCX files.",
+      "invalidType": "Unsupported file type. Please upload PDF, DOC, DOCX, JPG, JPEG, or PNG files.",
       "deleteFailed": "Failed to delete document. Please try again.",
       "downloadFailed": "Error downloading document",
       "selectFileAndType": "Please select a file and document type",
@@ -494,7 +494,7 @@
     "dropzone": {
       "dragActive": "Drop the files here...",
       "idle": "Drag and drop your CV here, or click to select CV",
-      "supportedFormats": "Supported formats: PDF, DOC, DOCX (max 10MB)",
+      "supportedFormats": "Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG (max 10MB)",
       "cta": "Your CV"
     },
     "documents": {

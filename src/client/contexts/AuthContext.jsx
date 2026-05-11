@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { clearAppQueryCache } from '../hooks/useProfileQueries';
 import { clearSimulationSessionForAuthChange } from '../utils/simulationPersistence';
@@ -18,32 +18,50 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const clearAuthState = useCallback(() => {
+    localStorage.removeItem('token');
+    delete axios.defaults.headers.common['Authorization'];
+    clearAppQueryCache();
+    clearSimulationSessionForAuthChange();
+    setUser(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return { success: false, skipped: true };
+    }
+
+    try {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const response = await axios.get('/api/auth/me');
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      return { success: true, user: response.data.user };
+    } catch (error) {
+      console.error('User refresh failed:', error);
+      clearAuthState();
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Failed to refresh user'
+      };
+    }
+  }, [clearAuthState]);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          // Set the token in axios defaults
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
-          // Verify token and get user data
-          const response = await axios.get('/api/auth/verify');
-          setUser(response.data.user);
-          setIsAuthenticated(true);
-        }
+        await refreshUser();
       } catch (error) {
         console.error('Auth check failed:', error);
-        localStorage.removeItem('token');
-        delete axios.defaults.headers.common['Authorization'];
-        clearAppQueryCache();
-        clearSimulationSessionForAuthChange();
       } finally {
         setLoading(false);
       }
     };
 
     checkAuth();
-  }, []);
+  }, [refreshUser]);
 
   const login = async (email, password) => {
     try {
@@ -100,21 +118,25 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
-    clearAppQueryCache();
-    clearSimulationSessionForAuthChange();
-    setUser(null);
-    setIsAuthenticated(false);
+    clearAuthState();
   };
 
   const updateUser = (userData) => {
     setUser((prevUser) => ({ ...prevUser, ...userData }));
   };
 
-  const resendVerificationEmail = async () => {
+  const resendVerificationEmail = async (options = {}) => {
+    const payload = {};
+    if (options.token) {
+      payload.token = options.token;
+    } else if (options.email) {
+      payload.email = options.email;
+    } else if (user?.email) {
+      payload.email = user.email;
+    }
+
     try {
-      const response = await axios.post('/api/auth/resend-verification');
+      const response = await axios.post('/api/auth/resend-verification', payload);
       return { success: true, message: response.data?.message || 'Verification email sent.' };
     } catch (error) {
       return {
@@ -131,6 +153,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    refreshUser,
     updateUser,
     resendVerificationEmail
   };

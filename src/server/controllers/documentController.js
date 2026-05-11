@@ -15,6 +15,8 @@ const isValidFileType = (file) => {
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'text/plain',
+    'image/jpeg',
+    'image/png',
   ];
   return allowedTypes.includes(file.mimetype);
 };
@@ -296,8 +298,8 @@ function extractProfileDataFromDocumentTextHeuristic(text) {
     return {
       profile,
       status: 'failed',
-      message: 'No readable text could be extracted from this PDF (including OCR). Try exporting the CV again as a PDF with selectable text, or use DOCX.',
-      messageKey: 'documentUpload.extraction.noPdfTextLayer',
+      message: 'No readable text could be extracted from this document (including OCR). Try exporting the CV again as a PDF with selectable text, uploading DOCX, or using a clearer JPG/PNG image.',
+      messageKey: 'documentUpload.extraction.noDocumentText',
     };
   }
 
@@ -659,9 +661,9 @@ const documentController = {
           
           // Log extraction result for monitoring
           if (extractionResult.status === 'failed') {
-            console.warn(`PDF extraction failed for user ${req.user.userId}: ${extractionResult.message}`);
+            console.warn(`Document extraction failed for user ${req.user.userId}: ${extractionResult.message}`);
           } else {
-            console.log(`PDF extraction ${extractionResult.status} for user ${req.user.userId}: ${extractionResult.extractedFields?.join(', ') || 'unknown fields'}`);
+            console.log(`Document extraction ${extractionResult.status} for user ${req.user.userId}: ${extractionResult.extractedFields?.join(', ') || 'unknown fields'}`);
           }
         } catch (err) {
           logger.error('Document extraction pipeline failed', err);

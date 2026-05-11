@@ -44,7 +44,7 @@ const ProfileCreation = () => {
 
   useEffect(() => {
     // Check if user is verified
-    if (!(user?.emailVerified || user?.isVerified)) {
+    if (!user?.isVerified) {
       setError(t('profileCreation.errors.verifyEmailRequired'));
       setLoading(false);
       return;

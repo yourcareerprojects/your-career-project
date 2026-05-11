@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, ButtonGroup, Box, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_UI_LANGUAGE } from '../../i18n';
 
 const SUPPORTED_LANGUAGES = ['en', 'de'];
 
@@ -18,9 +19,12 @@ const SELECTED_LANGUAGE_SX = {
 
 const LanguageSwitcher = () => {
   const { i18n, t } = useTranslation('common');
-  const activeLanguage = SUPPORTED_LANGUAGES.includes(i18n.resolvedLanguage)
-    ? i18n.resolvedLanguage
-    : 'en';
+  const resolvedLanguage = String(i18n.resolvedLanguage || i18n.language || DEFAULT_UI_LANGUAGE)
+    .toLowerCase()
+    .split('-')[0];
+  const activeLanguage = SUPPORTED_LANGUAGES.includes(resolvedLanguage)
+    ? resolvedLanguage
+    : DEFAULT_UI_LANGUAGE;
 
   const handleSwitchLanguage = (language) => {
     i18n.changeLanguage(language);

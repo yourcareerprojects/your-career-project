@@ -62,14 +62,20 @@
   },
   "verifyEmail": {
     "title": "Verify your email",
+    "instructions": "Click the button below to verify your email address.",
     "verifying": "Verifying link...",
     "actions": {
+      "verify": "Verify Email",
+      "start": "Start",
       "resendVerificationEmail": "Resend verification email"
     },
     "messages": {
       "verified": "Email verified successfully.",
       "alreadyVerified": "This email address is already verified.",
+      "expired": "This verification link has expired. Please request a new verification email.",
+      "invalid": "This verification link is invalid or no longer available.",
       "failed": "Verification failed.",
+      "missingToken": "Verification link is missing a token.",
       "resent": "Verification email resent.",
       "unableToResend": "Unable to resend."
     }

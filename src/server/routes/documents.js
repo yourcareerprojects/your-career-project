@@ -19,13 +19,15 @@ const upload = multer({
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'text/plain',
+      'image/jpeg',
+      'image/png',
     ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(
         new Error(
-          'Invalid file type. Only PDF, DOCX, DOC, and TXT files are allowed.'
+          'Invalid file type. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG files are allowed.'
         )
       );
     }

@@ -9,6 +9,9 @@ import commonDe from './locales/de/common.json';
 import onboardingDe from './locales/de/onboarding.json';
 import dashboardDe from './locales/de/dashboard.json';
 
+export const DEFAULT_UI_LANGUAGE = 'de';
+export const UI_LANGUAGE_STORAGE_KEY = 'careerPathExplorerUiLanguage';
+
 const resources = {
   en: {
     common: commonEn,
@@ -27,7 +30,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
+    fallbackLng: DEFAULT_UI_LANGUAGE,
     defaultNS: 'common',
     ns: ['common', 'onboarding', 'dashboard'],
     supportedLngs: ['en', 'de'],
@@ -35,12 +38,24 @@ i18n
       escapeValue: false,
     },
     detection: {
-      order: ['querystring', 'localStorage', 'navigator', 'htmlTag'],
+      // Ignore legacy navigator-detected English so the app now defaults to German
+      // unless the user explicitly picked a UI language or passed `?lng=`/`?lang=`.
+      order: ['querystring', 'localStorage', 'htmlTag'],
+      lookupLocalStorage: UI_LANGUAGE_STORAGE_KEY,
       caches: ['localStorage'],
     },
   });
 
-i18n.on('languageChanged', () => {
+function syncDocumentLanguage(language) {
+  if (typeof document === 'undefined') return;
+  const resolved = String(language || DEFAULT_UI_LANGUAGE).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE;
+  document.documentElement.lang = resolved;
+}
+
+syncDocumentLanguage(i18n.resolvedLanguage || i18n.language);
+
+i18n.on('languageChanged', (language) => {
+  syncDocumentLanguage(language);
   queryClient.invalidateQueries({ queryKey: ['profile'] });
 });
 

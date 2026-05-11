@@ -39,7 +39,7 @@ const resendVerificationLimiter = rateLimit({
   max: 3,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.userId || req.body?.email || req.ip,
+  keyGenerator: (req) => req.user?.userId || req.body?.email || req.body?.token || req.ip,
   message: {
     error: 'Too many resend requests. Please try again later.'
   }
@@ -70,12 +70,19 @@ const registerEmailValidation = [
     .customSanitizer((value) => (value ? value.toLowerCase().trim() : value)),
 ];
 
+const verificationTokenValidation = [
+  body('token')
+    .custom((value) => typeof value === 'string' && value.trim().length > 0)
+    .withMessage('Verification token is required')
+];
+
 // Routes
 router.post('/register', registerNameValidation, registerEmailValidation, passwordValidation, authController.register);
 router.post('/login', simpleEmailValidation, authController.login);
-router.post('/resend-verification', auth, resendVerificationLimiter, authController.resendVerification);
-router.get('/verify-email', authController.verifyEmail);
-router.get('/verify-email/:token', authController.verifyEmail);
+router.post('/resend-verification', resendVerificationLimiter, authController.resendVerification);
+router.post('/verify-email', verificationTokenValidation, authController.verifyEmail);
+router.get('/verify-email', authController.verifyEmailGet);
+router.get('/verify-email/:token', authController.verifyEmailGet);
 router.get('/verify', auth, authController.getCurrentUser);
 router.get('/login-security', auth, authController.getLoginSecuritySummary);
 router.post('/request-password-reset', 

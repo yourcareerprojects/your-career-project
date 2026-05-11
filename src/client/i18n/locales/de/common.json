@@ -62,14 +62,20 @@
   },
   "verifyEmail": {
     "title": "E-Mail bestätigen",
+    "instructions": "Klicke auf die Schaltfläche unten, um deine E-Mail-Adresse zu bestätigen.",
     "verifying": "Link wird bestätigt...",
     "actions": {
+      "verify": "E-Mail bestätigen",
+      "start": "Start",
       "resendVerificationEmail": "Bestätigungs-E-Mail erneut senden"
     },
     "messages": {
       "verified": "E-Mail erfolgreich bestätigt.",
       "alreadyVerified": "Diese E-Mail-Adresse ist bereits bestätigt.",
+      "expired": "Dieser Bestätigungslink ist abgelaufen. Bitte fordere eine neue Bestätigungs-E-Mail an.",
+      "invalid": "Dieser Bestätigungslink ist ungültig oder nicht mehr verfügbar.",
       "failed": "Bestätigung fehlgeschlagen.",
+      "missingToken": "Im Bestätigungslink fehlt das Token.",
       "resent": "Bestätigungs-E-Mail erneut gesendet.",
       "unableToResend": "Erneutes Senden nicht möglich."
     }

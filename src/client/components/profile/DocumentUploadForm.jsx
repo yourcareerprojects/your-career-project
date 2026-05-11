@@ -516,6 +516,8 @@ const DocumentUploadForm = ({
       'application/pdf': ['.pdf'],
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
     },
     maxSize: MAX_UPLOAD_SIZE_BYTES,
   });
@@ -1077,7 +1079,7 @@ const DocumentUploadForm = ({
             <Box sx={{ pt: 1 }}>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
                 id="file-input"

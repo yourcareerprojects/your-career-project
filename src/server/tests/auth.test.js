@@ -1,7 +1,6 @@
 const request = require('supertest');
 const app = require('../app'); // You'll need to export your Express app
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
 describe('Authentication System Tests', () => {
@@ -82,7 +81,6 @@ describe('Authentication System Tests', () => {
 
   describe('Email Verification Tests', () => {
     let verificationToken;
-    let authToken;
 
     beforeEach(async () => {
       // Register a new user and capture the verification token
@@ -102,23 +100,57 @@ describe('Authentication System Tests', () => {
           tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000)
         }
       });
-      authToken = jwt.sign(
-        { userId: user._id, tokenVersion: user.tokenVersion || 0 },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRATION || '24h' }
-      );
     });
 
-    test('should verify email with valid token', async () => {
+    test('should verify email with valid token via explicit POST request', async () => {
       const res = await request(app)
-        .get(`/api/auth/verify-email/${verificationToken}`);
+        .post('/api/auth/verify-email')
+        .send({ token: verificationToken });
 
       expect(res.status).toBe(200);
+      expect(res.body.state).toBe('verified');
       expect(res.body.message).toContain('verified successfully');
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.isVerified).toBe(true);
 
       // Verify user status in database
       const user = await User.findOne({ email: 'test@example.com' });
       expect(user.accountStatus.isVerified).toBe(true);
+    });
+
+    test('should return already_verified on repeated verification attempts with the same token', async () => {
+      const firstRes = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: verificationToken });
+
+      expect(firstRes.status).toBe(200);
+      expect(firstRes.body.state).toBe('verified');
+
+      const secondRes = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: verificationToken });
+
+      expect(secondRes.status).toBe(200);
+      expect(secondRes.body.state).toBe('already_verified');
+      expect(secondRes.body.user).toBeDefined();
+      expect(secondRes.body.user.isVerified).toBe(true);
+    });
+
+    test('should handle concurrent verification requests consistently', async () => {
+      const [resA, resB] = await Promise.all([
+        request(app).post('/api/auth/verify-email').send({ token: verificationToken }),
+        request(app).post('/api/auth/verify-email').send({ token: verificationToken })
+      ]);
+
+      expect(resA.status).toBe(200);
+      expect(resB.status).toBe(200);
+
+      const states = [resA.body.state, resB.body.state].sort();
+      expect(states).toEqual(['already_verified', 'verified']);
+
+      const user = await User.findOne({ email: 'test@example.com' });
+      expect(user.accountStatus.isVerified).toBe(true);
+      expect(user.emailVerified).toBe(true);
     });
 
     test('should reject expired token', async () => {
@@ -132,26 +164,208 @@ describe('Authentication System Tests', () => {
       );
 
       const res = await request(app)
-        .get(`/api/auth/verify-email/${verificationToken}`);
+        .post('/api/auth/verify-email')
+        .send({ token: verificationToken });
 
       expect(res.status).toBe(400);
+      expect(res.body.state).toBe('expired');
       expect(res.body.error).toContain('expired');
     });
 
-    test('should allow resending verification email', async () => {
+    test('should return already_verified for a previously issued token after verification is complete', async () => {
+      const oldToken = 'old-token';
+      const currentToken = 'current-token';
+      const oldTokenHash = crypto.createHash('sha256').update(oldToken).digest('hex');
+      const currentTokenHash = crypto.createHash('sha256').update(currentToken).digest('hex');
+
+      await User.create({
+        email: 'verified@example.com',
+        password: 'Test123!@#',
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+        accountStatus: {
+          isVerified: true,
+          verificationTokenHistory: [currentTokenHash, oldTokenHash]
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: oldToken });
+
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe('already_verified');
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.email).toBe('verified@example.com');
+      expect(res.body.user.isVerified).toBe(true);
+    });
+
+    test('should return invalid for superseded tokens when the user is not yet verified', async () => {
+      const supersededToken = 'superseded-token';
+      const currentToken = 'current-token';
+      const supersededTokenHash = crypto.createHash('sha256').update(supersededToken).digest('hex');
+      const currentTokenHash = crypto.createHash('sha256').update(currentToken).digest('hex');
+
+      await User.create({
+        email: 'pending@example.com',
+        password: 'Test123!@#',
+        emailVerified: false,
+        emailVerificationToken: currentTokenHash,
+        emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        accountStatus: {
+          isVerified: false,
+          verificationToken: currentTokenHash,
+          tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          verificationTokenHistory: [currentTokenHash, supersededTokenHash]
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: supersededToken });
+
+      expect(res.status).toBe(400);
+      expect(res.body.state).toBe('invalid');
+    });
+
+    test('should redirect legacy GET routes to the frontend verification page without consuming tokens', async () => {
+      const getByParamRes = await request(app)
+        .get(`/api/auth/verify-email/${verificationToken}`);
+      expect(getByParamRes.status).toBe(302);
+      expect(getByParamRes.headers.location).toBe(
+        `${process.env.CLIENT_URL}/verify-email?token=${encodeURIComponent(verificationToken)}`
+      );
+
+      let user = await User.findOne({ email: 'test@example.com' });
+      expect(user.accountStatus.isVerified).toBe(false);
+      expect(user.emailVerificationToken).toBeTruthy();
+
+      const getByQueryRes = await request(app)
+        .get('/api/auth/verify-email')
+        .query({ token: verificationToken });
+      expect(getByQueryRes.status).toBe(302);
+      expect(getByQueryRes.headers.location).toBe(
+        `${process.env.CLIENT_URL}/verify-email?token=${encodeURIComponent(verificationToken)}`
+      );
+
+      user = await User.findOne({ email: 'test@example.com' });
+      expect(user.accountStatus.isVerified).toBe(false);
+      expect(user.emailVerificationToken).toBeTruthy();
+
+      const postRes = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: verificationToken });
+      expect(postRes.status).toBe(200);
+
+      user = await User.findOne({ email: 'test@example.com' });
+      expect(user.accountStatus.isVerified).toBe(true);
+    });
+
+    test('should redirect legacy GET route without token to the frontend verification page', async () => {
+      const res = await request(app)
+        .get('/api/auth/verify-email');
+
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe(`${process.env.CLIENT_URL}/verify-email`);
+    });
+
+    test('should reject explicit verification requests without a token', async () => {
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Verification token is required');
+    });
+
+    test('should return invalid for unknown verification tokens', async () => {
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: 'definitely-not-valid' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.state).toBe('invalid');
+    });
+
+    test('should resend verification from an expired token without requiring authentication', async () => {
+      const originalUser = await User.findOne({ email: 'test@example.com' });
+      const originalTokenHash = originalUser.emailVerificationToken;
+
+      await User.updateOne(
+        { email: 'test@example.com' },
+        {
+          emailVerificationExpiresAt: new Date(Date.now() - 1000),
+          'accountStatus.tokenExpiry': new Date(Date.now() - 1000),
+        }
+      );
+
       const res = await request(app)
         .post('/api/auth/resend-verification')
-        .set('Authorization', `Bearer ${authToken}`)
+        .send({ token: verificationToken });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('eligible');
+
+      const user = await User.findOne({ email: 'test@example.com' });
+      expect(user.accountStatus.isVerified).toBe(false);
+      expect(user.emailVerificationToken).toBeTruthy();
+      expect(user.emailVerificationToken).not.toBe(originalTokenHash);
+    });
+
+    test('should return generic success for public resend requests with unknown token', async () => {
+      const res = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ token: 'unknown-token' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('eligible');
+    });
+
+    test('should return generic success for public resend requests on verified accounts', async () => {
+      await User.create({
+        email: 'verified-public@example.com',
+        password: 'Test123!@#',
+        emailVerified: true,
+        accountStatus: {
+          isVerified: true,
+          isActive: true
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'verified-public@example.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('eligible');
+    });
+
+    test('should allow resending verification email', async () => {
+      await User.create({
+        email: 'resend@example.com',
+        password: 'Test123!@#',
+        emailVerificationToken: crypto.createHash('sha256').update('resend-token').digest('hex'),
+        emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        accountStatus: {
+          isVerified: false,
+          verificationToken: crypto.createHash('sha256').update('resend-token').digest('hex'),
+          tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000)
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/auth/resend-verification')
         .send({
-          email: 'test@example.com'
+          email: 'resend@example.com'
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.message).toContain('resent');
+      expect(res.body.message).toContain('eligible');
 
       // Verify new token was generated
-      const user = await User.findOne({ email: 'test@example.com' });
-      expect(user.accountStatus.verificationToken).not.toBe(verificationToken);
+      const user = await User.findOne({ email: 'resend@example.com' });
+      expect(user.accountStatus.verificationToken).not.toBe(crypto.createHash('sha256').update('resend-token').digest('hex'));
     });
   });
 

@@ -471,7 +471,7 @@
     "extraction": {
       "semanticInterpretationSuccess": "Profilsignale aus deinem Lebenslauf wurden per semantischer Analyse interpretiert.",
       "semanticInterpretationNone": "Aus dem Dokument konnten keine Profilsignale interpretiert werden.",
-      "noPdfTextLayer": "Aus dieser PDF konnte kein lesbarer Text extrahiert werden (auch OCR nicht). Bitte erneut als PDF mit markierbarem Text exportieren oder DOCX hochladen."
+      "noDocumentText": "Aus diesem Dokument konnte selbst per OCR kein lesbarer Text extrahiert werden. Bitte erneut als PDF mit markierbarem Text exportieren, eine DOCX-Datei hochladen oder ein klareres JPG/PNG-Bild verwenden."
     },
     "common": {
       "cancel": "Abbrechen",
@@ -481,7 +481,7 @@
     "errors": {
       "filesRejected": "Einige Dateien konnten nicht hochgeladen werden. Bitte versuche es erneut.",
       "fileTooLarge": "Datei zu groß. Die maximale Dateigröße beträgt 10MB.",
-      "invalidType": "Nicht unterstützter Dateityp. Bitte lade PDF-, DOC- oder DOCX-Dateien hoch.",
+      "invalidType": "Nicht unterstützter Dateityp. Bitte lade PDF-, DOC-, DOCX-, JPG-, JPEG- oder PNG-Dateien hoch.",
       "deleteFailed": "Dokument konnte nicht gelöscht werden. Bitte versuche es erneut.",
       "downloadFailed": "Fehler beim Herunterladen des Dokuments",
       "selectFileAndType": "Bitte wähle eine Datei und einen Dokumenttyp aus",
@@ -494,7 +494,7 @@
     "dropzone": {
       "dragActive": "Dateien hier ablegen...",
       "idle": "Ziehe deinen Lebenslauf hierher oder klicke, um ihn auszuwählen",
-      "supportedFormats": "Unterstützte Formate: PDF, DOC, DOCX (max. 10MB)",
+      "supportedFormats": "Unterstützte Formate: PDF, DOC, DOCX, JPG, JPEG, PNG (max. 10MB)",
       "cta": "Dein Lebenslauf"
     },
     "documents": {

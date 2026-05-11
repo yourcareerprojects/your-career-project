@@ -9,6 +9,7 @@ const logger = require('../../utils/logger');
 
 const MAX_CV_OCR_PAGES = 5;
 const RENDER_SCALE = 2;
+const OCR_LANGUAGES = 'deu+eng';
 
 async function loadPdfJs() {
   return import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -36,7 +37,7 @@ async function extractPdfTextViaOcr(buffer) {
     pdfDocument = await loadingTask.promise;
     const numPages = Math.min(pdfDocument.numPages, MAX_CV_OCR_PAGES);
 
-    worker = await createWorker('deu+eng', 1, { logger: () => {} });
+    worker = await createWorker(OCR_LANGUAGES, 1, { logger: () => {} });
 
     const parts = [];
     for (let pageNum = 1; pageNum <= numPages; pageNum += 1) {
@@ -77,4 +78,30 @@ async function extractPdfTextViaOcr(buffer) {
   }
 }
 
-module.exports = { extractPdfTextViaOcr };
+/**
+ * @param {Buffer} buffer Raw image bytes (JPEG/PNG)
+ * @returns {Promise<string>} Recognized plain text (may be empty if OCR fails)
+ */
+async function extractImageTextViaOcr(buffer) {
+  let worker;
+  try {
+    worker = await createWorker(OCR_LANGUAGES, 1, { logger: () => {} });
+    const {
+      data: { text },
+    } = await worker.recognize(buffer);
+    return String(text || '').trim();
+  } catch (err) {
+    logger.info('Image OCR failed', { message: err.message });
+    return '';
+  } finally {
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+}
+
+module.exports = { extractPdfTextViaOcr, extractImageTextViaOcr };

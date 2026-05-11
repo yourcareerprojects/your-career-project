@@ -22,4 +22,15 @@ describe('languageResolutionMiddleware', () => {
     expect(req.resolvedLanguage).toBe('de');
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  test('defaults to German when request has no language hints', () => {
+    const req = { query: {}, body: {}, headers: {} };
+    const next = jest.fn();
+
+    languageResolutionMiddleware(req, {}, next);
+
+    expect(req.language).toBe('de');
+    expect(req.resolvedLanguage).toBe('de');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
 });

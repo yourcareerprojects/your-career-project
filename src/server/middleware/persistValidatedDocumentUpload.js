@@ -2,13 +2,19 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 
-const ALLOWED_EXT = new Set(['.pdf', '.docx', '.doc', '.txt']);
+const ALLOWED_EXT = new Set(['.pdf', '.docx', '.doc', '.txt', '.jpg', '.jpeg', '.png']);
+const INVALID_TYPE_MESSAGE = 'Invalid file type. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG files are allowed.';
+const CONTENT_MISMATCH_MESSAGE = 'File content does not match an allowed type. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG are accepted.';
+const TXT_MISMATCH_MESSAGE = 'File content does not match plain text. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG are accepted.';
 
 const MIME_BY_EXT = {
   '.pdf': ['application/pdf'],
   '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   '.doc': ['application/msword'],
   '.txt': ['text/plain'],
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
+  '.png': ['image/png'],
 };
 
 const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
@@ -23,6 +29,24 @@ function isOleCompound(buf) {
 
 function isZipOk(buf) {
   return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
+}
+
+function isJpeg(buf) {
+  return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+}
+
+function isPng(buf) {
+  return (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  );
 }
 
 /** DOCX is ZIP; distinguish from spreadsheets by typical OOXML paths in local headers. */
@@ -54,53 +78,51 @@ function validateDocumentBuffer(file) {
   }
   const ext = path.extname(file.originalname || '').toLowerCase();
   if (!ALLOWED_EXT.has(ext)) {
-    throw new Error(
-      'Invalid file type. Only PDF, DOCX, DOC, and TXT files are allowed.'
-    );
+    throw new Error(INVALID_TYPE_MESSAGE);
   }
   const allowedMimes = MIME_BY_EXT[ext];
   const mime = String(file.mimetype || '').toLowerCase();
   if (!allowedMimes.includes(mime)) {
-    throw new Error(
-      'Invalid file type. Only PDF, DOCX, DOC, and TXT files are allowed.'
-    );
+    throw new Error(INVALID_TYPE_MESSAGE);
   }
 
   if (ext === '.pdf') {
     if (!isPdf(buf)) {
-      throw new Error(
-        'File content does not match an allowed type. Only PDF, DOCX, DOC, and TXT are accepted.'
-      );
+      throw new Error(CONTENT_MISMATCH_MESSAGE);
     }
     return ext;
   }
   if (ext === '.docx') {
     if (!isZipOk(buf) || !zipSnippetLooksLikeDocx(buf)) {
-      throw new Error(
-        'File content does not match an allowed type. Only PDF, DOCX, DOC, and TXT are accepted.'
-      );
+      throw new Error(CONTENT_MISMATCH_MESSAGE);
     }
     return ext;
   }
   if (ext === '.doc') {
     if (!isOleCompound(buf)) {
-      throw new Error(
-        'File content does not match an allowed type. Only PDF, DOCX, DOC, and TXT are accepted.'
-      );
+      throw new Error(CONTENT_MISMATCH_MESSAGE);
     }
     return ext;
   }
   if (ext === '.txt') {
     if (!looksLikeUtf8Text(buf)) {
-      throw new Error(
-        'File content does not match plain text. Only PDF, DOCX, DOC, and TXT are accepted.'
-      );
+      throw new Error(TXT_MISMATCH_MESSAGE);
     }
     return ext;
   }
-  throw new Error(
-    'Invalid file type. Only PDF, DOCX, DOC, and TXT files are allowed.'
-  );
+  if (ext === '.jpg' || ext === '.jpeg') {
+    if (!isJpeg(buf)) {
+      throw new Error(CONTENT_MISMATCH_MESSAGE);
+    }
+    return ext;
+  }
+  if (ext === '.png') {
+    if (!isPng(buf)) {
+      throw new Error(CONTENT_MISMATCH_MESSAGE);
+    }
+    return ext;
+  }
+  throw new Error(INVALID_TYPE_MESSAGE);
 }
 
 /**

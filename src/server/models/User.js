@@ -254,6 +254,7 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Canonical email-verification fields. New verification logic should use these.
   emailVerified: {
     type: Boolean,
     default: false
@@ -267,6 +268,7 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   accountStatus: {
+    // Deprecated compatibility mirror of `emailVerified`.
     isVerified: {
       type: Boolean,
       default: false
@@ -275,8 +277,16 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     },
+    // Deprecated compatibility mirror of `emailVerificationToken`.
     verificationToken: String,
+    // Compatibility archive used by verification idempotency/history behavior.
+    verificationTokenHistory: {
+      type: [String],
+      default: []
+    },
+    // Deprecated compatibility mirror of `emailVerificationExpiresAt`.
     tokenExpiry: Date,
+    // Legacy field retained for backward compatibility with older verification flows.
     verificationAttempts: {
       type: Number,
       default: 0
@@ -590,35 +600,35 @@ userSchema.methods.updateEmail = async function(newEmail) {
   this.accountStatus.emailHistory.push({
     email: this.email,
     changedAt: new Date(),
-    verified: this.accountStatus.isVerified
+    verified: this.emailVerified || this.accountStatus.isVerified
   });
 
-  // Update email and reset verification
+  // Update canonical verification fields and keep deprecated mirrors aligned.
   this.email = newEmail;
+  this.emailVerified = false;
+  this.emailVerificationToken = null;
+  this.emailVerificationExpiresAt = null;
   this.accountStatus.isVerified = false;
   this.accountStatus.verificationToken = undefined;
   this.accountStatus.tokenExpiry = undefined;
   this.accountStatus.verificationAttempts = 0;
-  this.emailVerified = false;
-  this.emailVerificationToken = null;
-  this.emailVerificationExpiresAt = null;
 
   return this.save();
 };
 
-// Check if verification token is expired
+// Legacy helper kept for backward compatibility with older callers.
 userSchema.methods.isVerificationTokenExpired = function() {
   const legacyExpiry = this.accountStatus.tokenExpiry;
   const expiry = this.emailVerificationExpiresAt || legacyExpiry;
   return expiry && expiry < new Date();
 };
 
-// Check if user has exceeded verification attempts
+// Legacy helper kept for backward compatibility with older callers.
 userSchema.methods.hasExceededVerificationAttempts = function() {
   return this.accountStatus.verificationAttempts >= 3;
 };
 
-// Reset verification attempts
+// Legacy helper kept for backward compatibility with older callers.
 userSchema.methods.resetVerificationAttempts = function() {
   this.accountStatus.verificationAttempts = 0;
   return this.save();

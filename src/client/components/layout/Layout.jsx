@@ -251,7 +251,7 @@ const Layout = ({ children }) => {
           mt: '64px', // Height of AppBar
         }}
       >
-        {isAuthenticated && user && !(user.emailVerified || user.isVerified) && (
+        {isAuthenticated && user && !user.isVerified && (
           <Alert
             severity="info"
             sx={{ mb: 2 }}

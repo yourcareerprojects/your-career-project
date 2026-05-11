@@ -15,6 +15,17 @@ const {
   logSecurityEvent,
   REAUTH_TOKEN_TTL_SECONDS
 } = require('../utils/loginSecurity');
+const {
+  EMAIL_VERIFICATION_TTL_MS,
+  applyVerifiedFlag,
+  generateVerificationToken,
+  getEmailVerificationExpiry,
+  hashVerificationToken,
+  isUserEmailVerified,
+  resendVerification: resendVerificationWithService,
+  setEmailVerificationState,
+  verifyEmail: verifyEmailWithService,
+} = require('../services/auth/emailVerificationService');
 
 function logAuthControllerError(context, err, extra = undefined) {
   const payload = {
@@ -28,7 +39,6 @@ function logAuthControllerError(context, err, extra = undefined) {
 const EMAIL_CHANGE_EXPIRY_MINUTES = parseInt(process.env.EMAIL_CHANGE_EXPIRY_MINUTES || '10', 10);
 const EMAIL_CHANGE_RESEND_COOLDOWN_MS = parseInt(process.env.EMAIL_CHANGE_RESEND_COOLDOWN_MS || '60000', 10);
 const EMAIL_CHANGE_MAX_ATTEMPTS = parseInt(process.env.EMAIL_CHANGE_MAX_ATTEMPTS || '6', 10);
-const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Configure email transporter with multiple providers
 const createTransporter = async (email) => {
@@ -139,13 +149,6 @@ const generateToken = (user) => {
     { expiresIn }
   );
 };
-
-// Generate verification token
-const generateVerificationToken = () => {
-  return crypto.randomBytes(32).toString('hex');
-};
-
-const hashVerificationToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
 
 // Send verification email
 const sendVerificationEmail = async (email, token) => {
@@ -298,6 +301,22 @@ If you did not perform this action, reset your password immediately at ${process
   await sendSecurityEmail({ to, subject: 'Your password was changed', html, text });
 };
 
+const buildVerifyEmailRedirectUrl = (token = '') => {
+  const clientBaseUrl = String(process.env.CLIENT_URL || process.env.FRONTEND_URL || '').trim();
+
+  if (!clientBaseUrl) {
+    return token
+      ? `/verify-email?token=${encodeURIComponent(token)}`
+      : '/verify-email';
+  }
+
+  const redirectUrl = new URL('/verify-email', clientBaseUrl.endsWith('/') ? clientBaseUrl : `${clientBaseUrl}/`);
+  if (token) {
+    redirectUrl.searchParams.set('token', token);
+  }
+  return redirectUrl.toString();
+};
+
 const sanitizePendingEmailChange = (pending = null) => {
   // Handle null, undefined, empty object, or missing newEmail
   if (!pending || typeof pending !== 'object' || !pending.newEmail) {
@@ -323,28 +342,13 @@ const sanitizePendingEmailChange = (pending = null) => {
   };
 };
 
-const setEmailVerificationState = (user, { verified, tokenHash = null, expiresAt = null }) => {
-  user.emailVerified = Boolean(verified);
-  user.emailVerificationToken = tokenHash;
-  user.emailVerificationExpiresAt = expiresAt;
-  user.accountStatus = user.accountStatus || {};
-  user.accountStatus.isVerified = Boolean(verified);
-  user.accountStatus.verificationToken = tokenHash || undefined;
-  user.accountStatus.tokenExpiry = expiresAt || undefined;
-  if (!verified) {
-    user.accountStatus.verificationAttempts = user.accountStatus.verificationAttempts || 0;
-  }
-};
-
-const isUserEmailVerified = (user) => Boolean(user?.emailVerified || user?.accountStatus?.isVerified);
-
 const buildUserResponse = (user) => ({
   id: user._id,
   name: user.name || '',
   email: user.email,
   isVerified: isUserEmailVerified(user),
   emailVerified: isUserEmailVerified(user),
-  emailVerificationExpiresAt: user.emailVerificationExpiresAt || user.accountStatus?.tokenExpiry || null,
+  emailVerificationExpiresAt: getEmailVerificationExpiry(user),
   profile: user.profile,
   preferences: user.preferences,
   security: {
@@ -488,9 +492,7 @@ exports.register = async (req, res) => {
       email,
       password,
       accountStatus: {
-        isVerified: false,
-        isActive: true,
-        verificationAttempts: 0
+        isActive: true
       }
     });
     const verificationToken = generateVerificationToken();
@@ -531,84 +533,56 @@ exports.register = async (req, res) => {
 // Resend verification email
 exports.resendVerification = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      const arr = errors.array();
-      return res.status(400).json({
-        errors: arr,
-        error: arr.map(e => e.msg).join(', ')
-      });
-    }
-
-    const emailFromBody = String(req.body?.email || '').trim().toLowerCase();
-    const user = req.user?.userId
-      ? await User.findById(req.user.userId)
-      : (emailFromBody ? await User.findOne({ email: emailFromBody }) : null);
-    if (!user) {
-      return res.status(200).json({
-        message: 'If your email is eligible, a verification email has been sent.'
-      });
-    }
-    if (isUserEmailVerified(user)) {
-      return res.status(200).json({ message: 'Email already verified.' });
-    }
-
-    // Generate new one-time token, invalidating old one
-    const verificationToken = generateVerificationToken();
-    setEmailVerificationState(user, {
-      verified: false,
-      tokenHash: hashVerificationToken(verificationToken),
-      expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS)
+    const result = await resendVerificationWithService({
+      email: req.body?.email,
+      token: req.body?.token,
+      sendVerificationEmail,
+      skipEmailSend: process.env.NODE_ENV === 'test'
     });
-    await user.save();
 
-    // Send new verification email
-    if (process.env.NODE_ENV !== 'test') {
-      await sendVerificationEmail(user.email, verificationToken);
-    }
-
-    res.json({
-      message: 'Verification email has been resent'
+    res.status(result.statusCode).json({
+      message: result.message
     });
   } catch (error) {
     console.error('Resend verification error:', error);
-    const status = error.message && error.message.includes('Too many verification attempts') ? 400 : 500;
-    res.status(status).json({
+    res.status(500).json({
       error: error.message || 'Error resending verification email'
     });
   }
 };
 
+exports.verifyEmailGet = (req, res) => {
+  const token = String(req.query.token || req.params.token || '').trim();
+  return res.redirect(buildVerifyEmailRedirectUrl(token));
+};
+
 // Verify email
 exports.verifyEmail = async (req, res) => {
   try {
-    const token = String(req.query.token || req.params.token || '').trim();
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const arr = errors.array();
+      return res.status(400).json({
+        errors: arr,
+        error: arr[0]?.msg || 'Verification token is required',
+        state: 'invalid'
+      });
+    }
+
+    const token = String(req.body?.token || '').trim();
     if (!token) {
       return res.status(400).json({ error: 'Verification token is required', state: 'invalid' });
     }
-    const tokenHash = hashVerificationToken(token);
-    const user = await User.findOne({
-      $or: [
-        { emailVerificationToken: tokenHash },
-        { 'accountStatus.verificationToken': tokenHash }
-      ]
-    });
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid verification token', state: 'invalid' });
-    }
-    if (isUserEmailVerified(user)) {
-      return res.json({ message: 'Email already verified', state: 'already_verified' });
-    }
-    if (user.emailVerificationExpiresAt && user.emailVerificationExpiresAt <= new Date()) {
-      return res.status(400).json({ error: 'Verification token expired', state: 'expired' });
-    }
-    setEmailVerificationState(user, { verified: true, tokenHash: null, expiresAt: null });
-    await user.save();
+    const result = await verifyEmailWithService(token);
+    const responseBody = result.error
+      ? { error: result.error, state: result.state }
+      : {
+          message: result.message,
+          state: result.state,
+          user: result.user ? buildUserResponse(result.user) : undefined
+        };
 
-    res.json({
-      message: 'Email verified successfully',
-      state: 'verified'
-    });
+    return res.status(result.statusCode).json(responseBody);
   } catch (error) {
     console.error('Email verification error:', error);
     res.status(500).json({
@@ -1168,7 +1142,7 @@ exports.verifyEmailChange = async (req, res) => {
 
     user.email = pending.newEmail;
     user.accountStatus.pendingEmailChange = undefined;
-    user.accountStatus.isVerified = true;
+    applyVerifiedFlag(user, true);
     user.security = user.security || {};
     user.security.lastEmailChangeAt = now;
 
@@ -1312,14 +1286,14 @@ exports.updatePassword = async (req, res) => {
 // Login security summary
 exports.getLoginSecuritySummary = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('email accountStatus security');
+    const user = await User.findById(req.user.userId).select('email emailVerified accountStatus security');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     res.json({
       email: user.email,
-      isVerified: user.accountStatus?.isVerified,
+      isVerified: isUserEmailVerified(user),
       lastLoginAt: user.accountStatus?.lastLogin,
       lastEmailChangeAt: user.security?.lastEmailChangeAt,
       lastPasswordChangeAt: user.security?.lastPasswordChangeAt,

@@ -1,7 +1,7 @@
 import { useQuery } from 'react-query';
 import axios from 'axios';
 import { queryClient } from '../queryClient';
-import i18n from '../i18n';
+import i18n, { DEFAULT_UI_LANGUAGE } from '../i18n';
 
 /**
  * Match server `normalizeLanguage` / i18n base code so query key + `?lang=` never split `de` vs `de-DE`.
@@ -9,8 +9,8 @@ import i18n from '../i18n';
  * while namespaces load, which previously caused GET /api/profile to use the old locale.
  */
 export function baseUILanguage() {
-  const raw = i18n.language || i18n.resolvedLanguage || 'en';
-  return String(raw).toLowerCase().split('-')[0] || 'en';
+  const raw = i18n.language || i18n.resolvedLanguage || DEFAULT_UI_LANGUAGE;
+  return String(raw).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE;
 }
 
 export const profileCompletionQueryKey = ['profile', 'completion'];
@@ -29,7 +29,7 @@ export const savedCareerStepsListQueryKey = ['profile', 'saved-career-steps', 'l
  */
 export function getSavedCareerStepsListQueryKeyFull(lang) {
   const resolved = lang != null && String(lang).trim() !== ''
-    ? String(lang).toLowerCase().split('-')[0] || 'en'
+    ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
     : baseUILanguage();
   return [...savedCareerStepsListQueryKey, resolved];
 }
@@ -46,7 +46,7 @@ export function setSavedCareerStepsListQueryData(data, lang) {
 /** Full profile document (GET /api/profile). Heavy on the server — keep behind React Query + staleTime. */
 export function getProfileFullQueryKeyFull(lang) {
   const resolved = lang != null && String(lang).trim() !== ''
-    ? String(lang).toLowerCase().split('-')[0] || 'en'
+    ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
     : baseUILanguage();
   return [...profileFullQueryKey, resolved];
 }
@@ -54,7 +54,7 @@ export function getProfileFullQueryKeyFull(lang) {
 /** Full profile document (GET /api/profile). Heavy on the server — keep behind React Query + staleTime. */
 export async function fetchFullProfile(lang) {
   const resolvedLang = lang != null && String(lang).trim() !== ''
-    ? String(lang).toLowerCase().split('-')[0] || 'en'
+    ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
     : baseUILanguage();
   const res = await axios.get(`/api/profile?lang=${encodeURIComponent(resolvedLang)}`);
   return res.data;
