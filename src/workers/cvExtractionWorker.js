@@ -37,6 +37,7 @@ const {
   getCvPipeline,
   serializeErrorSafe,
 } = require('../server/utils/metricsLogger');
+const { resolveDocumentToLocalPath } = require('../server/services/documents/documentBlobStorage');
 const { createCvWorkerScheduler } = require('../server/services/cv/cvWorkerScheduler');
 const { createWorkerHeartbeatLoop } = require('../server/services/cv/cvWorkerHeartbeatService');
 const { createCvQueueMetricsLogLoop } = require('../server/services/cv/cvQueueMetricsLogger');
@@ -188,7 +189,8 @@ async function processOneCvExtractionJob(jobDoc) {
       await safeFail(new Error('Document not found or missing path'));
       return;
     }
-    const filePath = doc.path;
+    const resolved = await resolveDocumentToLocalPath(doc);
+    const filePath = resolved.path;
 
     logger.info('worker claimed job', logCtx(jobDoc));
     logger.info('worker processing started', logCtx(jobDoc));
@@ -197,30 +199,35 @@ async function processOneCvExtractionJob(jobDoc) {
     let lastStage = null;
     let lastMeta = {};
 
-    let finalBundle = await processCvExtractionFromFilePath(filePath, {
-      uiLanguage,
-      onStage: async (stage, meta = {}) => {
-        stageRef.current = stage;
-        if (lastStage) {
-          logger.info('cv_worker_stage_finished', {
-            ...logCtx(jobDoc),
-            stage: lastStage,
-            durationMs: Math.round(hrtimeDiffMs(stageHr) * 1000) / 1000,
-            ...(lastStage === 'ocr' && lastMeta.ocrTextLength != null
-              ? { textLength: lastMeta.ocrTextLength }
-              : {}),
-            ...(lastStage === 'extraction' && lastMeta.extractionStatus != null
-              ? { extractionStatus: lastMeta.extractionStatus }
-              : {}),
-          });
-        }
-        lastStage = stage;
-        lastMeta = meta;
-        stageHr = process.hrtime.bigint();
-        logger.info('cv_worker_stage_started', { ...logCtx(jobDoc), stage });
-        await updateJobStatus(jobId, 'processing', stage);
-      },
-    });
+    let finalBundle;
+    try {
+      finalBundle = await processCvExtractionFromFilePath(filePath, {
+        uiLanguage,
+        onStage: async (stage, meta = {}) => {
+          stageRef.current = stage;
+          if (lastStage) {
+            logger.info('cv_worker_stage_finished', {
+              ...logCtx(jobDoc),
+              stage: lastStage,
+              durationMs: Math.round(hrtimeDiffMs(stageHr) * 1000) / 1000,
+              ...(lastStage === 'ocr' && lastMeta.ocrTextLength != null
+                ? { textLength: lastMeta.ocrTextLength }
+                : {}),
+              ...(lastStage === 'extraction' && lastMeta.extractionStatus != null
+                ? { extractionStatus: lastMeta.extractionStatus }
+                : {}),
+            });
+          }
+          lastStage = stage;
+          lastMeta = meta;
+          stageHr = process.hrtime.bigint();
+          logger.info('cv_worker_stage_started', { ...logCtx(jobDoc), stage });
+          await updateJobStatus(jobId, 'processing', stage);
+        },
+      });
+    } finally {
+      await resolved.cleanup?.();
+    }
 
     if (lastStage) {
       logger.info('cv_worker_stage_finished', {

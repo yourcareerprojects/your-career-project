@@ -22,6 +22,11 @@ const {
   serializeErrorSafe,
 } = require('../utils/metricsLogger');
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
+const {
+  storeDocumentFromPath,
+  sendStoredDocumentDownload,
+  deleteStoredDocumentBlob,
+} = require('../services/documents/documentBlobStorage');
 
 // Helper function to validate file type (must stay aligned with routes/documents.js)
 const isValidFileType = (file) => {
@@ -40,6 +45,7 @@ const documentController = {
   // Upload a new document
   async uploadDocument(req, res) {
     const uploadHrStart = process.hrtime.bigint();
+    let storedBlobMeta = null;
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -66,10 +72,18 @@ const documentController = {
         return res.status(404).json({ message: 'User not found' });
       }
 
+      storedBlobMeta = await storeDocumentFromPath(file, {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+      });
+
       const document = {
         type: normalizedType,
         name: file.originalname,
         path: file.path,
+        storageProvider: storedBlobMeta?.storageProvider || null,
+        storageKey: storedBlobMeta?.storageKey || null,
+        mimeType: storedBlobMeta?.mimeType || file.mimetype || null,
         uploadDate: new Date(),
         isArchived: false,
         version: 1,
@@ -141,6 +155,9 @@ const documentController = {
             } catch (unlinkErr) {
               logger.error('Document upload rollback unlink failed', unlinkErr);
             }
+            if (storedBlobMeta) {
+              await deleteStoredDocumentBlob(document).catch(() => {});
+            }
             getRl().logRateLimitHit({
               type: 'RATE_LIMIT_HIT',
               userId: String(user._id),
@@ -161,6 +178,9 @@ const documentController = {
             await fs.unlink(file.path);
           } catch (unlinkAfterJobFail) {
             logger.error('Document upload rollback unlink failed', unlinkAfterJobFail);
+          }
+          if (storedBlobMeta) {
+            await deleteStoredDocumentBlob(document).catch(() => {});
           }
           return res.status(500).json({ message: 'Could not queue CV processing' });
         }
@@ -210,6 +230,9 @@ const documentController = {
           type: savedDoc.type,
           name: savedDoc.name,
           path: savedDoc.path,
+          storageProvider: savedDoc.storageProvider ?? null,
+          storageKey: savedDoc.storageKey ?? null,
+          mimeType: savedDoc.mimeType ?? null,
           uploadDate: savedDoc.uploadDate,
           isArchived: savedDoc.isArchived,
           version: savedDoc.version,
@@ -242,6 +265,9 @@ const documentController = {
         } catch (unlinkError) {
           logger.error('Document upload rollback unlink failed', unlinkError);
         }
+      }
+      if (storedBlobMeta) {
+        await deleteStoredDocumentBlob(storedBlobMeta).catch(() => {});
       }
       res.status(500).json({ message: 'Error uploading document' });
     }
@@ -416,6 +442,9 @@ const documentController = {
         return res.status(404).json({ message: 'Document not found' });
       }
 
+      const sentFromStorage = await sendStoredDocumentDownload(res, document);
+      if (sentFromStorage) return;
+
       // Check if file exists
       try {
         await fs.access(document.path);
@@ -449,6 +478,7 @@ const documentController = {
       } catch (error) {
         console.error('Error deleting file:', error);
       }
+      await deleteStoredDocumentBlob(docToDelete).catch(() => {});
 
       // Remove document from user's documents array
       user.profile.documents.pull(req.params.documentId);

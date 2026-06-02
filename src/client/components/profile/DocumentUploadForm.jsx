@@ -1757,6 +1757,7 @@ const DocumentUploadForm = ({
           >
             <DescriptionIcon sx={{ mr: 2, color: 'primary.main' }} />
             <ListItemText
+              secondaryTypographyProps={{ component: 'div' }}
               primary={
                 editingDocId === doc.id ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
