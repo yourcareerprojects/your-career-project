@@ -149,10 +149,39 @@ function extractFromTextHeuristics(text) {
 async function parseDocumentToText(filePath) {
   const ext = path.extname(filePath || '').toLowerCase();
 
+  const inferKindFromBuffer = (buf) => {
+    if (!buf || buf.length < 4) return null;
+    // PDF: %PDF-
+    if (buf.length >= 5 && buf.slice(0, 5).toString('latin1') === '%PDF-') return 'pdf';
+    // PNG signature
+    if (
+      buf.length >= 8 &&
+      buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+      buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+    ) return 'png';
+    // JPEG signature
+    if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+    // ZIP local file header (docx container)
+    if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) return 'zip';
+    // OLE compound file (legacy .doc)
+    if (
+      buf.length >= 8 &&
+      buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0 &&
+      buf[4] === 0xa1 && buf[5] === 0xb1 && buf[6] === 0x1a && buf[7] === 0xe1
+    ) return 'ole';
+    return null;
+  };
+
   return runStageIfCvPipeline('parse_document_total', { memory: true }, async () => {
     const buf = await runStageIfCvPipeline('parse_read_file', {}, async () => fs.readFile(filePath));
+    const inferredKind = inferKindFromBuffer(buf);
+    const treatAsPdf = ext === '.pdf' || inferredKind === 'pdf';
+    const treatAsImage = ext === '.png' || ext === '.jpg' || ext === '.jpeg' || inferredKind === 'png' || inferredKind === 'jpeg';
+    const treatAsDocx = (ext === '.docx') || (ext !== '.doc' && inferredKind === 'zip');
+    const treatAsDoc = ext === '.doc' || inferredKind === 'ole';
+    const treatAsTxt = ext === '.txt';
 
-    if (ext === '.pdf') {
+    if (treatAsPdf) {
       const pdf = await runStageIfCvPipeline('pdf_text_layer', { memory: true }, async () => pdfParse(buf));
       let text = pdf.text || '';
       const normalized = String(text).replace(/\u00a0/g, ' ').trim();
@@ -163,19 +192,19 @@ async function parseDocumentToText(filePath) {
       return text;
     }
 
-    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
+    if (treatAsImage) {
       const { extractImageTextViaOcr } = require('./pdfImageOcr');
       return runStageIfCvPipeline('image_ocr_total', { memory: true }, async () => extractImageTextViaOcr(buf));
     }
 
-    if ((ext === '.docx' || ext === '.doc') && mammoth && ext === '.docx') {
+    if ((treatAsDocx || treatAsDoc) && mammoth && treatAsDocx) {
       return runStageIfCvPipeline('docx_extract_text', {}, async () => {
         const res = await mammoth.extractRawText({ buffer: buf });
         return res.value || '';
       });
     }
 
-    if (ext === '.txt') {
+    if (treatAsTxt) {
       return buf.toString('utf8');
     }
 
