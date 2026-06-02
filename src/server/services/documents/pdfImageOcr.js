@@ -117,7 +117,11 @@ async function extractPdfTextViaOcr(buffer) {
     });
   } catch (err) {
     const totalOcrMs = Number(process.hrtime.bigint() - ocrStarted) / 1e6;
-    logger.info('PDF OCR fallback failed', { message: err.message });
+    logger.error('PDF OCR fallback failed', {
+      message: err?.message || String(err),
+      name: err?.name || null,
+      stack: err?.stack || null,
+    });
     if (getCvPipeline()) {
       logCvEvent('cv_pipeline_ocr_pdf_failed', {
         ocrKind: 'pdf_raster',
@@ -159,7 +163,11 @@ async function extractImageTextViaOcr(buffer) {
     });
   } catch (err) {
     const totalOcrMs = Number(process.hrtime.bigint() - ocrStarted) / 1e6;
-    logger.info('Image OCR failed', { message: err.message });
+    logger.error('Image OCR failed', {
+      message: err?.message || String(err),
+      name: err?.name || null,
+      stack: err?.stack || null,
+    });
     if (getCvPipeline()) {
       logCvEvent('cv_pipeline_ocr_image_failed', {
         ocrKind: 'image',

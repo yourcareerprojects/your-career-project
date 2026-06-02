@@ -10,6 +10,12 @@ const DEFAULT_LANGS = 'deu+eng';
 const DEFAULT_OEM = 1;
 const MAX_POOL_SIZE = 3;
 
+function readWorkerLangs() {
+  const raw = String(process.env.OCR_WORKER_LANGS || '').trim();
+  if (!raw) return DEFAULT_LANGS;
+  return raw;
+}
+
 /**
  * @returns {number}
  */
@@ -27,7 +33,7 @@ class TesseractWorkerPool {
    */
   constructor(size, options = {}) {
     this.size = Math.max(1, size);
-    this.langs = options.langs || DEFAULT_LANGS;
+    this.langs = options.langs || readWorkerLangs();
     this.oem = options.oem ?? DEFAULT_OEM;
     /** @type {import('tesseract.js').Worker[]} */
     this.available = [];
@@ -40,6 +46,21 @@ class TesseractWorkerPool {
     this.closed = false;
   }
 
+  async createWorkerWithFallback() {
+    try {
+      return await createWorker(this.langs, this.oem, { logger: () => {} });
+    } catch (err) {
+      if (this.langs !== 'eng') {
+        logger.warn('Tesseract worker init failed; retrying with eng only', {
+          message: err?.message || String(err),
+          langs: this.langs,
+        });
+        return createWorker('eng', this.oem, { logger: () => {} });
+      }
+      throw err;
+    }
+  }
+
   async init() {
     if (this.closed) throw new Error('TesseractWorkerPool is closed');
     if (this.liveWorkers.size >= this.size) return;
@@ -50,7 +71,7 @@ class TesseractWorkerPool {
       const created = [];
       try {
         for (let i = 0; i < toCreate; i += 1) {
-          const worker = await createWorker(this.langs, this.oem, { logger: () => {} });
+          const worker = await this.createWorkerWithFallback();
           created.push(worker);
           this.liveWorkers.add(worker);
           this.available.push(worker);

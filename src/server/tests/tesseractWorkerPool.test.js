@@ -123,4 +123,21 @@ describe('tesseractWorkerPool', () => {
     expect(createWorker).toHaveBeenCalledTimes(2);
     expect(getTesseractWorkerPool()).toBeTruthy();
   });
+
+  test('retries worker init with eng when configured langs fail', async () => {
+    process.env.CV_WORKER_CONCURRENCY = '1';
+    process.env.OCR_WORKER_LANGS = 'deu+eng';
+    const worker = makeMockWorker('eng-fallback');
+    createWorker
+      .mockRejectedValueOnce(new Error('failed to load deu'))
+      .mockResolvedValueOnce(worker);
+
+    await withTesseractWorker(async (w) => {
+      expect(w).toBe(worker);
+    });
+
+    expect(createWorker).toHaveBeenNthCalledWith(1, 'deu+eng', 1, { logger: expect.any(Function) });
+    expect(createWorker).toHaveBeenNthCalledWith(2, 'eng', 1, { logger: expect.any(Function) });
+    delete process.env.OCR_WORKER_LANGS;
+  });
 });
