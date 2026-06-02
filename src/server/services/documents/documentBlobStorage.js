@@ -20,6 +20,29 @@ function createStorageKey() {
   return `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
 }
 
+function normalizeBlobDataToBuffer(data) {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof Uint8Array) return Buffer.from(data);
+
+  // BSON Binary from Mongo driver / mongoose lean docs.
+  if (data && typeof data === 'object') {
+    if (typeof data.value === 'function') {
+      const value = data.value(true);
+      if (Buffer.isBuffer(value)) return value;
+      if (value instanceof Uint8Array) return Buffer.from(value);
+      if (typeof value === 'string') return Buffer.from(value, 'binary');
+    }
+    if (data.buffer instanceof Uint8Array) {
+      return Buffer.from(data.buffer);
+    }
+    if (data.buffer && Buffer.isBuffer(data.buffer)) {
+      return data.buffer;
+    }
+  }
+
+  throw new TypeError('Unsupported blob data type from storage');
+}
+
 async function storeDocumentFromPath(file, opts = {}) {
   if (!shouldUseMongoStorage()) return null;
   const filePath = String(file?.path || '');
@@ -59,7 +82,7 @@ async function resolveDocumentToLocalPath(document) {
   }
   const ext = safeExt(blob.extension || document?.name || document?.path || '');
   const tmpPath = path.join(os.tmpdir(), `cv-blob-${storageKey}${ext}`);
-  await fs.writeFile(tmpPath, blob.data);
+  await fs.writeFile(tmpPath, normalizeBlobDataToBuffer(blob.data));
   return {
     path: tmpPath,
     cleanup: async () => {
@@ -79,7 +102,7 @@ async function sendStoredDocumentDownload(res, document) {
   const fileName = String(document?.name || blob.originalName || 'document');
   res.setHeader('Content-Type', blob.mimeType || 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-  res.send(blob.data);
+  res.send(normalizeBlobDataToBuffer(blob.data));
   return true;
 }
 
@@ -97,4 +120,5 @@ module.exports = {
   resolveDocumentToLocalPath,
   sendStoredDocumentDownload,
   deleteStoredDocumentBlob,
+  normalizeBlobDataToBuffer,
 };
