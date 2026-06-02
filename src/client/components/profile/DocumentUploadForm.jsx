@@ -956,18 +956,26 @@ const DocumentUploadForm = ({
     if (!res.ok) throw new Error('document refresh failed');
     const data = await res.json();
     const document = data.document;
-    if (!document) return;
+    if (!document) return false;
     const mergedList = (documentsRef.current || []).map((d) =>
       String(d.id) === String(docId) ? { ...d, ...document, id: document.id || d.id } : d
     );
     onDocumentsUpdate(normalizeDocuments(mergedList));
-    if (enableExtractionReview && document.extractedProfileData) {
+
+    // Be tolerant to slight API shape differences while rollout is in progress.
+    const extractedPayload =
+      document.extractedProfileData
+      || document?.result?.profile
+      || null;
+    const outcome = document.extractionOutcomeStatus || document?.result?.status || null;
+
+    if (enableExtractionReview && extractedPayload) {
       setCvExtractLocalization(
         document.cvExtractLocalization && typeof document.cvExtractLocalization === 'object'
           ? document.cvExtractLocalization
           : null
       );
-      const normalizedData = normalizeExtractedProfileData(document.extractedProfileData);
+      const normalizedData = normalizeExtractedProfileData(extractedPayload);
       setExtractedProfileData(normalizedData);
       loadReviewProfileFromExtraction(normalizedData, docId);
       setAcceptedFields(buildAcceptedDefaults(normalizedData));
@@ -976,11 +984,10 @@ const DocumentUploadForm = ({
       setInputQualityDiagnosisError(null);
       setInputQualityDiagnosisLoading(false);
       setReviewStep(2);
-      const outcome = document.extractionOutcomeStatus;
       const reviewStatus =
         outcome === 'success' || outcome === 'partial' || outcome === 'failed'
           ? outcome
-          : document.extractedProfileData
+          : extractedPayload
             ? 'success'
             : 'partial';
       setExtractionStatus(reviewStatus);
@@ -989,7 +996,9 @@ const DocumentUploadForm = ({
       if (reviewStatus === 'success' || reviewStatus === 'partial') {
         setReviewDialogOpen(true);
       }
+      return true;
     }
+    return false;
   }, [enableExtractionReview, onDocumentsUpdate, loadReviewProfileFromExtraction]);
 
   const applyExtractionPollSnapshot = useCallback((snapshot, pollActive) => {
@@ -1179,7 +1188,12 @@ const DocumentUploadForm = ({
         }
         if (outcome.kind === 'completed') {
           try {
-            await hydrateFromDocument(docId);
+            const openedReview = await hydrateFromDocument(docId);
+            if (enableExtractionReview && !openedReview && outcome?.data?.hasResult) {
+              // Keep UX moving when status says "completed with result" but hydration lags.
+              setReviewStep(2);
+              setReviewDialogOpen(true);
+            }
           } catch {
             setExtractionError(t('documentUpload.errors.refreshAfterExtractionFailed'));
           }
@@ -1242,7 +1256,7 @@ const DocumentUploadForm = ({
       controller.abort();
       cvPollAbortRef.current = null;
     };
-  }, [cvPollTarget, hydrateFromDocument, t, applyExtractionPollSnapshot]);
+  }, [cvPollTarget, hydrateFromDocument, t, applyExtractionPollSnapshot, enableExtractionReview]);
 
   useEffect(() => {
     if (cvPollTarget?.documentId) return;
