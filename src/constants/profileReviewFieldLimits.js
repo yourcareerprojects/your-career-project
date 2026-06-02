@@ -1,0 +1,22 @@
+/** Mirrors express-validator limits on PUT /api/profile/review-save (profile routes). */
+const PROFILE_REVIEW_USER_IDENTITY_MAX = 2000;
+
+const PROFILE_REVIEW_STRUCTURED_MAX = {
+  skillDomains: 120,
+  skills: 100,
+  skillsInDevelopment: 100,
+  keyResponsibilities: 300,
+  domains: 120,
+};
+
+const PROFILE_REVIEW_STRUCTURED_KEYS = Object.keys(PROFILE_REVIEW_STRUCTURED_MAX);
+
+/** Max rows per list in “What are you good at?” (review + save). */
+const PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY = 25;
+
+module.exports = {
+  PROFILE_REVIEW_USER_IDENTITY_MAX,
+  PROFILE_REVIEW_STRUCTURED_MAX,
+  PROFILE_REVIEW_STRUCTURED_KEYS,
+  PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY,
+};

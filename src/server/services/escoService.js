@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { TIMEOUT_MS_EXTERNAL_DEFAULT } = require('../utils/httpTimeouts');
 const CareerPath = require('../models/CareerPath');
 const { attachSkillsToCareerPaths } = require('./careerPathSkillService');
 const { getEscoUriToTitleMap } = require('../utils/escoUriToTitleMap');
@@ -58,7 +59,10 @@ async function fetchESCOOccupationsPage(options = {}) {
   const params = { language: 'en', q: '*', ...options };
   const url = `${ESCO_API_BASE}/occupations`;
   try {
-    const response = await withRetry(() => axios.get(url, { params }), { retries: 3 });
+    const response = await withRetry(
+      () => axios.get(url, { params, timeout: TIMEOUT_MS_EXTERNAL_DEFAULT }),
+      { retries: 3 }
+    );
     return {
       occupations: response.data?._embedded?.occupation || [],
       page: response.data?.page || null
@@ -96,7 +100,10 @@ function mapOccupationToCareerPath(escoOccupation) {
 async function fetchOccupationResource(occupationUri) {
   try {
     const url = `${ESCO_RESOURCE_BASE}/occupation?uri=${encodeURIComponent(occupationUri)}`;
-    const response = await withRetry(() => axios.get(url), { retries: 3 });
+    const response = await withRetry(
+      () => axios.get(url, { timeout: TIMEOUT_MS_EXTERNAL_DEFAULT }),
+      { retries: 3 }
+    );
     return response.data || null;
   } catch (err) {
     return null;

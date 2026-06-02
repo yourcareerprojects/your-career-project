@@ -6,6 +6,8 @@ if (!process.env.JWT_SECRET || !String(process.env.JWT_SECRET).trim()) {
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { resetEmailVerificationRateLimit } = require('../middleware/emailValidation');
+const { resetRateLimitStoreForTests } = require('../services/rateLimit/createRateLimitStore');
+const { resetRateLimitServiceForTests } = require('../services/rateLimit/RateLimitService');
 
 let mongoServer;
 let usingMemoryServer = false;
@@ -91,6 +93,8 @@ beforeEach(async () => {
   if (typeof resetEmailVerificationRateLimit === 'function') {
     resetEmailVerificationRateLimit();
   }
+  resetRateLimitStoreForTests();
+  resetRateLimitServiceForTests();
 
   // Some unit-only test suites don't establish a DB connection; guard accordingly.
   if (mongoose.connection && mongoose.connection.readyState === 1) {

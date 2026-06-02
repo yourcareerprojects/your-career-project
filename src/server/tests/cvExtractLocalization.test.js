@@ -1,11 +1,121 @@
+jest.mock('../services/ai/translateText', () => ({
+  translateCvExtractBatch: jest.fn(),
+}));
+
+const { translateCvExtractBatch } = require('../services/ai/translateText');
 const {
   mergeCvExtractLocalizationPatch,
   overlayIdentityAnswersWithCvLocalization,
   overlayStructuredUserInfoListsWithCvLocalization,
   syncCvExtractUserIdentityFromFlat,
+  localizeCvExtractedProfile,
+  __testables,
 } = require('../services/documents/cvExtractLocalization');
 
+const { collectCvExtractLocalizationItems, buildCvI18nFromBatchResults } = __testables;
+
 describe('cvExtractLocalization', () => {
+  beforeEach(() => {
+    translateCvExtractBatch.mockReset();
+  });
+
+  test('collectCvExtractLocalizationItems gathers identity and structured rows with stable ids', () => {
+    const items = collectCvExtractLocalizationItems({
+      userIdentity: { workEnjoyMost: 'Building products' },
+      structuredUserInfo: {
+        skillDomains: ['Leadership'],
+        domains: [],
+        keyResponsibilities: ['Ship features'],
+        skillsInDevelopment: [],
+        skills: [{ name: 'Python' }],
+      },
+    });
+    expect(items).toEqual([
+      { id: 'identity.workEnjoyMost', text: 'Building products' },
+      { id: 'structured.skillDomains.0', text: 'Leadership' },
+      { id: 'structured.keyResponsibilities.0', text: 'Ship features' },
+      { id: 'structured.skills.0', text: 'Python' },
+    ]);
+  });
+
+  test('buildCvI18nFromBatchResults maps EN document language to bilingual pairs', () => {
+    const translations = new Map([
+      ['identity.workEnjoyMost', 'Produkte entwickeln'],
+      ['structured.skillDomains.0', 'Führung'],
+    ]);
+    const cvI18n = buildCvI18nFromBatchResults(
+      {
+        userIdentity: { workEnjoyMost: 'Building products' },
+        structuredUserInfo: { skillDomains: ['Leadership'], domains: [], keyResponsibilities: [], skillsInDevelopment: [], skills: [] },
+      },
+      translations,
+      'en',
+      { partial: false }
+    );
+    expect(cvI18n.userIdentity.workEnjoyMost).toEqual({ en: 'Building products', de: 'Produkte entwickeln' });
+    expect(cvI18n.structuredUserInfo.skillDomains[0]).toEqual({ en: 'Leadership', de: 'Führung' });
+  });
+
+  test('localizeCvExtractedProfile makes one batch translation call', async () => {
+    translateCvExtractBatch.mockResolvedValue(
+      new Map([
+        ['identity.workEnjoyMost', 'Dinge schaffen'],
+        ['structured.skillDomains.0', 'Führung'],
+      ])
+    );
+
+    const profile = {
+      userIdentity: { workEnjoyMost: 'Build things' },
+      structuredUserInfo: {
+        skillDomains: ['Leadership'],
+        domains: [],
+        keyResponsibilities: [],
+        skillsInDevelopment: [],
+        skills: [],
+      },
+    };
+
+    const result = await localizeCvExtractedProfile(profile, 'en', 'en');
+
+    expect(translateCvExtractBatch).toHaveBeenCalledTimes(1);
+    expect(translateCvExtractBatch).toHaveBeenCalledWith(
+      [
+        { id: 'identity.workEnjoyMost', text: 'Build things' },
+        { id: 'structured.skillDomains.0', text: 'Leadership' },
+      ],
+      'en'
+    );
+    expect(result.localizationStatus).toBe('complete');
+    expect(result.profile.userIdentity.workEnjoyMost).toBe('Build things');
+    expect(result.cvI18n.userIdentity.workEnjoyMost).toEqual({ en: 'Build things', de: 'Dinge schaffen' });
+    expect(result.cvI18n.structuredUserInfo.skillDomains[0]).toEqual({ en: 'Leadership', de: 'Führung' });
+  });
+
+  test('localizeCvExtractedProfile skips batch call when nothing to translate', async () => {
+    const result = await localizeCvExtractedProfile(
+      { userIdentity: {}, structuredUserInfo: { skillDomains: [], domains: [], keyResponsibilities: [], skillsInDevelopment: [], skills: [] } },
+      'en',
+      'de'
+    );
+    expect(translateCvExtractBatch).not.toHaveBeenCalled();
+    expect(result.localizationStatus).toBe('complete');
+  });
+
+  test('localizeCvExtractedProfile marks partial when batch throws', async () => {
+    translateCvExtractBatch.mockRejectedValue(new Error('upstream'));
+    const result = await localizeCvExtractedProfile(
+      {
+        userIdentity: { workEnjoyMost: 'Build' },
+        structuredUserInfo: { skillDomains: [], domains: [], keyResponsibilities: [], skillsInDevelopment: [], skills: [] },
+      },
+      'en',
+      'en'
+    );
+    expect(translateCvExtractBatch).toHaveBeenCalledTimes(1);
+    expect(result.localizationStatus).toBe('partial');
+    expect(result.cvI18n.userIdentity.workEnjoyMost).toEqual({ en: 'Build', de: 'Build' });
+  });
+
   test('mergeCvExtractLocalizationPatch merges documentLanguage, identity pairs, and structured arrays', () => {
     const existing = {
       documentLanguage: 'en',

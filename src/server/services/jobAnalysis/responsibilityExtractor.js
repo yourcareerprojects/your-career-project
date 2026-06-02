@@ -16,6 +16,12 @@
 // ENGLISH_ONLY_PIPELINE: Heuristic verb/sentence extraction assumes canonical English input text.
 
 const { buildMessages } = require('../../prompts/extractKeyResponsibilities');
+const logger = require('../../utils/logger');
+const {
+  TIMEOUT_MS_LLM,
+  normalizeExternalApiError,
+  combineSignals,
+} = require('../../utils/httpTimeouts');
 
 // ---------------------------------------------------------------------------
 // Schema validation
@@ -99,37 +105,60 @@ async function openaiProvider(messages, opts = {}) {
   const baseUrl = (opts.baseUrl || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const model = opts.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const temperature = typeof opts.temperature === 'number' ? opts.temperature : 0.2;
+  const timeoutMs =
+    typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs)
+      ? opts.timeoutMs
+      : TIMEOUT_MS_LLM;
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      messages,
-      response_format: { type: 'json_object' },
-    }),
-  });
+  const started = Date.now();
+  try {
+    const signal = combineSignals(opts.signal, timeoutMs);
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        messages,
+        response_format: { type: 'json_object' },
+      }),
+      signal,
+    });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenAI API error ${res.status}: ${body}`);
+    const durationMs = Date.now() - started;
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      logger.error('responsibilityExtractor OpenAI HTTP error', {
+        status: res.status,
+        durationMs,
+        bodyPreview: body.slice(0, 400),
+      });
+      throw new Error(`OpenAI API error ${res.status}: ${body.slice(0, 500)}`);
+    }
+
+    const data = await res.json();
+    const content =
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.text ||
+      '';
+
+    if (!content) {
+      logger.error('responsibilityExtractor OpenAI empty content', { durationMs });
+      throw new Error('Empty response from OpenAI API');
+    }
+
+    return content;
+  } catch (err) {
+    logger.error(
+      'responsibilityExtractor OpenAI failed',
+      normalizeExternalApiError(err, { durationMs: Date.now() - started })
+    );
+    throw err;
   }
-
-  const data = await res.json();
-  const content =
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.text ||
-    '';
-
-  if (!content) {
-    throw new Error('Empty response from OpenAI API');
-  }
-
-  return content;
 }
 
 // ---------------------------------------------------------------------------

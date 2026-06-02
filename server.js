@@ -41,7 +41,10 @@ const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/database');
 const languageResolutionMiddleware = require('./src/server/middleware/languageResolution');
+const requestCorrelationMiddleware = require('./src/server/middleware/requestCorrelation');
 const { corsOptions } = require('./src/server/config/corsOptions');
+const { createDocumentRouteIpLimiter } = require('./src/server/middleware/documentRouteRateLimit');
+const { unlinkCvUploadTempFile } = require('./src/server/config/cvUploadTempStorage');
 
 /** Separate limiters per prefix so quotas are not shared across route groups. Production only — see mounts below. */
 function createAiHeavyRouteLimiter() {
@@ -114,6 +117,32 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
+app.get('/api/health/cv-extraction', async (req, res) => {
+  const internalToken = String(process.env.CV_INTERNAL_HEALTH_TOKEN || '').trim();
+  if (internalToken) {
+    const provided = String(req.headers['x-internal-token'] || req.query.token || '').trim();
+    if (provided !== internalToken) {
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+  }
+
+  try {
+    const { getCvWorkerHealthSnapshot } = require('./src/server/services/cv/cvWorkerHealthService');
+    const snapshot = await getCvWorkerHealthSnapshot();
+    res.status(snapshot.ok ? 200 : 503).json(snapshot);
+  } catch (err) {
+    logger.error('cv_worker_health_check_failed', { message: err?.message || String(err) });
+    res.status(500).json({
+      ok: false,
+      timestamp: new Date().toISOString(),
+      error: 'health_check_failed',
+    });
+  }
+});
+
+// Request IDs for structured logs + correlation (before language & routes).
+app.use('/api', requestCorrelationMiddleware);
+
 // Resolve request language once for all API routes.
 app.use('/api', languageResolutionMiddleware);
 
@@ -132,7 +161,7 @@ console.log('Profile routes mounted at /api/profile');
 
 const documentRoutes = require('./src/server/routes/documents');
 if (isProduction) {
-  app.use('/api/documents', createAiHeavyRouteLimiter(), documentRoutes);
+  app.use('/api/documents', createDocumentRouteIpLimiter(), documentRoutes);
 } else {
   app.use('/api/documents', documentRoutes);
 }
@@ -183,6 +212,9 @@ app.use((err, req, res, next) => {
         status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
     } else if (/^Invalid file type/i.test(String(err.message || ''))) {
         status = 400;
+    }
+    if (req.file?.path) {
+      unlinkCvUploadTempFile(req.file.path).catch(() => {});
     }
     logger.error('Unhandled Express error', err);
     const body = isProduction

@@ -31,6 +31,12 @@
       "signIn": "Sign In"
     },
     "features": {
+      "carousel": {
+        "region": "Product features",
+        "slide": "Feature {{current}} of {{total}}",
+        "dots": "Choose a feature",
+        "goToSlide": "Go to feature {{index}}"
+      },
       "understand": {
         "title": "Understand Career Paths",
         "description": "Explore diverse career paths and browse different roles and professional fields."

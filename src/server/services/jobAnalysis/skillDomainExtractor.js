@@ -14,6 +14,12 @@
 // ENGLISH_ONLY_PIPELINE: Domain taxonomy keyword matching operates on canonical English text.
 
 const { buildMessages } = require('../../prompts/extractSkillDomains');
+const logger = require('../../utils/logger');
+const {
+  TIMEOUT_MS_LLM,
+  normalizeExternalApiError,
+  combineSignals,
+} = require('../../utils/httpTimeouts');
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible provider (shared pattern with responsibilityExtractor)
@@ -44,7 +50,7 @@ async function openaiProvider(messages, opts = {}) {
   const temperature = typeof opts.temperature === 'number' ? opts.temperature : 0.2;
   const timeoutMs = Number.isFinite(opts.timeoutMs)
     ? opts.timeoutMs
-    : Number.parseInt(process.env.OPENAI_TIMEOUT_MS || '', 10) || 45000;
+    : TIMEOUT_MS_LLM;
   const maxRetries = Number.isFinite(opts.maxRetries)
     ? opts.maxRetries
     : Number.parseInt(process.env.OPENAI_MAX_RETRIES || '', 10) || 3;
@@ -63,10 +69,9 @@ async function openaiProvider(messages, opts = {}) {
 
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
+    const started = Date.now();
     try {
+      const signal = combineSignals(opts.signal, timeoutMs);
       const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -79,7 +84,7 @@ async function openaiProvider(messages, opts = {}) {
           messages,
           response_format: { type: 'json_object' },
         }),
-        signal: controller.signal,
+        signal,
       });
 
       if (!res.ok) {
@@ -106,6 +111,10 @@ async function openaiProvider(messages, opts = {}) {
       return content;
     } catch (err) {
       lastError = err;
+      logger.warn(
+        'skillDomainExtractor OpenAI attempt failed',
+        normalizeExternalApiError(err, { attempt, durationMs: Date.now() - started })
+      );
       const isAbort = err && (err.name === 'AbortError' || String(err.message || '').includes('aborted'));
       if (attempt < maxRetries && (isAbort || shouldRetry(0, err?.message))) {
         const waitMs = retryBaseMs * (2 ** attempt);
@@ -113,8 +122,6 @@ async function openaiProvider(messages, opts = {}) {
         continue;
       }
       throw err;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

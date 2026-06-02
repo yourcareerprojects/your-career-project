@@ -245,6 +245,16 @@ const Profile = ({
     return currentEmploymentStatusOptionsByValue[key] || key;
   };
 
+  const formatHighestDegree = (value) => {
+    const key = String(value || '').trim();
+    if (!key) return '';
+    const translated = t(`profilePage.seniorityForm.options.highestDegree.${key}`);
+    if (translated && translated !== `profilePage.seniorityForm.options.highestDegree.${key}`) {
+      return translated;
+    }
+    return highestDegreeLabel(key);
+  };
+
   useEffect(() => {
     const prev = prevProfileUiLangRef.current;
     const langChanged = prev != null && prev !== currentLang;
@@ -1777,7 +1787,7 @@ const Profile = ({
             )}
             {renderField(
               t('profilePage.seniority.highestEducationalDegree'),
-              seniority.highestDegree ? highestDegreeLabel(seniority.highestDegree) : '',
+              seniority.highestDegree ? formatHighestDegree(seniority.highestDegree) : '',
               false,
               '',
               { xs: 12, sm: 5, md: 4 },
@@ -1908,7 +1918,7 @@ const Profile = ({
                     <MenuItem value="">—</MenuItem>
                     {HIGHEST_DEGREE_OPTIONS.map((opt) => (
                       <MenuItem key={opt.value} value={opt.value}>
-                        {opt.label}
+                        {formatHighestDegree(opt.value)}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -2134,7 +2144,7 @@ const Profile = ({
                   const parts = [];
                   if (s.currentStatus) parts.push(formatCurrentEmploymentStatus(s.currentStatus));
                   if (s.yearsOfExperience != null) parts.push(t('profilePage.seniority.yearsValue', { count: s.yearsOfExperience }));
-                  if (s.highestDegree) parts.push(highestDegreeLabel(s.highestDegree));
+                  if (s.highestDegree) parts.push(formatHighestDegree(s.highestDegree));
                   if (s.mostSeniorWorkExperience) parts.push(formatMostSeniorWorkExperience(s.mostSeniorWorkExperience));
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>

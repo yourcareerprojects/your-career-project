@@ -54,8 +54,10 @@
     "errors": {
       "verifyEmailRequired": "Bitte bestätige deine E-Mail, bevor du Profildetails hinzufügst.",
       "identityQuestionsRequired": "Bitte beantworte alle fünf Identitätsfragen, bevor du dein Profil speicherst.",
+      "sessionExpired": "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an und speichere noch einmal.",
       "saveFailed": "Fehler beim Speichern des Profils. Bitte versuche es erneut."
     },
+    "savingProfile": "Profil wird gespeichert…",
     "alreadyCreated": {
       "title": "Profil bereits erstellt",
       "description": "Du hast dein Profil bereits erstellt. Du kannst deine Daten bearbeiten oder einen neuen Lebenslauf auf deiner Profilseite hochladen.",
@@ -469,9 +471,10 @@
     "sectionTitle": "Dokumente",
     "uploadSuccessPrefix": "Upload erfolgreich.",
     "extraction": {
-      "semanticInterpretationSuccess": "Profilsignale aus deinem Lebenslauf wurden per semantischer Analyse interpretiert.",
       "semanticInterpretationNone": "Aus dem Dokument konnten keine Profilsignale interpretiert werden.",
-      "noDocumentText": "Aus diesem Dokument konnte selbst per OCR kein lesbarer Text extrahiert werden. Bitte erneut als PDF mit markierbarem Text exportieren, eine DOCX-Datei hochladen oder ein klareres JPG/PNG-Bild verwenden."
+      "noDocumentText": "Aus diesem Dokument konnte selbst per OCR kein lesbarer Text extrahiert werden. Bitte erneut als PDF mit markierbarem Text exportieren, eine DOCX-Datei hochladen oder ein klareres JPG/PNG-Bild verwenden.",
+      "aiTimeout": "Die KI-Extraktion hat zu lange gedauert. Es werden weiterhin einfache Felder aus deinem Lebenslauf angezeigt — bitte prüfe sie.",
+      "localizationPartial": "Die zweisprachige Aufbereitung konnte teils nicht automatisch fertiggestellt werden; dein extrahierter Text bleibt erhalten."
     },
     "common": {
       "cancel": "Abbrechen",
@@ -487,6 +490,7 @@
       "selectFileAndType": "Bitte wähle eine Datei und einen Dokumenttyp aus",
       "fileSizeLimit": "Die Dateigröße muss unter 10MB liegen",
       "uploadFailed": "Dokument konnte nicht hochgeladen werden. Bitte versuche es erneut.",
+      "refreshAfterExtractionFailed": "Die Auswertung ist fertig, aber die Ergebnisse konnten nicht geladen werden. Bitte aktualisiere die Seite.",
       "saveProfileFailed": "Profildaten konnten nicht gespeichert werden. Bitte versuche es erneut.",
       "qualityAnalysisFailed": "Qualitätsanalyse fehlgeschlagen",
       "renameFailed": "Dokument konnte nicht umbenannt werden. Bitte versuche es erneut."
@@ -500,6 +504,11 @@
     "documents": {
       "noTitle": "Kein Titel",
       "uploadedOn": "Hochgeladen am {{date}}",
+      "tooltips": {
+        "download": "Dokument herunterladen",
+        "delete": "Dokument löschen",
+        "edit": "Dokumentnamen bearbeiten"
+      },
       "rename": {
         "saveCta": "Speichern"
       }
@@ -529,11 +538,64 @@
         "other": "Sonstiges"
       }
     },
+    "extractionErrors": {
+      "fallback": "Bei der Verarbeitung deines Dokuments ist ein Fehler aufgetreten.",
+      "OCR_FAILED": "Das Dokument konnte nicht gelesen werden.",
+      "AI_TIMEOUT": "Die Verarbeitung hat zu lange gedauert. Bitte versuche es erneut.",
+      "FILE_PARSE_FAILED": "Das Dokument konnte nicht verarbeitet werden.",
+      "UNSUPPORTED_FORMAT": "Nicht unterstütztes Dokumentformat.",
+      "EXTRACTION_FAILED": "Profildaten konnten aus diesem Dokument nicht extrahiert werden.",
+      "RATE_LIMITED": "Zu viele Anfragen. Bitte versuche es später erneut.",
+      "INTERNAL_ERROR": "Bei der Verarbeitung ist ein Fehler aufgetreten.",
+      "MAX_RETRIES_EXCEEDED": "Das Dokument konnte nach mehreren Versuchen nicht verarbeitet werden. Bitte lade es erneut hoch oder verwende eine andere Datei."
+    },
+    "async": {
+      "header": "Lebenslauf-Verarbeitung",
+      "extractionHeader": "Lebenslauf-Auswertung",
+      "uploading": "Dein Lebenslauf wird hochgeladen...",
+      "uploadComplete": "Datei erfolgreich hochgeladen.",
+      "extractionQueued": "Auswertung eingereiht — warte auf Verarbeitung...",
+      "stillProcessing": "Dein Lebenslauf wird noch verarbeitet...",
+      "takingLonger": "Das dauert länger als erwartet. Du kannst die Seite verlassen — die Verarbeitung läuft im Hintergrund weiter.",
+      "retrying": "Die Verarbeitung wurde nach einer Verzögerung erneut gestartet. Wir arbeiten noch an deinem Lebenslauf...",
+      "pollReconnecting": "Verbindung wird wiederhergestellt, um den Status zu prüfen...",
+      "queued": "Dein Lebenslauf steht in der Warteschlange...",
+      "ocr": "Dein Lebenslauf wird gelesen...",
+      "extraction": "Fähigkeiten und Erfahrung werden analysiert...",
+      "localization": "Dein Profil wird vorbereitet...",
+      "completed": "Dein Lebenslauf wurde erfolgreich verarbeitet.",
+      "failed": "Dein Lebenslauf konnte nicht vollständig verarbeitet werden. Bitte versuche eine andere Datei.",
+      "timedOut": "Dein Lebenslauf wird noch verarbeitet. Du kannst den Status später unter Dokumente prüfen.",
+      "notStarted": "Die Verarbeitung wurde noch nicht gestartet.",
+      "recovery": {
+        "slow": "Dein Lebenslauf wird noch verarbeitet. Das dauert länger als üblich.",
+        "stuck": "Die Verarbeitung scheint verzögert. Das kann an der Systemauslastung liegen.",
+        "noProgress": "Die Verarbeitung scheint pausiert. Wir prüfen dein Dokument.",
+        "workerUnavailable": "Die Verarbeitung ist derzeit verzögert. Du kannst warten oder erneut versuchen.",
+        "workerDegraded": "Das Verarbeitungssystem ist derzeit verzögert.",
+        "pollStopped": "Automatische Statusabfragen pausiert. Dein Lebenslauf wird möglicherweise noch im Hintergrund verarbeitet.",
+        "failed": "Dein Lebenslauf konnte nicht verarbeitet werden.",
+        "continueWaiting": "Weiter warten",
+        "refreshStatus": "Status aktualisieren",
+        "retryExtraction": "Auswertung erneut starten",
+        "uploadAgain": "Erneut hochladen",
+        "refreshFailed": "Status konnte nicht aktualisiert werden. Bitte erneut versuchen.",
+        "retryFailed": "Auswertung konnte nicht neu gestartet werden. Bitte erneut versuchen.",
+        "maxRetries": "Das Dokument konnte nach mehreren Versuchen nicht verarbeitet werden. Bitte lade es erneut hoch oder verwende eine andere Datei."
+      }
+    },
     "review": {
-      "step2Title": "Ausgelesene Profildaten prüfen (Schritt 2 von 3)",
-      "step3Title": "Fragen nach mehr Kontext (Schritt 3 von 3)",
-      "step2Intro": "Bitte prüfe die ausgelesenen Daten. Du kannst jedes Feld bearbeiten.",
-      "step3Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und speichere dann dein Profil.",
+      "step2Title": "Wer bist du?",
+      "step3Title": "Worin bist du gut?",
+      "step4Title": "Wie erfahren bist du?",
+      "step5Title": "Fragen nach mehr Kontext",
+      "progress": {
+        "ariaLabel": "Profil-Einrichtung Schritt {{current}} von {{total}}"
+      },
+      "step2Intro": "Prüfe und passe deine Antworten zu diesen Identitätsfragen an. Sie helfen uns zu verstehen, was dir bei der Arbeit wichtig ist.",
+      "step3Intro": "Prüfe Fähigkeiten, Bereiche und Stärken aus deinem Lebenslauf. Behalte die Einträge, die ins Profil sollen, und bearbeite oder ergänze sie.",
+      "step4Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können.",
+      "step5Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und speichere dann dein Profil.",
       "step3QualityErrorPrefix": "Qualitätsvorschläge konnten nicht geladen werden:",
       "followUpPlaceholder": "Deine Antwort",
       "strengthsTitle": "Stärken und Fokusbereiche",
@@ -546,11 +608,6 @@
       "saveToProfileCta": "Im Profil speichern",
       "goodAtLimit": "Bis zu {{max}} Einträge pro Kategorie.",
       "maxEntriesTitle": "Maximal {{max}} Einträge",
-      "status": {
-        "success": "Auslesen erfolgreich",
-        "partial": "Teilweise ausgelesen",
-        "failed": "Auslesen fehlgeschlagen"
-      },
       "sections": {
         "identity": "Wer bist du?",
         "goodAt": "Was kannst du gut?",
@@ -572,10 +629,18 @@
       },
       "labels": {
         "skillDomain": "Kompetenzbereich {{index}}",
-        "domain": "Bereich {{index}}",
+        "domain": "Branche {{index}}",
         "responsibility": "Verantwortung {{index}}",
         "skill": "Fähigkeit {{index}}",
         "learningGoal": "Lernziel {{index}}"
+      },
+      "errors": {
+        "fixHighlightedFields": "Bitte korrigiere die markierten Felder unten.",
+        "identityMaxLength": "Diese Antwort darf höchstens {{max}} Zeichen lang sein.",
+        "identityRequired": "Bitte beantworte diese Frage, bevor du fortfährst: {{question}}",
+        "structuredItemMaxLength": "Eintrag {{index}} in „{{category}}“ ist zu lang ({{length}} Zeichen; maximal {{max}}).",
+        "structuredGoodAtRequired": "Bitte füge mindestens einen Eintrag unter „Was kannst du gut?“ hinzu, bevor du dein Profil speicherst.",
+        "structuredCategoryRequired": "Bitte füge mindestens einen Eintrag in {{category}} hinzu, bevor du fortfährst."
       },
       "actions": {
         "addSkillDomain": "Kompetenzbereich hinzufügen",

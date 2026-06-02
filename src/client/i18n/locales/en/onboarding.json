@@ -54,8 +54,10 @@
     "errors": {
       "verifyEmailRequired": "Please verify your email before adding profile details.",
       "identityQuestionsRequired": "Please answer all five identity questions before saving your profile.",
+      "sessionExpired": "Your session expired. Please sign in again and retry saving.",
       "saveFailed": "Error saving profile. Please try again."
     },
+    "savingProfile": "Saving your profile…",
     "alreadyCreated": {
       "title": "Profile Already Created",
       "description": "You have already created your profile. You can edit your data or upload a new CV from your profile page.",
@@ -67,7 +69,7 @@
     },
     "fullUpdate": {
       "title": "Full profile update",
-      "description": "Upload a new CV to fully refresh your profile. You can review extracted content and answer context questions before replacing existing data."
+      "description": "Upload a new CV to fully refresh your profile. You can review extracted content step by step and answer context questions before replacing existing data."
     }
   },
   "profilePagePrompts": {
@@ -469,9 +471,10 @@
     "sectionTitle": "Documents",
     "uploadSuccessPrefix": "Upload successful.",
     "extraction": {
-      "semanticInterpretationSuccess": "Interpreted profile signals from your CV using semantic analysis.",
       "semanticInterpretationNone": "No profile signals could be interpreted from the document.",
-      "noDocumentText": "No readable text could be extracted from this document, even with OCR. Export it again as a PDF with selectable text, upload a DOCX file, or use a clearer JPG/PNG image."
+      "noDocumentText": "No readable text could be extracted from this document, even with OCR. Export it again as a PDF with selectable text, upload a DOCX file, or use a clearer JPG/PNG image.",
+      "aiTimeout": "AI extraction timed out. Basic fields from your CV are still shown — please review them.",
+      "localizationPartial": "Some bilingual formatting could not be completed automatically; your extracted text is unchanged."
     },
     "common": {
       "cancel": "Cancel",
@@ -487,6 +490,7 @@
       "selectFileAndType": "Please select a file and document type",
       "fileSizeLimit": "File size must be less than 10MB",
       "uploadFailed": "Failed to upload document. Please try again.",
+      "refreshAfterExtractionFailed": "Extraction finished but we could not load the results. Please refresh the page.",
       "saveProfileFailed": "Failed to save profile data. Please try again.",
       "qualityAnalysisFailed": "Quality analysis failed",
       "renameFailed": "Failed to rename document. Please try again."
@@ -500,6 +504,11 @@
     "documents": {
       "noTitle": "No title",
       "uploadedOn": "Uploaded {{date}}",
+      "tooltips": {
+        "download": "Download document",
+        "delete": "Delete document",
+        "edit": "Edit document name"
+      },
       "rename": {
         "saveCta": "Save"
       }
@@ -529,11 +538,64 @@
         "other": "Other"
       }
     },
+    "extractionErrors": {
+      "fallback": "Something went wrong while processing your document.",
+      "OCR_FAILED": "We could not read the document.",
+      "AI_TIMEOUT": "Processing took too long. Please try again.",
+      "FILE_PARSE_FAILED": "The document could not be processed.",
+      "UNSUPPORTED_FORMAT": "Unsupported document format.",
+      "EXTRACTION_FAILED": "We could not extract profile data from this document.",
+      "RATE_LIMITED": "Too many requests. Please try again later.",
+      "INTERNAL_ERROR": "Something went wrong during processing.",
+      "MAX_RETRIES_EXCEEDED": "We could not process this document after several attempts. Please try uploading again or use a different file."
+    },
+    "async": {
+      "header": "CV processing",
+      "extractionHeader": "CV extraction",
+      "uploading": "Uploading your CV...",
+      "uploadComplete": "File uploaded successfully.",
+      "extractionQueued": "Extraction queued — waiting for the worker...",
+      "stillProcessing": "Still processing your CV...",
+      "takingLonger": "This is taking longer than expected. You can leave this page — processing will continue in the background.",
+      "retrying": "Processing was retried after a delay. Still working on your CV...",
+      "pollReconnecting": "Reconnecting to check extraction status...",
+      "queued": "Your CV is queued for processing...",
+      "ocr": "Reading your CV...",
+      "extraction": "Analyzing your skills and experience...",
+      "localization": "Preparing your personalized profile...",
+      "completed": "Your CV has been processed successfully.",
+      "failed": "We could not fully process your CV. Please try another file.",
+      "timedOut": "Your CV is still processing. You can check the status later in your documents.",
+      "notStarted": "Processing has not started yet.",
+      "recovery": {
+        "slow": "Your CV is still being processed. This is taking longer than usual.",
+        "stuck": "Processing seems delayed. This might be due to system load.",
+        "noProgress": "Processing appears paused. We're checking on your document.",
+        "workerUnavailable": "Processing is currently experiencing delays. You can wait or retry.",
+        "workerDegraded": "Processing system is currently experiencing delays.",
+        "pollStopped": "Automatic status checks paused. Your CV may still be processing in the background.",
+        "failed": "We couldn't process your CV.",
+        "continueWaiting": "Continue waiting",
+        "refreshStatus": "Refresh status",
+        "retryExtraction": "Retry extraction",
+        "uploadAgain": "Upload again",
+        "refreshFailed": "Could not refresh status. Please try again.",
+        "retryFailed": "Could not restart extraction. Please try again.",
+        "maxRetries": "We couldn't process this document after several attempts. Please upload again or use a different file."
+      }
+    },
     "review": {
-      "step2Title": "Review Extracted Profile Data (Step 2 of 3)",
-      "step3Title": "Need More Context Questions (Step 3 of 3)",
-      "step2Intro": "Please review the extracted data below. You can edit any field before moving to the context step.",
-      "step3Intro": "We scored your answers and identified some gaps. Answer each follow-up in the sections below, then save your profile to finish.",
+      "step2Title": "Who are you?",
+      "step3Title": "What are you good at?",
+      "step4Title": "How experienced are you?",
+      "step5Title": "More context questions",
+      "progress": {
+        "ariaLabel": "Profile setup step {{current}} of {{total}}"
+      },
+      "step2Intro": "Review and refine your answers to these identity questions. They help us understand what matters to you at work.",
+      "step3Intro": "Review skills, domains, and strengths extracted from your CV. Keep the items you want on your profile and edit or add as needed.",
+      "step4Intro": "Confirm your experience level and background so we can tailor simulations to your seniority.",
+      "step5Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then save your profile to finish.",
       "step3QualityErrorPrefix": "Could not load quality suggestions:",
       "followUpPlaceholder": "Your answer",
       "strengthsTitle": "Strengths and focus areas",
@@ -546,11 +608,6 @@
       "saveToProfileCta": "Save to Profile",
       "goodAtLimit": "Up to {{max}} entries per category.",
       "maxEntriesTitle": "Maximum {{max}} entries",
-      "status": {
-        "success": "Extraction Successful",
-        "partial": "Partial Extraction",
-        "failed": "Extraction Failed"
-      },
       "sections": {
         "identity": "Who are you?",
         "goodAt": "What are you good at?",
@@ -576,6 +633,14 @@
         "responsibility": "Responsibility {{index}}",
         "skill": "Skill {{index}}",
         "learningGoal": "Learning goal {{index}}"
+      },
+      "errors": {
+        "fixHighlightedFields": "Please fix the highlighted fields below.",
+        "identityMaxLength": "This answer must be at most {{max}} characters.",
+        "identityRequired": "Please answer this question before continuing: {{question}}",
+        "structuredItemMaxLength": "{{category}} entry {{index}} is too long ({{length}} characters; maximum {{max}}).",
+        "structuredGoodAtRequired": "Please add at least one entry in “What are you good at?” before saving your profile.",
+        "structuredCategoryRequired": "Please add at least one entry in {{category}} before continuing."
       },
       "actions": {
         "addSkillDomain": "Add skill domain",

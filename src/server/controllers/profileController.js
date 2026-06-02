@@ -60,6 +60,14 @@ const localizedContentService = require('../services/localization/localizedConte
 const { cachedTranslate } = require('../services/ai/translationCache');
 const { translateStructured } = require('../services/ai/translateStructured');
 const { getOrCreateRoleFitExplanation } = require('../services/roleFitExplanation/getOrCreateRoleFitExplanation');
+const {
+  buildMergedStructuredPayloadForNormalization,
+  buildMergedUserIdentity,
+  normalizeSeniorityFields,
+  applySeniorityToUser,
+  readSeniorityFromProfile,
+  verifySeniorityPersisted,
+} = require('../services/profile/profileReviewSaveService');
 const FIXED_MAX_SAVED_SIMULATIONS = 20;
 
 function logControllerError(context, err, extra = undefined) {
@@ -575,6 +583,13 @@ function hasNarrativeDimensionShape(value, language = 'en') {
   );
 }
 
+/** True when every structured dimension already has persisted raw_items + readable summary_text. */
+function structuredUserInfoHasPersistedNarratives(structured = {}, language = 'en') {
+  if (!structured || typeof structured !== 'object') return false;
+  const lang = normalizeLangCode(language, 'en');
+  return STRUCTURED_DIMENSIONS.every(({ key }) => hasNarrativeDimensionShape(structured[key], lang));
+}
+
 async function toNarrativeDimension(
   value,
   label,
@@ -909,17 +924,24 @@ const calculateCareerSimulationInputs = async (profile) => {
     lastCalculated: new Date()
   };
 
-  const structured = profile.structuredUserInfo && typeof profile.structuredUserInfo === 'object'
-    ? profile.structuredUserInfo
-    : {};
+  const structured =
+    profile.structuredUserInfo && typeof profile.structuredUserInfo === 'object'
+      ? (typeof profile.structuredUserInfo.toObject === 'function'
+        ? profile.structuredUserInfo.toObject()
+        : profile.structuredUserInfo)
+      : {};
 
   const narrativeSourceLang = resolveNarrativeSourceLanguage(profile, 'en');
-  const { normalized } = await normalizeStructuredUserInfoForStorage(structured, {
-    forceRegenerate: false,
-    language: narrativeSourceLang,
-    sourceLanguage: narrativeSourceLang,
-  });
-  inputs.structuredUserInfo = normalized;
+  if (structuredUserInfoHasPersistedNarratives(structured, narrativeSourceLang)) {
+    inputs.structuredUserInfo = structured;
+  } else {
+    const { normalized } = await normalizeStructuredUserInfoForStorage(structured, {
+      forceRegenerate: false,
+      language: narrativeSourceLang,
+      sourceLanguage: narrativeSourceLang,
+    });
+    inputs.structuredUserInfo = normalized;
+  }
   // Seniority (used for seniority sub-vector and penalty)
   inputs.seniority = {
     currentStatus: profile.seniority?.currentStatus ? String(profile.seniority.currentStatus).trim() : '',
@@ -2800,6 +2822,7 @@ exports.updateSeniority = async (req, res) => {
       if (!user.profile.seniority) user.profile.seniority = {};
       user.profile.seniority.mostSeniorWorkExperience = mostSeniorWorkExperience ? String(mostSeniorWorkExperience).trim() : '';
     }
+    user.markModified('profile.seniority');
 
     try {
       const computed = await calculateCareerSimulationInputs(user.profile);
@@ -2841,15 +2864,47 @@ exports.updateSeniority = async (req, res) => {
 
     await user.save();
 
+    const responseSeniority = {
+      currentStatus: user.profile.seniority?.currentStatus || '',
+      yearsOfExperience: user.profile.seniority?.yearsOfExperience ?? null,
+      highestDegree: user.profile.seniority?.highestDegree || '',
+      mostSeniorWorkExperience: user.profile.seniority?.mostSeniorWorkExperience || '',
+    };
+
+    const expectedCurrentStatus = currentStatus !== undefined
+      ? (currentStatus ? String(currentStatus).trim() : '')
+      : responseSeniority.currentStatus;
+    const expectedYears = yearsOfExperience !== undefined
+      ? (yearsOfExperience === '' || yearsOfExperience === null || yearsOfExperience === undefined
+        ? null
+        : (() => {
+          const val = parseInt(yearsOfExperience, 10);
+          return (val >= 0 && val <= 50) ? val : null;
+        })())
+      : responseSeniority.yearsOfExperience;
+    const expectedHighestDegree = highestDegree !== undefined
+      ? (highestDegree ? String(highestDegree).trim() : '')
+      : responseSeniority.highestDegree;
+    const expectedMostSenior = mostSeniorWorkExperience !== undefined
+      ? (mostSeniorWorkExperience ? String(mostSeniorWorkExperience).trim() : '')
+      : responseSeniority.mostSeniorWorkExperience;
+
+    if (
+      responseSeniority.currentStatus !== expectedCurrentStatus
+      || responseSeniority.yearsOfExperience !== expectedYears
+      || responseSeniority.highestDegree !== expectedHighestDegree
+      || responseSeniority.mostSeniorWorkExperience !== expectedMostSenior
+    ) {
+      return res.status(500).json({
+        message: 'Seniority fields were not persisted correctly',
+        error: 'Seniority persist verification failed',
+      });
+    }
+
     const profileStructured = user.profile.structuredUserInfo || {};
     res.json({
       success: true,
-      seniority: {
-        currentStatus: user.profile.seniority?.currentStatus || '',
-        yearsOfExperience: user.profile.seniority?.yearsOfExperience ?? null,
-        highestDegree: user.profile.seniority?.highestDegree || '',
-        mostSeniorWorkExperience: user.profile.seniority?.mostSeniorWorkExperience || ''
-      },
+      seniority: responseSeniority,
       careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
         user.profile.careerSimulationInputs,
         profileStructured,
@@ -2971,6 +3026,193 @@ exports.updateStructuredUserInfo = async (req, res) => {
     res.status(500).json({
       message: err.message || 'Failed to update structured user info',
       error: err.message
+    });
+  }
+};
+
+async function recalculateCareerSimulationInputsOnUser(user, editorId, changes = { recalculatedFromProfile: true }) {
+  const computed = await calculateCareerSimulationInputs(user.profile);
+  const defaultEnrichment = {
+    status: 'none',
+    message: '',
+    extractedSkills: [],
+    extractedWorkExperience: [],
+    extractedEducation: [],
+    extractedCertifications: [],
+    extractedProjects: [],
+    sourceDocumentIds: [],
+    lastParsedAt: null,
+  };
+  if (!user.profile.careerSimulationInputs) {
+    user.profile.careerSimulationInputs = { documentEnrichment: defaultEnrichment };
+  }
+  const csi = user.profile.careerSimulationInputs;
+  if (!csi.documentEnrichment || typeof csi.documentEnrichment !== 'object') {
+    csi.documentEnrichment = defaultEnrichment;
+  }
+  csi.structuredUserInfo = computed.structuredUserInfo;
+  csi.userIdentity = computed.userIdentity;
+  csi.seniority = computed.seniority;
+  csi.lastCalculated = new Date();
+  csi.isManuallyEdited = csi.isManuallyEdited || false;
+  if (Array.isArray(csi.editHistory)) {
+    csi.editHistory.push({
+      editedAt: new Date(),
+      editor: editorId,
+      changes,
+    });
+  } else {
+    csi.editHistory = [];
+  }
+}
+
+// Atomic CV review save: seniority, identity, structured lists, optional name — one transaction.
+exports.saveProfileReview = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const body = req.body || {};
+    const mode = body.mode === 'replace' ? 'replace' : 'merge';
+    const normalizedSeniority = normalizeSeniorityFields(body.seniority || {});
+
+    const existingIdentity = overlayIdentityAnswersWithCvLocalization(
+      normalizeUserIdentityAnswers(user.profile.userIdentityAnswers || {}),
+      user.profile.cvExtractLocalization?.userIdentity,
+      req.language
+    );
+    const existingStructuredForMerge =
+      user.profile.structuredUserInfo && typeof user.profile.structuredUserInfo.toObject === 'function'
+        ? user.profile.structuredUserInfo.toObject()
+        : (user.profile.structuredUserInfo || {});
+    const mergedStructuredBody = buildMergedStructuredPayloadForNormalization(
+      existingStructuredForMerge,
+      body.structuredUserInfo || {},
+      mode
+    );
+    const mergedIdentityAnswers = buildMergedUserIdentity(
+      existingIdentity,
+      body.userIdentity || {},
+      mode
+    );
+
+    if (body.cvExtractLocalization && typeof body.cvExtractLocalization === 'object') {
+      user.profile.cvExtractLocalization = mergeCvExtractLocalizationPatch(
+        user.profile.cvExtractLocalization,
+        body.cvExtractLocalization
+      );
+      user.markModified('profile.cvExtractLocalization');
+    }
+
+    applySeniorityToUser(user, normalizedSeniority);
+
+    if (typeof body.name === 'string' && body.name.trim().length >= 2) {
+      user.name = body.name.trim();
+    }
+
+    const { normalized: structuredUserInfo } = await normalizeStructuredUserInfoForStorage(
+      mergedStructuredBody,
+      {
+        forceRegenerate: false,
+        language: req.language,
+        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+      }
+    );
+    user.profile.structuredUserInfo = structuredUserInfo;
+    user.markModified('profile.structuredUserInfo');
+
+    if (!user.profile.userIdentityAnswers || typeof user.profile.userIdentityAnswers !== 'object') {
+      user.profile.userIdentityAnswers = {};
+    }
+    Object.assign(user.profile.userIdentityAnswers, mergedIdentityAnswers);
+    user.markModified('profile.userIdentityAnswers');
+
+    if (user.profile.cvExtractLocalization) {
+      if (syncCvExtractUserIdentityFromFlat(user.profile.cvExtractLocalization, mergedIdentityAnswers, req.language)) {
+        user.markModified('profile.cvExtractLocalization');
+      }
+    }
+
+    const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
+      user.profile || {},
+      {
+        forceRegenerate: false,
+        language: req.language,
+        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+      }
+    );
+    user.profile.who_are_you = normalizedWhoAreYou;
+    user.markModified('profile.who_are_you');
+
+    try {
+      await recalculateCareerSimulationInputsOnUser(user, req.user.userId, {
+        recalculatedFromProfileReview: true,
+      });
+    } catch (calcErr) {
+      console.warn('Career simulation inputs recalculation failed (non-fatal):', calcErr.message);
+    }
+
+    await user.save();
+
+    try {
+      await refreshUserIdentityEmbeddingOnUserDocument(user);
+    } catch (e) {
+      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
+    }
+
+    if (!verifySeniorityPersisted(user.profile.seniority, normalizedSeniority)) {
+      return res.status(500).json({
+        message: 'Seniority fields were not persisted correctly',
+        error: 'Seniority persist verification failed',
+      });
+    }
+
+    const responseSeniority = readSeniorityFromProfile(user.profile);
+    const profileStructured = user.profile.structuredUserInfo || {};
+    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(profileStructured);
+    const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
+      { who_are_you: user.profile.who_are_you || { raw_answers: [], summary_text: '' } },
+      req.language
+    ).who_are_you;
+
+    res.json({
+      success: true,
+      name: user.name || '',
+      seniority: responseSeniority,
+      userIdentity: overlayIdentityAnswersWithCvLocalization(
+        normalizeUserIdentityAnswers(user.profile.userIdentityAnswers || {}),
+        user.profile.cvExtractLocalization?.userIdentity,
+        req.language
+      ),
+      who_are_you: responseWhoAreYou,
+      structuredUserInfo: {
+        ...profileStructured,
+        derivedInferredIsco: profileDerivedInferredIsco,
+      },
+      careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
+        user.profile.careerSimulationInputs,
+        profileStructured,
+        {
+          reuseProfileDerivedInferredIsco: profileDerivedInferredIsco,
+          language: req.language,
+        }
+      ),
+    });
+  } catch (err) {
+    logControllerError('Save profile review error', err);
+    res.status(500).json({
+      message: err.message || 'Failed to save profile review',
+      error: err.message,
     });
   }
 };

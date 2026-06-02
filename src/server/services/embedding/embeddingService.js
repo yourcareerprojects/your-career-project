@@ -8,6 +8,7 @@
 
 const OpenAI = require('openai').default;
 const logger = require('../../utils/logger');
+const { TIMEOUT_MS_LLM } = require('../../utils/httpTimeouts');
 const { getEnglishField } = require('../../utils/i18nFields');
 const { normalizeForEmbedding, containsGerman } = require('../ai/normalizeForEmbedding');
 
@@ -20,9 +21,11 @@ let openaiClient = null;
 function getOpenAI() {
   if (!openaiClient) {
     const apiKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';
+    const embeddingTimeoutMs =
+      Number.parseInt(process.env.OPENAI_EMBEDDING_TIMEOUT_MS || '', 10) || TIMEOUT_MS_LLM;
     openaiClient = new OpenAI({
       apiKey,
-      timeout: 180000, // 3 minutes per request (batch requests can be large; slow networks)
+      timeout: embeddingTimeoutMs,
     });
   }
   return openaiClient;

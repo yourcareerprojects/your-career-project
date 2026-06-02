@@ -2,10 +2,15 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 
+const { isPathUnderCvUploadTemp, unlinkCvUploadTempFile } = require('../config/cvUploadTempStorage');
+
 const ALLOWED_EXT = new Set(['.pdf', '.docx', '.doc', '.txt', '.jpg', '.jpeg', '.png']);
 const INVALID_TYPE_MESSAGE = 'Invalid file type. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG files are allowed.';
 const CONTENT_MISMATCH_MESSAGE = 'File content does not match an allowed type. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG are accepted.';
 const TXT_MISMATCH_MESSAGE = 'File content does not match plain text. Only PDF, DOCX, DOC, TXT, JPG, JPEG, and PNG are accepted.';
+
+/** Max bytes read for magic-byte / text validation (not loaded into a persistent buffer on the request). */
+const VALIDATION_READ_BYTES = 512 * 1024;
 
 const MIME_BY_EXT = {
   '.pdf': ['application/pdf'],
@@ -71,6 +76,11 @@ function looksLikeUtf8Text(buf) {
   return buf.length > 0;
 }
 
+/**
+ * @param {Buffer} buf
+ * @param {{ originalname?: string, mimetype?: string }} file
+ * @returns {string} normalized extension
+ */
 function validateDocumentBuffer(file) {
   const buf = file.buffer;
   if (!buf || !Buffer.isBuffer(buf)) {
@@ -126,14 +136,39 @@ function validateDocumentBuffer(file) {
 }
 
 /**
- * Runs after multer.memoryStorage(): validates magic bytes / content, then writes under uploads/documents.
+ * Read only the prefix needed for content validation.
+ * @param {string} filePath
+ * @returns {Promise<Buffer>}
+ */
+async function readValidationSnippet(filePath) {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const stat = await handle.stat();
+    const len = Math.min(stat.size, VALIDATION_READ_BYTES);
+    if (len <= 0) {
+      return Buffer.alloc(0);
+    }
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = await handle.read(buf, 0, len, 0);
+    return bytesRead === len ? buf : buf.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Runs after multer disk temp storage: validates magic bytes from a prefix read, then moves to uploads/documents.
  */
 async function persistValidatedDocumentUpload(req, res, next) {
+  const tempPath = req.file?.path;
+  if (!req.file || !tempPath) {
+    return next();
+  }
+
   try {
-    if (!req.file || !req.file.buffer) {
-      return next();
-    }
-    validateDocumentBuffer(req.file);
+    const snippet = await readValidationSnippet(tempPath);
+    validateDocumentBuffer({ ...req.file, buffer: snippet });
+
     const uploadDir = path.join(__dirname, '../../uploads/documents');
     await fs.mkdir(uploadDir, { recursive: true });
     const stamp = Date.now();
@@ -141,14 +176,20 @@ async function persistValidatedDocumentUpload(req, res, next) {
     const ext = path.extname(req.file.originalname || '').toLowerCase();
     const filename = `${stamp}-${rand}${ext}`;
     const fullPath = path.join(uploadDir, filename);
-    await fs.writeFile(fullPath, req.file.buffer);
+
+    await fs.rename(tempPath, fullPath);
+
     req.file.path = fullPath;
     req.file.filename = filename;
     req.file.destination = uploadDir;
-    delete req.file.buffer;
+    req.cvUploadTempConsumed = true;
+    delete req.cvUploadTempPath;
     return next();
   } catch (err) {
-    if (req.file && req.file.buffer) delete req.file.buffer;
+    if (isPathUnderCvUploadTemp(tempPath)) {
+      await unlinkCvUploadTempFile(tempPath).catch(() => {});
+    }
+    req.cvUploadTempConsumed = true;
     return res.status(400).json({
       message: err.message || 'Invalid file upload',
     });
@@ -158,4 +199,5 @@ async function persistValidatedDocumentUpload(req, res, next) {
 module.exports = {
   persistValidatedDocumentUpload,
   validateDocumentBuffer,
+  readValidationSnippet,
 };

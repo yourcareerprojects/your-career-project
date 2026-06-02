@@ -1,5 +1,8 @@
 const localizedContentService = require('../localization/localizedContentService');
-const { translateBetweenLocales } = require('../ai/translateText');
+const { translateCvExtractBatch } = require('../ai/translateText');
+const logger = require('../../utils/logger');
+const { normalizeExternalApiError } = require('../../utils/httpTimeouts');
+const { logTranslationSummary } = require('../../utils/metricsLogger');
 
 const USER_IDENTITY_KEYS = [
   'workEnjoyMost',
@@ -9,18 +12,152 @@ const USER_IDENTITY_KEYS = [
   'workingLifeAchievement',
 ];
 
-async function localizeSingleLine(text, documentLanguage) {
+const STRUCTURED_LINE_FIELDS = ['skillDomains', 'domains', 'keyResponsibilities', 'skillsInDevelopment'];
+
+/**
+ * @param {object} profile
+ * @returns {{ id: string, text: string }[]}
+ */
+function collectCvExtractLocalizationItems(profile) {
+  const items = [];
+  const identity = profile?.userIdentity && typeof profile.userIdentity === 'object' ? profile.userIdentity : {};
+
+  for (const key of USER_IDENTITY_KEYS) {
+    const text = String(identity[key] || '').trim();
+    if (text) items.push({ id: `identity.${key}`, text });
+  }
+
+  const sui = profile?.structuredUserInfo && typeof profile.structuredUserInfo === 'object' ? profile.structuredUserInfo : {};
+
+  for (const field of STRUCTURED_LINE_FIELDS) {
+    const rows = Array.isArray(sui[field]) ? sui[field] : [];
+    for (let i = 0; i < rows.length; i += 1) {
+      const text = String(rows[i] || '').trim();
+      if (text) items.push({ id: `structured.${field}.${i}`, text });
+    }
+  }
+
+  const skillRows = Array.isArray(sui.skills) ? sui.skills : [];
+  for (let i = 0; i < skillRows.length; i += 1) {
+    const name = typeof skillRows[i] === 'string' ? skillRows[i] : skillRows[i]?.name || '';
+    const text = String(name).trim();
+    if (text) items.push({ id: `structured.skills.${i}`, text });
+  }
+
+  return items;
+}
+
+/**
+ * @param {string} text
+ * @param {string|undefined|null} translated
+ * @param {'en'|'de'} documentLanguage
+ * @param {{ partial?: boolean }} [state]
+ */
+function pairFromDocumentLanguage(text, translated, documentLanguage, state) {
   const raw = String(text || '').trim();
   if (!raw) return { en: '', de: '' };
-  const doc = documentLanguage === 'de' ? 'de' : 'en';
-  if (doc === 'en') {
-    const en = raw;
-    const de = String((await translateBetweenLocales(en, 'en', 'de')) || '').trim() || en;
-    return { en, de };
+
+  const docLang = documentLanguage === 'de' ? 'de' : 'en';
+  const other = String(translated || '').trim();
+  if (!other) {
+    if (state) state.partial = true;
+    return { en: raw, de: raw };
   }
-  const de = raw;
-  const en = String((await translateBetweenLocales(de, 'de', 'en')) || '').trim() || de;
-  return { en, de };
+
+  if (docLang === 'en') return { en: raw, de: other };
+  return { en: other, de: raw };
+}
+
+/**
+ * @param {object} profile
+ * @param {Map<string, string>} translations
+ * @param {'en'|'de'} documentLanguage
+ * @param {{ partial?: boolean }} state
+ */
+function buildCvI18nFromBatchResults(profile, translations, documentLanguage, state) {
+  const docLang = documentLanguage === 'de' ? 'de' : 'en';
+  const identity = profile?.userIdentity && typeof profile.userIdentity === 'object' ? profile.userIdentity : {};
+  const sui = profile?.structuredUserInfo && typeof profile.structuredUserInfo === 'object' ? profile.structuredUserInfo : {};
+
+  const cvI18n = {
+    documentLanguage: docLang,
+    userIdentity: {},
+    structuredUserInfo: {
+      skillDomains: [],
+      domains: [],
+      keyResponsibilities: [],
+      skillsInDevelopment: [],
+      skills: [],
+    },
+  };
+
+  for (const key of USER_IDENTITY_KEYS) {
+    const raw = identity[key];
+    cvI18n.userIdentity[key] = pairFromDocumentLanguage(
+      raw,
+      translations.get(`identity.${key}`),
+      docLang,
+      state
+    );
+  }
+
+  for (const field of STRUCTURED_LINE_FIELDS) {
+    const rows = Array.isArray(sui[field]) ? sui[field] : [];
+    cvI18n.structuredUserInfo[field] = rows.map((row, idx) =>
+      pairFromDocumentLanguage(row, translations.get(`structured.${field}.${idx}`), docLang, state)
+    );
+  }
+
+  const skillRows = Array.isArray(sui.skills) ? sui.skills : [];
+  cvI18n.structuredUserInfo.skills = skillRows.map((skill, idx) => {
+    const name = typeof skill === 'string' ? skill : skill?.name || '';
+    return {
+      name: pairFromDocumentLanguage(name, translations.get(`structured.skills.${idx}`), docLang, state),
+    };
+  });
+
+  return cvI18n;
+}
+
+/**
+ * Last-resort flattening when batch localization throws: keep extracted strings, skip bilingual bundles.
+ * @param {object} profile
+ * @param {'en'|'de'} uiLanguage
+ */
+function fallbackCvProfileWithoutLocalization(profile, uiLanguage) {
+  const uiLang = String(uiLanguage || 'en').toLowerCase().split('-')[0] || 'en';
+  const identity = profile?.userIdentity && typeof profile.userIdentity === 'object' ? profile.userIdentity : {};
+  const sui = profile?.structuredUserInfo && typeof profile.structuredUserInfo === 'object' ? profile.structuredUserInfo : {};
+
+  const flatProfile = {
+    ...profile,
+    userIdentity: { ...identity },
+    structuredUserInfo: {
+      ...sui,
+      skillDomains: Array.isArray(sui.skillDomains) ? sui.skillDomains.map((x) => String(x)) : [],
+      domains: Array.isArray(sui.domains) ? sui.domains.map((x) => String(x)) : [],
+      keyResponsibilities: Array.isArray(sui.keyResponsibilities)
+        ? sui.keyResponsibilities.map((x) => String(x))
+        : [],
+      skillsInDevelopment: Array.isArray(sui.skillsInDevelopment)
+        ? sui.skillsInDevelopment.map((x) => String(x))
+        : [],
+      skills: Array.isArray(sui.skills)
+        ? sui.skills.map((s) =>
+            typeof s === 'string' ? { name: s } : { name: String(s?.name || '') }
+          )
+        : [],
+    },
+  };
+
+  for (const key of USER_IDENTITY_KEYS) {
+    flatProfile.userIdentity[key] = pickUi(
+      { en: String(identity[key] || '').trim(), de: String(identity[key] || '').trim() },
+      uiLang
+    );
+  }
+
+  return flatProfile;
 }
 
 function pickUi(pair, uiLang) {
@@ -39,53 +176,31 @@ async function localizeCvExtractedProfile(profile, documentLanguage, uiLanguage)
   const uiLang = String(uiLanguage || 'en').toLowerCase().split('-')[0] || 'en';
   const docLang = documentLanguage === 'de' ? 'de' : 'en';
 
-  const cvI18n = {
-    documentLanguage: docLang,
-    userIdentity: {},
-    structuredUserInfo: {
-      skillDomains: [],
-      domains: [],
-      keyResponsibilities: [],
-      skillsInDevelopment: [],
-      skills: [],
-    },
-  };
+  const lineState = { partial: false };
+  const batchItems = collectCvExtractLocalizationItems(profile);
+
+  let translations = new Map();
+  if (batchItems.length > 0) {
+    try {
+      translations = await translateCvExtractBatch(batchItems, docLang);
+      const expectedIds = new Set(batchItems.map((item) => item.id));
+      for (const id of expectedIds) {
+        if (!translations.has(id)) lineState.partial = true;
+      }
+    } catch (err) {
+      logger.warn(
+        'CV batch localization failed; using document-language text for both locales',
+        normalizeExternalApiError(err)
+      );
+      lineState.partial = true;
+      translations = new Map();
+    }
+  }
+
+  const cvI18n = buildCvI18nFromBatchResults(profile, translations, docLang, lineState);
 
   const identity = profile?.userIdentity && typeof profile.userIdentity === 'object' ? profile.userIdentity : {};
-
-  await Promise.all(
-    USER_IDENTITY_KEYS.map(async (key) => {
-      cvI18n.userIdentity[key] = await localizeSingleLine(identity[key], docLang);
-    })
-  );
-
   const sui = profile?.structuredUserInfo && typeof profile.structuredUserInfo === 'object' ? profile.structuredUserInfo : {};
-
-  cvI18n.structuredUserInfo.skillDomains = await Promise.all(
-    (Array.isArray(sui.skillDomains) ? sui.skillDomains : []).map((row) => localizeSingleLine(row, docLang))
-  );
-  cvI18n.structuredUserInfo.domains = await Promise.all(
-    (Array.isArray(sui.domains) ? sui.domains : []).map((row) => localizeSingleLine(row, docLang))
-  );
-  cvI18n.structuredUserInfo.keyResponsibilities = await Promise.all(
-    (Array.isArray(sui.keyResponsibilities) ? sui.keyResponsibilities : []).map((row) =>
-      localizeSingleLine(row, docLang)
-    )
-  );
-  cvI18n.structuredUserInfo.skillsInDevelopment = await Promise.all(
-    (Array.isArray(sui.skillsInDevelopment) ? sui.skillsInDevelopment : []).map((row) =>
-      localizeSingleLine(row, docLang)
-    )
-  );
-
-  cvI18n.structuredUserInfo.skills = await Promise.all(
-    (Array.isArray(sui.skills) ? sui.skills : []).map(async (skill) => {
-      const name = typeof skill === 'string' ? skill : skill?.name || '';
-      return {
-        name: await localizeSingleLine(name, docLang),
-      };
-    })
-  );
 
   const flatProfile = {
     ...profile,
@@ -105,12 +220,19 @@ async function localizeCvExtractedProfile(profile, documentLanguage, uiLanguage)
   };
 
   for (const key of USER_IDENTITY_KEYS) {
-    flatProfile.userIdentity[key] = pickUi(cvI18n.userIdentity[key], uiLang);
+    if (cvI18n.userIdentity[key]) {
+      flatProfile.userIdentity[key] = pickUi(cvI18n.userIdentity[key], uiLang);
+    }
   }
+
+  const localizationStatus = lineState.partial ? 'partial' : 'complete';
+
+  logTranslationSummary();
 
   return {
     profile: flatProfile,
     cvI18n,
+    localizationStatus,
   };
 }
 
@@ -272,8 +394,14 @@ function syncCvExtractUserIdentityFromFlat(cvRoot, flatAnswers, uiLang) {
 module.exports = {
   USER_IDENTITY_KEYS,
   localizeCvExtractedProfile,
+  fallbackCvProfileWithoutLocalization,
   mergeCvExtractLocalizationPatch,
   overlayIdentityAnswersWithCvLocalization,
   overlayStructuredUserInfoListsWithCvLocalization,
   syncCvExtractUserIdentityFromFlat,
+  __testables: {
+    collectCvExtractLocalizationItems,
+    buildCvI18nFromBatchResults,
+    pairFromDocumentLanguage,
+  },
 };

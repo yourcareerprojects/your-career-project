@@ -18,6 +18,22 @@ function info(message, meta) {
   console.log(JSON.stringify(payload));
 }
 
+function warn(message, meta) {
+  const payload = buildEntry('warn', message, meta && typeof meta === 'object' ? meta : {});
+  console.warn(JSON.stringify(payload));
+}
+
+function isDebugLoggingEnabled() {
+  const level = String(process.env.LOG_LEVEL || '').trim().toLowerCase();
+  return level === 'debug' || level === 'verbose';
+}
+
+function debug(message, meta) {
+  if (!isDebugLoggingEnabled()) return;
+  const payload = buildEntry('debug', message, meta && typeof meta === 'object' ? meta : {});
+  console.log(JSON.stringify(payload));
+}
+
 /**
  * @param {string} message
  * @param {Error | Record<string, unknown> | undefined} errOrMeta
@@ -43,5 +59,7 @@ function error(message, errOrMeta) {
 
 module.exports = {
   info,
+  warn,
   error,
+  debug,
 };

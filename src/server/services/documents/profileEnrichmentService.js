@@ -1,9 +1,10 @@
 const User = require('../../models/User');
+const { isCvDocumentType } = require('../../../constants/documentTypes');
 const { parseDocumentToText, extractFromTextHeuristics, mapExtractedToSimulationInputs } = require('./documentProfileEnrichment');
 
 function pickLatestCvDoc(profile) {
   const docs = profile && profile.documents ? profile.documents : [];
-  const candidates = docs.filter((d) => !d.isArchived && (d.type === 'cv' || d.type === 'resume'));
+  const candidates = docs.filter((d) => !d.isArchived && isCvDocumentType(d.type));
   if (candidates.length === 0) return null;
   return candidates.sort((a, b) => new Date(b.uploadDate || 0) - new Date(a.uploadDate || 0))[0];
 }

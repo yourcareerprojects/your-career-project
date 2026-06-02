@@ -1,10 +1,16 @@
-jest.mock('fs', () => ({
-  promises: {
-    readFile: jest.fn(),
-    mkdir: jest.fn(),
-    writeFile: jest.fn(),
-  },
-}));
+jest.mock('fs', () => {
+  const actual = jest.requireActual('fs');
+  return {
+    promises: {
+      readFile: jest.fn(),
+      mkdir: jest.fn(),
+      writeFile: jest.fn(),
+      open: actual.promises.open,
+      unlink: actual.promises.unlink,
+      rename: actual.promises.rename,
+    },
+  };
+});
 
 jest.mock('../services/documents/pdfImageOcr', () => ({
   extractPdfTextViaOcr: jest.fn(),
@@ -14,7 +20,12 @@ jest.mock('../services/documents/pdfImageOcr', () => ({
 const { promises: fs } = require('fs');
 const { extractImageTextViaOcr } = require('../services/documents/pdfImageOcr');
 const { parseDocumentToText } = require('../services/documents/documentProfileEnrichment');
-const { validateDocumentBuffer } = require('../middleware/persistValidatedDocumentUpload');
+const {
+  validateDocumentBuffer,
+  readValidationSnippet,
+} = require('../middleware/persistValidatedDocumentUpload');
+const os = require('os');
+const path = require('path');
 
 describe('document image upload support', () => {
   beforeEach(() => {
@@ -39,6 +50,32 @@ describe('document image upload support', () => {
     };
 
     expect(validateDocumentBuffer(jpegFile)).toBe('.jpeg');
+  });
+
+  test('readValidationSnippet reads file prefix without loading entire file', async () => {
+    const realFs = jest.requireActual('fs').promises;
+    const payload = Buffer.alloc(64 * 1024, 0x41);
+    payload[0] = 0x89;
+    payload[1] = 0x50;
+    payload[2] = 0x4e;
+    payload[3] = 0x47;
+    payload[4] = 0x0d;
+    payload[5] = 0x0a;
+    payload[6] = 0x1a;
+    payload[7] = 0x0a;
+    const tmpPath = path.join(os.tmpdir(), `cv-snippet-${Date.now()}.png`);
+    await realFs.writeFile(tmpPath, payload);
+    try {
+      const snippet = await readValidationSnippet(tmpPath);
+      expect(snippet.length).toBeLessThanOrEqual(512 * 1024);
+      expect(validateDocumentBuffer({
+        originalname: 'big.png',
+        mimetype: 'image/png',
+        buffer: snippet,
+      })).toBe('.png');
+    } finally {
+      await realFs.unlink(tmpPath).catch(() => {});
+    }
   });
 
   test('rejects PNG uploads when content is not actually PNG', () => {

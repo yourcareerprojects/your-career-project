@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { CURRENT_EMPLOYMENT_STATUS_ENUM_WITH_EMPTY } = require('../../constants/currentEmploymentStatus');
 const { HIGHEST_DEGREE_ENUM_WITH_EMPTY } = require('../../constants/highestDegree');
 const { MAX_SAVED_CAREER_STEP_DESCRIPTION_LENGTH } = require('../../constants/savedCareerStepLimits');
+const { DOCUMENT_TYPE_SCHEMA_ENUM } = require('../../constants/documentTypes');
 
 const securityEventSchema = new mongoose.Schema({
   type: { type: String, required: true },
@@ -145,14 +146,26 @@ const userSchema = new mongoose.Schema({
     documents: [{
       type: {
         type: String,
-        enum: ['cv', 'certificate', 'portfolio', 'reference', 'other']
+        enum: DOCUMENT_TYPE_SCHEMA_ENUM
       },
       name: String,
       path: String,
       uploadDate: Date,
       isArchived: Boolean,
       version: Number,
-      description: String
+      description: String,
+      status: { type: String, default: 'pending' },
+      /** Async CV extraction pipeline (see CvExtractionJob). */
+      extractionStatus: { type: String, default: null },
+      extractedProfileData: { type: mongoose.Schema.Types.Mixed, default: null },
+      cvExtractLocalization: { type: mongoose.Schema.Types.Mixed, default: null },
+      extractionMessage: { type: String, default: '' },
+      extractionMessageKey: { type: String, default: null },
+      localizationStatus: { type: String, default: null },
+      semanticInterpretation: { type: mongoose.Schema.Types.Mixed, default: null },
+      semanticInterpretationLanguage: { type: String, default: null },
+      /** success | partial | failed — outcome of CV extraction (distinct from extractionStatus pipeline). */
+      extractionOutcomeStatus: { type: String, default: null },
     }],
     socialMedia: {
       linkedin: {

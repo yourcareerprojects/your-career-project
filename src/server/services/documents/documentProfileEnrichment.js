@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const pdfParse = require('pdf-parse');
+const { runStageIfCvPipeline } = require('../../utils/metricsLogger');
 
 // Optional: DOCX parsing (installed in Phase 3). If unavailable, we fall back gracefully.
 let mammoth = null;
@@ -147,35 +148,39 @@ function extractFromTextHeuristics(text) {
 
 async function parseDocumentToText(filePath) {
   const ext = path.extname(filePath || '').toLowerCase();
-  const buf = await fs.readFile(filePath);
 
-  if (ext === '.pdf') {
-    const pdf = await pdfParse(buf);
-    let text = pdf.text || '';
-    const normalized = String(text).replace(/\u00a0/g, ' ').trim();
-    if (normalized.length === 0) {
-      const { extractPdfTextViaOcr } = require('./pdfImageOcr');
-      text = await extractPdfTextViaOcr(buf);
+  return runStageIfCvPipeline('parse_document_total', { memory: true }, async () => {
+    const buf = await runStageIfCvPipeline('parse_read_file', {}, async () => fs.readFile(filePath));
+
+    if (ext === '.pdf') {
+      const pdf = await runStageIfCvPipeline('pdf_text_layer', { memory: true }, async () => pdfParse(buf));
+      let text = pdf.text || '';
+      const normalized = String(text).replace(/\u00a0/g, ' ').trim();
+      if (normalized.length === 0) {
+        const { extractPdfTextViaOcr } = require('./pdfImageOcr');
+        text = await runStageIfCvPipeline('pdf_ocr_total', { memory: true }, async () => extractPdfTextViaOcr(buf));
+      }
+      return text;
     }
-    return text;
-  }
 
-  if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
-    const { extractImageTextViaOcr } = require('./pdfImageOcr');
-    return extractImageTextViaOcr(buf);
-  }
+    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
+      const { extractImageTextViaOcr } = require('./pdfImageOcr');
+      return runStageIfCvPipeline('image_ocr_total', { memory: true }, async () => extractImageTextViaOcr(buf));
+    }
 
-  if ((ext === '.docx' || ext === '.doc') && mammoth && ext === '.docx') {
-    const res = await mammoth.extractRawText({ buffer: buf });
-    return res.value || '';
-  }
+    if ((ext === '.docx' || ext === '.doc') && mammoth && ext === '.docx') {
+      return runStageIfCvPipeline('docx_extract_text', {}, async () => {
+        const res = await mammoth.extractRawText({ buffer: buf });
+        return res.value || '';
+      });
+    }
 
-  if (ext === '.txt') {
-    return buf.toString('utf8');
-  }
+    if (ext === '.txt') {
+      return buf.toString('utf8');
+    }
 
-  // Unsupported formats: return empty
-  return '';
+    return '';
+  });
 }
 
 function mapExtractedToSimulationInputs(extracted, baseInputs) {

@@ -31,6 +31,12 @@
       "signIn": "Anmelden"
     },
     "features": {
+      "carousel": {
+        "region": "Produktfunktionen",
+        "slide": "Funktion {{current}} von {{total}}",
+        "dots": "Funktion auswählen",
+        "goToSlide": "Zu Funktion {{index}} wechseln"
+      },
       "understand": {
         "title": "Berufspfade verstehen",
         "description": "Entdecke verschiedene Berufspfade und erkunde unterschiedliche Rollen und Berufsfelder."

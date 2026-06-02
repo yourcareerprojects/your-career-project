@@ -144,6 +144,97 @@ const structuredUserInfoValidation = [
     .withMessage('Excluded inferred ISCO code must be 1-4 digits')
 ];
 
+const reviewSaveUserIdentityValidation = [
+  userIdentityFieldRequired('userIdentity.workEnjoyMost'),
+  userIdentityFieldRequired('userIdentity.topicsIndustriesInterest'),
+  userIdentityFieldRequired('userIdentity.naturallyGoodAt'),
+  userIdentityFieldRequired('userIdentity.workEnvironmentFit'),
+  userIdentityFieldRequired('userIdentity.workingLifeAchievement'),
+];
+
+const reviewSaveSeniorityValidation = [
+  body('seniority.currentStatus')
+    .notEmpty()
+    .withMessage('Current employment status is required')
+    .isIn(CURRENT_EMPLOYMENT_STATUS_ALLOWED)
+    .withMessage('Invalid current employment status'),
+  body('seniority.yearsOfExperience')
+    .optional()
+    .isInt({ min: 0, max: 50 })
+    .withMessage('Years of experience must be between 0 and 50'),
+  body('seniority.highestDegree')
+    .notEmpty()
+    .withMessage('Highest educational degree is required')
+    .isIn(HIGHEST_DEGREE_ALLOWED)
+    .withMessage('Invalid highest degree'),
+  body('seniority.mostSeniorWorkExperience')
+    .notEmpty()
+    .withMessage('Most senior work experience is required')
+    .isIn(['intern', 'entry_level', 'mid_level', 'senior', 'lead', 'manager', 'director', 'vp', 'c_suite'])
+    .withMessage('Invalid most senior work experience'),
+];
+
+const STRUCTURED_GOOD_AT_KEYS = [
+  'skillDomains',
+  'skills',
+  'skillsInDevelopment',
+  'keyResponsibilities',
+  'domains',
+];
+
+const STRUCTURED_GOOD_AT_LABELS = {
+  skillDomains: 'Skill domains',
+  skills: 'Skills',
+  skillsInDevelopment: 'Skills in development',
+  keyResponsibilities: 'Key responsibilities',
+  domains: 'Domains',
+};
+
+const countStructuredCategoryItems = (items, key) => {
+  if (!Array.isArray(items)) return 0;
+  let count = 0;
+  for (const item of items) {
+    const raw = key === 'skills'
+      ? (typeof item === 'string' ? item : item?.name)
+      : item;
+    if (String(raw ?? '').trim()) count += 1;
+  }
+  return count;
+};
+
+const reviewSaveStructuredCategoryRequired = (key) => body(`structuredUserInfo.${key}`)
+  .custom((items) => {
+    const label = STRUCTURED_GOOD_AT_LABELS[key] || key;
+    if (countStructuredCategoryItems(items, key) === 0) {
+      throw new Error(`${label} requires at least one entry`);
+    }
+    return true;
+  });
+
+const reviewSaveStructuredValidation = [
+  ...STRUCTURED_GOOD_AT_KEYS.map((key) => reviewSaveStructuredCategoryRequired(key)),
+  ...validateStructuredDimension('structuredUserInfo.skillDomains', 120, 'Skill domains'),
+  ...validateStructuredDimension('structuredUserInfo.skills', 100, 'Skills'),
+  ...validateStructuredDimension('structuredUserInfo.skillsInDevelopment', 100, 'Skills in development'),
+  ...validateStructuredDimension('structuredUserInfo.keyResponsibilities', 300, 'Key responsibilities'),
+  ...validateStructuredDimension('structuredUserInfo.domains', 120, 'Domains'),
+];
+
+const reviewSaveValidation = [
+  body('mode')
+    .optional()
+    .isIn(['merge', 'replace'])
+    .withMessage('Mode must be merge or replace'),
+  body('name')
+    .optional({ values: 'null' })
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Name must be between 2 and 100 characters'),
+  ...reviewSaveSeniorityValidation,
+  ...reviewSaveUserIdentityValidation,
+  ...reviewSaveStructuredValidation,
+];
+
 // Routes
 router.get('/', auth, profileController.getProfile);
 router.get('/completion', auth, profileController.getProfileCompletion);
@@ -179,6 +270,12 @@ router.put('/structured-user-info',
   auth,
   structuredUserInfoValidation,
   profileController.updateStructuredUserInfo
+);
+
+router.put('/review-save',
+  auth,
+  reviewSaveValidation,
+  profileController.saveProfileReview
 );
 
 router.put('/profile-picture',

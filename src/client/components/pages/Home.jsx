@@ -11,36 +11,24 @@ import {
   Container,
   Grid,
   Typography,
-  Card,
-  CardContent,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Person as PersonIcon,
   School as SchoolIcon,
   Work as WorkIcon,
-  ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-
-const FeatureCard = ({ title, description, icon }) => (
-  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-    <CardContent sx={{ flexGrow: 1 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-        {icon}
-      </Box>
-      <Typography gutterBottom variant="h5" component="h2" align="center">
-        {title}
-      </Typography>
-      <Typography align="center" color="text.secondary">
-        {description}
-      </Typography>
-    </CardContent>
-  </Card>
-);
+import HomeGetStartedButton from '../home/HomeGetStartedButton';
+import HomeFeatureCard from '../home/HomeFeatureCard';
+import HomeFeaturesCarousel from '../home/HomeFeaturesCarousel';
 
 const Home = () => {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
+  const theme = useTheme();
+  const isCompactHome = useMediaQuery(theme.breakpoints.down('md'));
   const { isAuthenticated, user } = useAuth();
   const { path: authenticatedStartPath, ready: startPathReady } = useAuthenticatedStartPath();
   const homeTitle = isAuthenticated
@@ -65,9 +53,20 @@ const Home = () => {
     },
   ];
 
+  const handleGetStarted = async () => {
+    if (isAuthenticated) {
+      const target = startPathReady
+        ? authenticatedStartPath
+        : await fetchAuthenticatedStartPath();
+      navigate(target);
+      return;
+    }
+    navigate('/register');
+  };
+
   return (
     <Container maxWidth="lg">
-      <Box sx={{ mt: 8, mb: 6, textAlign: 'center' }}>
+      <Box sx={{ mt: { xs: 3, md: 8 }, mb: { xs: 3, md: 6 }, textAlign: 'center' }}>
         <Typography
           component="h1"
           variant="h2"
@@ -75,14 +74,25 @@ const Home = () => {
           gutterBottom
           sx={{
             fontWeight: 'bold',
+            fontSize: { xs: '1.75rem', sm: '2.125rem', md: '3.75rem' },
             ...(isAuthenticated ? { color: 'var(--color-header-brand-headline)' } : {}),
           }}
         >
           {homeTitle}
         </Typography>
-        <Typography variant="h5" color="text.secondary" paragraph>
+        <Typography
+          variant="h5"
+          color="text.secondary"
+          paragraph
+          sx={{
+            fontSize: { xs: '1rem', md: '1.5rem' },
+            mb: { xs: 2, md: 3 },
+            px: { xs: 0.5, sm: 2 },
+          }}
+        >
           {t('home.subtitle')}
         </Typography>
+
         <Box
           sx={{
             mt: 3,
@@ -92,61 +102,30 @@ const Home = () => {
             flexWrap: 'wrap',
           }}
         >
-          {isAuthenticated ? (
-            <Button
-              variant="contained"
-              color="primary"
-              size="medium"
-              startIcon={<ArrowForwardIcon />}
-              onClick={async () => {
-                const target = startPathReady
-                  ? authenticatedStartPath
-                  : await fetchAuthenticatedStartPath();
-                navigate(target);
-              }}
-              sx={{
-                fontWeight: 600,
-                px: 3,
-                py: 1.5,
-                fontSize: '1rem',
-              }}
-            >
-              {t('home.actions.getStarted')}
+          <HomeGetStartedButton onClick={handleGetStarted}>
+            {t('home.actions.getStarted')}
+          </HomeGetStartedButton>
+          {!isAuthenticated && (
+            <Button variant="outlined" size="large" onClick={() => navigate('/login')}>
+              {t('home.actions.signIn')}
             </Button>
-          ) : (
-            <>
-              <Button
-                variant="contained"
-                color="primary"
-                size="medium"
-                startIcon={<ArrowForwardIcon />}
-                onClick={() => navigate('/register')}
-                sx={{
-                  fontWeight: 600,
-                  px: 3,
-                  py: 1.5,
-                  fontSize: '1rem',
-                }}
-              >
-                {t('home.actions.getStarted')}
-              </Button>
-              <Button variant="outlined" size="large" onClick={() => navigate('/login')}>
-                {t('home.actions.signIn')}
-              </Button>
-            </>
           )}
         </Box>
       </Box>
 
-      <Grid container spacing={4} sx={{ mt: 4 }}>
-        {features.map((feature, index) => (
-          <Grid item key={index} xs={12} sm={6} md={4}>
-            <FeatureCard {...feature} />
-          </Grid>
-        ))}
-      </Grid>
+      {isCompactHome ? (
+        <HomeFeaturesCarousel features={features} />
+      ) : (
+        <Grid container spacing={4} sx={{ mt: 4 }}>
+          {features.map((feature) => (
+            <Grid item key={feature.title} xs={12} sm={6} md={4}>
+              <HomeFeatureCard {...feature} />
+            </Grid>
+          ))}
+        </Grid>
+      )}
     </Container>
   );
 };
 
-export default Home; 
+export default Home;

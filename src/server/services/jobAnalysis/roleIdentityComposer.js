@@ -27,6 +27,16 @@
 const crypto = require('crypto');
 const { buildMessages } = require('../../prompts/generateRoleIdentityText');
 const { getEnglishField, getEnglishDomainName } = require('../../utils/i18nFields');
+const logger = require('../../utils/logger');
+const {
+  TIMEOUT_MS_LLM,
+  normalizeExternalApiError,
+  combineSignals,
+} = require('../../utils/httpTimeouts');
+const {
+  recordOpenAiProviderMetrics,
+  getCvPipeline,
+} = require('../../utils/metricsLogger');
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible provider (shared pattern)
@@ -55,37 +65,91 @@ async function openaiProvider(messages, opts = {}) {
   const baseUrl = (opts.baseUrl || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const model = opts.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const temperature = typeof opts.temperature === 'number' ? opts.temperature : 0.15;
+  const timeoutMs =
+    typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs)
+      ? opts.timeoutMs
+      : TIMEOUT_MS_LLM;
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  const started = Date.now();
+  try {
+    const signal = combineSignals(opts.signal, timeoutMs);
+
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        messages,
+        response_format: { type: 'json_object' },
+      }),
+      signal,
+    });
+
+    const durationMs = Date.now() - started;
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const pipeCtx = getCvPipeline();
+      logger.error('OpenAI chat completions HTTP error', {
+        ...(pipeCtx ? { requestId: pipeCtx.requestId } : {}),
+        status: res.status,
+        durationMs,
+        model,
+        bodyPreview: body.slice(0, 400),
+      });
+      throw new Error(`OpenAI API error ${res.status}: ${body.slice(0, 500)}`);
+    }
+
+    const data = await res.json();
+    const content =
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.text ||
+      '';
+
+    if (!content) {
+      const pipeCtx = getCvPipeline();
+      logger.error('OpenAI chat completions empty content', {
+        ...(pipeCtx ? { requestId: pipeCtx.requestId } : {}),
+        durationMs,
+        model,
+      });
+      throw new Error('Empty response from OpenAI API');
+    }
+
+    recordOpenAiProviderMetrics({
+      provider: 'openai_compatible',
       model,
-      temperature,
-      messages,
-      response_format: { type: 'json_object' },
-    }),
-  });
+      durationMs,
+      httpStatus: res.status,
+      timedOut: false,
+      retry: false,
+      signalTimeoutMs: timeoutMs,
+    });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenAI API error ${res.status}: ${body}`);
+    return content;
+  } catch (err) {
+    const durationMs = Date.now() - started;
+    const norm = normalizeExternalApiError(err, { model, durationMs });
+    const pipeCtx = getCvPipeline();
+    logger.error('OpenAI chat completions request failed', {
+      ...(pipeCtx ? { requestId: pipeCtx.requestId } : {}),
+      ...norm,
+    });
+    recordOpenAiProviderMetrics({
+      provider: 'openai_compatible',
+      model,
+      durationMs,
+      httpStatus: norm.httpStatus,
+      timedOut: Boolean(norm.isTimeout || norm.isAbort),
+      retry: false,
+      signalTimeoutMs: timeoutMs,
+    });
+    throw err;
   }
-
-  const data = await res.json();
-  const content =
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.text ||
-    '';
-
-  if (!content) {
-    throw new Error('Empty response from OpenAI API');
-  }
-
-  return content;
 }
 
 // ---------------------------------------------------------------------------

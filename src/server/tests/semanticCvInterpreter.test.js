@@ -1,5 +1,5 @@
 const { normalizeInterpretationShape } = require('../services/documents/semanticCvInterpreter');
-const documentController = require('../controllers/documentController');
+const { __testables: cvExtractionTestables } = require('../services/cv/cvExtractionProcessor');
 
 describe('semanticCvInterpreter.normalizeInterpretationShape', () => {
   test('normalizes malformed and partial values safely', () => {
@@ -46,7 +46,7 @@ describe('semanticCvInterpreter.normalizeInterpretationShape', () => {
   });
 });
 
-describe('documentController semantic mapping', () => {
+describe('cvExtractionProcessor semantic mapping', () => {
   test('maps semantic schema into profile payload shape', () => {
     const semantic = normalizeInterpretationShape({
       userIdentity: {
@@ -71,7 +71,7 @@ describe('documentController semantic mapping', () => {
       }
     });
 
-    const mapped = documentController.__testables.mapSemanticExtractionToProfile(semantic);
+    const mapped = cvExtractionTestables.mapSemanticExtractionToProfile(semantic);
     expect(mapped.status).toBe('success');
     expect(mapped.profile.userIdentity.workEnjoyMost).toBe('Solving customer problems');
     expect(mapped.profile.userIdentity.topicsIndustriesInterest).toBe('SaaS Healthcare');

@@ -1,9 +1,32 @@
 const crypto = require('crypto');
+const { LRUCache } = require('lru-cache');
 const { buildMessages } = require('../../prompts/interpretCvToProfile');
 const { openaiProvider } = require('../jobAnalysis/roleIdentityComposer');
+const { runStageIfCvPipeline, logCvEvent, getCvPipeline } = require('../../utils/metricsLogger');
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
-const RESULT_CACHE = new Map();
+const SEMANTIC_CV_CACHE_MIN_ENTRIES = 500;
+const SEMANTIC_CV_CACHE_MAX_ENTRIES = 2000;
+const SEMANTIC_CV_CACHE_DEFAULT_ENTRIES = 1000;
+
+function readSemanticCvCacheMaxEntries() {
+  const raw = process.env.SEMANTIC_CV_CACHE_MAX_ENTRIES;
+  if (raw == null || raw === '') return SEMANTIC_CV_CACHE_DEFAULT_ENTRIES;
+  const n = Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(n)) return SEMANTIC_CV_CACHE_DEFAULT_ENTRIES;
+  return Math.min(SEMANTIC_CV_CACHE_MAX_ENTRIES, Math.max(SEMANTIC_CV_CACHE_MIN_ENTRIES, n));
+}
+
+/** Bounded LRU + TTL — prevents unbounded growth from diverse CV fingerprints. */
+const RESULT_CACHE = new LRUCache({
+  max: readSemanticCvCacheMaxEntries(),
+  ttl: CACHE_TTL_MS,
+  updateAgeOnGet: true,
+  ttlAutopurge: true,
+  perf: {
+    now: () => Date.now(),
+  },
+});
 const INFLIGHT = new Map();
 
 function stripFences(raw) {
@@ -227,25 +250,30 @@ async function interpretCvText(cvText, options = {}) {
     .createHash('sha256')
     .update(`${documentLang}|${normalizedText}`, 'utf8')
     .digest('hex');
-  const now = Date.now();
   const cached = RESULT_CACHE.get(fingerprint);
-  if (cached && cached.expiresAt > now) {
-    return cached.value;
+  if (cached !== undefined) {
+    if (getCvPipeline()) {
+      logCvEvent('cv_semantic_cache_hit', { layer: 'interpret_cv_text' });
+    }
+    return cached;
   }
   if (INFLIGHT.has(fingerprint)) {
     return INFLIGHT.get(fingerprint);
   }
 
   const task = (async () => {
-    const messages = buildMessages(normalizedText, documentLang);
-    const raw = await openaiProvider(messages, { temperature: 0.1 });
-    const parsed = JSON.parse(stripFences(raw));
-    const normalized = normalizeInterpretationShape(parsed);
-    RESULT_CACHE.set(fingerprint, {
-      value: normalized,
-      expiresAt: Date.now() + CACHE_TTL_MS
+    return runStageIfCvPipeline('interpret_cv_text_total', { memory: true }, async () => {
+      const messages = buildMessages(normalizedText, documentLang);
+      const raw = await runStageIfCvPipeline('openai_interpret_cv', {}, async () =>
+        openaiProvider(messages, { temperature: 0.1 })
+      );
+      const normalized = await runStageIfCvPipeline('interpret_cv_normalize', {}, async () => {
+        const parsed = JSON.parse(stripFences(raw));
+        return normalizeInterpretationShape(parsed);
+      });
+      RESULT_CACHE.set(fingerprint, normalized);
+      return normalized;
     });
-    return normalized;
   })().finally(() => {
     INFLIGHT.delete(fingerprint);
   });
@@ -256,6 +284,17 @@ async function interpretCvText(cvText, options = {}) {
 
 module.exports = {
   interpretCvText,
-  normalizeInterpretationShape
+  normalizeInterpretationShape,
+  __testables: {
+    CACHE_TTL_MS,
+    readSemanticCvCacheMaxEntries,
+    getResultCacheSize: () => RESULT_CACHE.size,
+    getResultCacheEntry: (key) => RESULT_CACHE.get(key),
+    setResultCacheEntry: (key, value) => RESULT_CACHE.set(key, value),
+    resetResultCache: () => {
+      RESULT_CACHE.clear();
+      INFLIGHT.clear();
+    },
+  },
 };
 

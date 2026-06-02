@@ -23,6 +23,11 @@ function normalizeChatCompletionContent(raw) {
 }
 
 const logger = require('../../utils/logger');
+const {
+  TIMEOUT_MS_LLM,
+  normalizeExternalApiError,
+  combineSignals,
+} = require('../../utils/httpTimeouts');
 
 /**
  * Thin OpenAI-compatible chat completions wrapper (plain text; no JSON mode).
@@ -44,8 +49,10 @@ async function callOpenAI({ model, temperature, messages }) {
     body.temperature = temperature;
   }
 
+  const started = Date.now();
   let res;
   try {
+    const signal = combineSignals(undefined, TIMEOUT_MS_LLM);
     res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -53,16 +60,23 @@ async function callOpenAI({ model, temperature, messages }) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      signal,
     });
   } catch (err) {
-    logger.error('OpenAI chat completions request failed (network)', err);
+    logger.error(
+      'OpenAI chat completions request failed (network)',
+      normalizeExternalApiError(err, { durationMs: Date.now() - started })
+    );
     throw err;
   }
+
+  const durationMs = Date.now() - started;
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     logger.error('OpenAI chat completions HTTP error', {
       status: res.status,
+      durationMs,
       bodyPreview: errBody.slice(0, 400),
     });
     throw new Error(`OpenAI API error ${res.status}: ${errBody}`);
