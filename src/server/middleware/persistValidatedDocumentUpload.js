@@ -157,6 +157,23 @@ async function readValidationSnippet(filePath) {
 }
 
 /**
+ * Move temp upload into destination directory.
+ * Falls back to copy+unlink when source and destination are on different devices.
+ */
+async function moveUploadedFile(tempPath, fullPath) {
+  try {
+    await fs.rename(tempPath, fullPath);
+  } catch (err) {
+    if (err && err.code === 'EXDEV') {
+      await fs.copyFile(tempPath, fullPath);
+      await fs.unlink(tempPath);
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
  * Runs after multer disk temp storage: validates magic bytes from a prefix read, then moves to uploads/documents.
  */
 async function persistValidatedDocumentUpload(req, res, next) {
@@ -177,7 +194,7 @@ async function persistValidatedDocumentUpload(req, res, next) {
     const filename = `${stamp}-${rand}${ext}`;
     const fullPath = path.join(uploadDir, filename);
 
-    await fs.rename(tempPath, fullPath);
+    await moveUploadedFile(tempPath, fullPath);
 
     req.file.path = fullPath;
     req.file.filename = filename;
@@ -200,4 +217,5 @@ module.exports = {
   persistValidatedDocumentUpload,
   validateDocumentBuffer,
   readValidationSnippet,
+  moveUploadedFile,
 };

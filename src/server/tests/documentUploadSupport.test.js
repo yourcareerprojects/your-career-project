@@ -7,6 +7,7 @@ jest.mock('fs', () => {
       writeFile: jest.fn(),
       open: actual.promises.open,
       unlink: actual.promises.unlink,
+    copyFile: jest.fn(),
       rename: actual.promises.rename,
     },
   };
@@ -23,6 +24,7 @@ const { parseDocumentToText } = require('../services/documents/documentProfileEn
 const {
   validateDocumentBuffer,
   readValidationSnippet,
+  moveUploadedFile,
 } = require('../middleware/persistValidatedDocumentUpload');
 const os = require('os');
 const path = require('path');
@@ -86,6 +88,18 @@ describe('document image upload support', () => {
     };
 
     expect(() => validateDocumentBuffer(fakePngFile)).toThrow(/JPG, JPEG, and PNG/);
+  });
+
+  test('moveUploadedFile falls back to copy+unlink on EXDEV', async () => {
+    const renameSpy = jest.spyOn(fs, 'rename').mockRejectedValueOnce({ code: 'EXDEV' });
+    const copySpy = jest.spyOn(fs, 'copyFile').mockResolvedValueOnce();
+    const unlinkSpy = jest.spyOn(fs, 'unlink').mockResolvedValueOnce();
+
+    await moveUploadedFile('/tmp/in.pdf', '/uploads/out.pdf');
+
+    expect(renameSpy).toHaveBeenCalledWith('/tmp/in.pdf', '/uploads/out.pdf');
+    expect(copySpy).toHaveBeenCalledWith('/tmp/in.pdf', '/uploads/out.pdf');
+    expect(unlinkSpy).toHaveBeenCalledWith('/tmp/in.pdf');
   });
 
   test('runs OCR for image CV uploads', async () => {
