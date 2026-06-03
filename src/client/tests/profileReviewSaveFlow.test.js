@@ -157,6 +157,42 @@ describe('saveExtractedProfileReview', () => {
     warnSpy.mockRestore();
   });
 
+  test('seeds structured lists from review snapshot when server response omits raw_items', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          seniority: validSeniority,
+          structuredUserInfo: {
+            skills: { summary_text: 'Polished skills summary' },
+          },
+          who_are_you: { raw_answers: [], summary_text: '' },
+          documents: [],
+        }),
+      });
+
+    await saveExtractedProfileReview({
+      profileData: buildProfilePayload({
+        structuredUserInfo: {
+          skills: ['TypeScript', 'React'],
+          skillDomains: ['Software engineering'],
+          domains: ['Technology'],
+          keyResponsibilities: ['Ship features'],
+          skillsInDevelopment: ['Leadership'],
+        },
+      }),
+      refreshUser: async () => ({ success: true }),
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      langQuery: 'lang=en',
+    });
+
+    const seeded = queryClient.setQueryData.mock.calls.at(-1)?.[1];
+    expect(seeded.profile.structuredUserInfo.skills.raw_items).toEqual(['TypeScript', 'React']);
+    expect(seeded.profile.structuredUserInfo.skillDomains.raw_items).toEqual(['Software engineering']);
+  });
+
   test('rejects on seniority validation failure without calling API', async () => {
     const fetchImpl = mockFetchOk();
 

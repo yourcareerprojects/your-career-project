@@ -86,6 +86,7 @@ const ProfileCreation = () => {
         getAuthToken: () => localStorage.getItem('token'),
         langQuery,
         translate: t,
+        prefetchProfile: true,
       });
 
       if (reviewUserId) clearCvReviewDraft(reviewUserId);

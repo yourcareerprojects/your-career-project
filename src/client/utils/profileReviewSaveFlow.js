@@ -164,9 +164,48 @@ async function waitForProfileNarrativesReady({
 }
 
 /**
+ * Merge server structuredUserInfo with the review dialog lists so profile chips render
+ * immediately after save (before GET /api/profile finishes).
+ */
+function mergeStructuredUserInfoForProfileSeed(serverStructured = {}, reviewStructured = {}) {
+  const STRUCTURED_LIST_KEYS = [
+    'skillDomains',
+    'skills',
+    'skillsInDevelopment',
+    'keyResponsibilities',
+    'domains',
+  ];
+  const readRawItems = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && Array.isArray(value.raw_items)) return value.raw_items;
+    return [];
+  };
+
+  const server = serverStructured && typeof serverStructured === 'object' ? serverStructured : {};
+  const review = reviewStructured && typeof reviewStructured === 'object' ? reviewStructured : {};
+  const out = { ...server };
+
+  for (const key of STRUCTURED_LIST_KEYS) {
+    const serverDim = server[key];
+    const serverRaw = readRawItems(serverDim);
+    const reviewRaw = readRawItems(review[key]);
+    const rawItems = serverRaw.length > 0 ? serverRaw : reviewRaw;
+    if (rawItems.length === 0 && serverDim == null) continue;
+
+    const baseDim = typeof serverDim === 'object' && !Array.isArray(serverDim) ? serverDim : {};
+    out[key] = {
+      ...baseDim,
+      raw_items: rawItems,
+    };
+  }
+
+  return out;
+}
+
+/**
  * Seed React Query from review-save response so Profile can render immediately.
  */
-function seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientImpl) {
+function seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientImpl, reviewSnapshot = {}) {
   const {
     getProfileFullQueryKeyFull,
     invalidateProfileCompletionQuery,
@@ -177,6 +216,15 @@ function seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientIm
   const prev = resolveQueryClient.getQueryData(getProfileFullQueryKeyFull(lang));
   const base = prev && typeof prev === 'object' ? prev : {};
   const baseProfile = base.profile && typeof base.profile === 'object' ? base.profile : {};
+
+  const mergedStructuredUserInfo = mergeStructuredUserInfoForProfileSeed(
+    reviewSaveData?.structuredUserInfo || baseProfile.structuredUserInfo,
+    reviewSnapshot?.structuredUserInfo
+  );
+  const cvExtractLocalization =
+    reviewSnapshot?.__cvExtractLocalization && typeof reviewSnapshot.__cvExtractLocalization === 'object'
+      ? reviewSnapshot.__cvExtractLocalization
+      : baseProfile.cvExtractLocalization;
 
   invalidateProfileCompletionQuery();
   resolveQueryClient.setQueryData(getProfileFullQueryKeyFull(lang), {
@@ -191,7 +239,8 @@ function seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientIm
       seniority: reviewSaveData?.seniority ?? baseProfile.seniority,
       userIdentity: reviewSaveData?.userIdentity ?? baseProfile.userIdentity,
       who_are_you: reviewSaveData?.who_are_you ?? baseProfile.who_are_you,
-      structuredUserInfo: reviewSaveData?.structuredUserInfo ?? baseProfile.structuredUserInfo,
+      structuredUserInfo: mergedStructuredUserInfo,
+      ...(cvExtractLocalization ? { cvExtractLocalization } : {}),
       documents: Array.isArray(reviewSaveData?.documents)
         ? reviewSaveData.documents
         : (baseProfile.documents || []),
@@ -339,7 +388,7 @@ async function saveExtractedProfileReview({
   }
 
   emitPhase('profile_cache');
-  seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientImpl);
+  seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientImpl, profileData);
   if (prefetchProfile) {
     await prefetchProfileCacheAfterSave({
       langQuery,
@@ -553,6 +602,7 @@ module.exports = {
   warmReviewNarrativeCacheForStep,
   ensureReviewNarrativeCacheBeforeSave,
   fetchDocumentNarrativeCacheStatus,
+  mergeStructuredUserInfoForProfileSeed,
   waitForDocumentNarrativeCache,
   waitForProfileNarrativesReady,
   seedProfileCacheFromReviewSave,

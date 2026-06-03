@@ -3374,9 +3374,6 @@ exports.saveProfileReview = async (req, res) => {
       : narrativeReadiness.ready;
     const responseSeniority = readSeniorityFromProfile(user.profile);
     const profileStructured = user.profile.structuredUserInfo || {};
-    const profileDerivedInferredIsco = Array.isArray(profileStructured.derivedInferredIsco)
-      ? profileStructured.derivedInferredIsco
-      : [];
     const normalizedForResponse = normalizeLocalizedProfileFieldsForResponse(
       {
         structuredUserInfo: profileStructured,
@@ -3385,8 +3382,19 @@ exports.saveProfileReview = async (req, res) => {
       req.language
     );
     const responseWhoAreYou = normalizedForResponse.who_are_you;
-    const responseStructuredUserInfo = {
+    let responseStructuredUserInfo = {
       ...(normalizedForResponse.structuredUserInfo || profileStructured),
+    };
+    if (user.profile?.cvExtractLocalization) {
+      responseStructuredUserInfo = overlayStructuredUserInfoListsWithCvLocalization(
+        responseStructuredUserInfo,
+        user.profile.cvExtractLocalization,
+        req.language
+      );
+    }
+    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(responseStructuredUserInfo);
+    responseStructuredUserInfo = {
+      ...responseStructuredUserInfo,
       derivedInferredIsco: profileDerivedInferredIsco,
     };
     const responseDocuments = Array.isArray(user.profile?.documents)
