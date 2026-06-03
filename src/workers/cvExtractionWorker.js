@@ -1,6 +1,7 @@
 /**
  * DB-backed CV extraction worker (separate Node process).
- * Polls CvExtractionJob rows in `queued`, claims atomically, runs OCR → AI → localization.
+ * Polls CvExtractionJob rows in `queued`, claims atomically, runs OCR → AI semantic extraction.
+ * Localization runs asynchronously after persistence.
  */
 const path = require('path');
 const mongoose = require('mongoose');
@@ -12,7 +13,7 @@ const connectDB = require('../../config/database');
 const logger = require('../server/utils/logger');
 const CvExtractionJob = require('../server/models/CvExtractionJob');
 const User = require('../server/models/User');
-const { processCvExtractionFromFilePath } = require('../server/services/cv/cvExtractionProcessor');
+const { processCvExtractionFromFilePath } = require('../server/services/cv/cvExtractionOrchestrator');
 const { normalizeExternalApiError } = require('../server/utils/httpTimeouts');
 const {
   claimNextQueuedCvExtractionJob,
@@ -81,7 +82,10 @@ function buildSerializableExtractionResult(finished) {
     cvExtractLocalization: finished.cvExtractLocalization ?? null,
     semanticInterpretation: finished.semanticInterpretation ?? null,
     semanticInterpretationLanguage: finished.semanticInterpretationLanguage ?? null,
+    semanticEnrichmentStatus: finished.semanticEnrichmentStatus ?? null,
+    identityEnrichmentStatus: finished.identityEnrichmentStatus ?? 'complete',
     localizationStatus: finished.localizationStatus ?? null,
+    narrativeEnrichmentStatus: finished.narrativeEnrichmentStatus ?? null,
   };
 }
 
@@ -203,6 +207,9 @@ async function processOneCvExtractionJob(jobDoc) {
     try {
       finalBundle = await processCvExtractionFromFilePath(filePath, {
         uiLanguage,
+        jobId,
+        userId: String(userId),
+        documentId: String(documentId),
         onStage: async (stage, meta = {}) => {
           stageRef.current = stage;
           if (lastStage) {
@@ -246,9 +253,17 @@ async function processOneCvExtractionJob(jobDoc) {
     }
 
     const serializable = buildSerializableExtractionResult(finalBundle);
+    const extractedDocumentText = finalBundle.extractedDocumentText;
+    const extractedDocumentTextSource = finalBundle.extractedDocumentTextSource;
 
     try {
-      await applyCvExtractionSuccessToUser(userId, documentId, serializable);
+      await applyCvExtractionSuccessToUser(userId, documentId, serializable, {
+        uiLanguage,
+        extractedDocumentText,
+        extractedDocumentTextSource,
+        jobId,
+      });
+      // Narrative pre-generation is scheduled from applyCvExtractionSuccessToUser (non-blocking).
     } catch (persistErr) {
       await safeFail(persistErr);
       return;
@@ -373,6 +388,15 @@ async function main() {
     concurrency: workerRuntime.metadata.concurrency,
   });
   await connectDB();
+  try {
+    const { warmUpTesseractWorkerPool } = require('../server/services/documents/tesseractWorkerPool');
+    await warmUpTesseractWorkerPool();
+    logger.info('cv_worker_tesseract_pool_ready');
+  } catch (warmErr) {
+    logger.warn('cv_worker_tesseract_warmup_failed', {
+      message: warmErr?.message || String(warmErr),
+    });
+  }
   heartbeatLoop.start();
   queueMetricsLogLoop.start();
   runTick();

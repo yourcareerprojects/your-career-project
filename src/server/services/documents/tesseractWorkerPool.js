@@ -172,9 +172,14 @@ async function shutdownTesseractWorkerPool() {
   }
 }
 
+async function warmUpTesseractWorkerPool() {
+  return getTesseractWorkerPool().init();
+}
+
 module.exports = {
   withTesseractWorker,
   shutdownTesseractWorkerPool,
+  warmUpTesseractWorkerPool,
   getTesseractWorkerPool,
   __testables: {
     TesseractWorkerPool,

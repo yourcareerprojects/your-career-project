@@ -409,7 +409,7 @@
         "mostSenior": {
           "intern": "Praktikant*in",
           "entry_level": "Einsteiger*in",
-          "mid_level": "Mittleres Management",
+          "mid_level": "Berufserfahren (keine Führungskraft)",
           "senior": "Senior",
           "lead": "Lead",
           "manager": "Manager*in",
@@ -474,6 +474,7 @@
       "semanticInterpretationNone": "Aus dem Dokument konnten keine Profilsignale interpretiert werden.",
       "noDocumentText": "Aus diesem Dokument konnte selbst per OCR kein lesbarer Text extrahiert werden. Bitte erneut als PDF mit markierbarem Text exportieren, eine DOCX-Datei hochladen oder ein klareres JPG/PNG-Bild verwenden.",
       "aiTimeout": "Die KI-Extraktion hat zu lange gedauert. Es werden weiterhin einfache Felder aus deinem Lebenslauf angezeigt — bitte prüfe sie.",
+      "heuristicFallback": "Die KI-Extraktion war nicht verfügbar. Es werden einfache Felder aus deinem Lebenslauf angezeigt — bitte prüfe sie.",
       "localizationPartial": "Die zweisprachige Aufbereitung konnte teils nicht automatisch fertiggestellt werden; dein extrahierter Text bleibt erhalten."
     },
     "common": {
@@ -563,6 +564,10 @@
       "ocr": "Dein Lebenslauf wird gelesen...",
       "extraction": "Fähigkeiten und Erfahrung werden analysiert...",
       "localization": "Dein Profil wird vorbereitet...",
+      "enriching": "Lebenslauf extrahiert — Ergänzungen laufen im Hintergrund...",
+      "enrichingStructured": "Stärken und Erfahrung aus deinem Lebenslauf werden interpretiert...",
+      "enrichingLocalization": "Zweisprachige Profilformatierung wird angewendet...",
+      "enrichingNarrative": "Profil-Zusammenfassungen für die Überprüfung werden vorbereitet...",
       "completed": "Dein Lebenslauf wurde erfolgreich verarbeitet.",
       "failed": "Dein Lebenslauf konnte nicht vollständig verarbeitet werden. Bitte versuche eine andere Datei.",
       "timedOut": "Dein Lebenslauf wird noch verarbeitet. Du kannst den Status später unter Dokumente prüfen.",
@@ -585,17 +590,22 @@
       }
     },
     "review": {
+      "step1Title": "Lebenslauf hochladen",
+      "step1Intro": "Lade hier deinen Lebenslauf hoch. Wir extrahieren deine Profildaten — das dauert meist etwa eine Minute.",
+      "step1Advancing": "Dein Profil wird für die Überprüfung vorbereitet…",
       "step2Title": "Wer bist du?",
       "step3Title": "Worin bist du gut?",
-      "step4Title": "Wie erfahren bist du?",
-      "step5Title": "Fragen nach mehr Kontext",
+      "step4Title": "Fragen nach mehr Kontext",
+      "step5Title": "Wie erfahren bist du?",
       "progress": {
         "ariaLabel": "Profil-Einrichtung Schritt {{current}} von {{total}}"
       },
       "step2Intro": "Prüfe und passe deine Antworten zu diesen Identitätsfragen an. Sie helfen uns zu verstehen, was dir bei der Arbeit wichtig ist.",
+      "structuredLoading": "Deine Profil-Insights werden verarbeitet…",
       "step3Intro": "Prüfe Fähigkeiten, Bereiche und Stärken aus deinem Lebenslauf. Behalte die Einträge, die ins Profil sollen, und bearbeite oder ergänze sie.",
-      "step4Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können.",
-      "step5Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und speichere dann dein Profil.",
+      "step4Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und fahre dann fort.",
+      "step4NoFollowUps": "Es sind keine weiteren Fragen nötig. Fahre fort, um dein Erfahrungsniveau zu bestätigen.",
+      "step5Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können. Speichere anschließend dein Profil.",
       "step3QualityErrorPrefix": "Qualitätsvorschläge konnten nicht geladen werden:",
       "followUpPlaceholder": "Deine Antwort",
       "strengthsTitle": "Stärken und Fokusbereiche",

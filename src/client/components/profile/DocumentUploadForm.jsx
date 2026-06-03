@@ -41,7 +41,9 @@ import { validateSeniorityPayload } from '../../utils/validateSeniorityPayload';
 import {
   ProfileReviewSaveError,
   translateReviewFieldErrors,
+  warmReviewNarrativeCacheForStep,
 } from '../../utils/profileReviewSaveFlow';
+import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import {
   validateReviewProfileInDialog,
   validateReviewIdentityStep,
@@ -59,7 +61,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   CURRENT_EMPLOYMENT_STATUS_OPTIONS,
   currentEmploymentStatusLabel,
-  sanitizeCurrentEmploymentStatus
+  sanitizeCurrentEmploymentStatus,
+  inferCurrentEmploymentStatusFromText,
 } from '../../../constants/currentEmploymentStatus';
 import { HIGHEST_DEGREE_OPTIONS, HIGHEST_DEGREE_ALLOWED, highestDegreeLabel, inferHighestDegreeFromText } from '../../../constants/highestDegree';
 import {
@@ -78,6 +81,11 @@ import {
   fetchCvExtractionStatus,
   isActiveCvExtractionDocument,
   mapExtractionStatusToUiPhase,
+  isCvExtractionUiPhaseInProgress,
+  documentNeedsFullReviewQuality,
+  documentNeedsCvLocalization,
+  buildPollSnapshot,
+  resolveExtractionProgressMessageKey,
 } from '../../utils/cvExtractionPoll';
 import { getExtractionErrorMessage } from '../../utils/cvExtractionErrors';
 import {
@@ -86,6 +94,14 @@ import {
 } from '../../utils/cvExtractionZombie';
 import ProfileCreationProgress from './ProfileCreationProgress';
 import ProfileReviewStepTitle from './ProfileReviewStepTitle';
+import {
+  qualityDiagnosisFingerprint,
+  qualityDiagnosisInputFromProfile,
+  inputQualityDiagnosisPrefetchDebounceMs,
+  diagnosisCacheMapToDraft,
+  diagnosisCacheMapFromDraft,
+  trimDiagnosisCacheMap,
+} from '../../utils/inputQualityDiagnosisCache';
 import {
   buildReviewFieldScrollQueue,
   firstEmptyFollowUpFieldKey,
@@ -118,16 +134,18 @@ function devCvExtractionLog(event, meta = {}) {
   console.info(`[cv-extraction] ${event}`, meta);
 }
 
-const MAX_GOOD_AT_PER_CATEGORY = PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY;
-
-/** Legacy success banner — no longer shown on profile creation review steps. */
-const LEGACY_SEMANTIC_INTERPRETATION_SUCCESS_KEY =
-  'documentUpload.extraction.semanticInterpretationSuccess';
-
-function shouldShowExtractionStatusBanner(messageKey, message) {
-  if (messageKey === LEGACY_SEMANTIC_INTERPRETATION_SUCCESS_KEY) return false;
-  return Boolean(messageKey || message);
+function mergeFollowUpAnswersForQuestions(previousAnswers = {}, followUps = [], preserveExisting = false) {
+  const prev = previousAnswers && typeof previousAnswers === 'object' ? previousAnswers : {};
+  const out = {};
+  for (const row of (Array.isArray(followUps) ? followUps : [])) {
+    const key = String(row?.field || '').trim();
+    if (!key) continue;
+    out[key] = preserveExisting ? String(prev[key] || '') : '';
+  }
+  return out;
 }
+
+const MAX_GOOD_AT_PER_CATEGORY = PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY;
 
 /** Merge Step 3 follow-up answers into the review profile before save (append text / push list rows). */
 function applyStep3FollowUpAnswersToReviewProfile(profile, followUps, answers) {
@@ -264,16 +282,67 @@ function ensureReviewProfileShape(profile) {
   };
 }
 
+const GOOD_AT_STRUCTURED_KEYS = [
+  'skillDomains',
+  'skills',
+  'domains',
+  'keyResponsibilities',
+  'skillsInDevelopment',
+];
+
+function reviewProfileHasStructuredGoodAt(profile) {
+  const sui = profile?.structuredUserInfo || {};
+  return GOOD_AT_STRUCTURED_KEYS.some((key) => Array.isArray(sui[key]) && sui[key].length > 0);
+}
+
 function mergeReviewProfileWithDraft(normalized, draftProfile) {
   const base = ensureReviewProfileShape(normalized);
   const draft = ensureReviewProfileShape(draftProfile);
+  const baseSui = base.structuredUserInfo || {};
+  const draftSui = draft.structuredUserInfo || {};
+  const structuredUserInfo = {
+    ...draftSui,
+    ...baseSui,
+    ...Object.fromEntries(
+      GOOD_AT_STRUCTURED_KEYS.map((key) => [key, Array.isArray(baseSui[key]) ? baseSui[key] : []])
+    ),
+  };
   return ensureReviewProfileShape({
     ...base,
     ...draft,
     userIdentity: { ...base.userIdentity, ...draft.userIdentity },
-    structuredUserInfo: { ...base.structuredUserInfo, ...draft.structuredUserInfo },
+    structuredUserInfo,
     seniority: { ...base.seniority, ...draft.seniority },
   });
+}
+
+function isSkillsOnlyIncompleteGoodAt(structuredUserInfo = {}) {
+  const hasOther = ['skillDomains', 'domains', 'keyResponsibilities', 'skillsInDevelopment'].some(
+    (key) => Array.isArray(structuredUserInfo[key]) && structuredUserInfo[key].length > 0
+  );
+  if (hasOther) return false;
+  const skills = Array.isArray(structuredUserInfo.skills) ? structuredUserInfo.skills : [];
+  return skills.some((item) => String(typeof item === 'string' ? item : item?.name || '').trim());
+}
+
+/** Step 3 lists must come from AI interpretation, not regex/heuristic fallback. */
+function stripHeuristicGoodAtFromProfileData(profileData, documentMeta = {}) {
+  const sui = profileData?.structuredUserInfo && typeof profileData.structuredUserInfo === 'object'
+    ? profileData.structuredUserInfo
+    : {};
+  const needsAiGoodAt =
+    documentNeedsFullReviewQuality(documentMeta)
+    || isSkillsOnlyIncompleteGoodAt(sui);
+  if (!needsAiGoodAt || !profileData || typeof profileData !== 'object') {
+    return profileData;
+  }
+  return {
+    ...profileData,
+    structuredUserInfo: {
+      ...sui,
+      ...Object.fromEntries(GOOD_AT_STRUCTURED_KEYS.map((key) => [key, []])),
+    },
+  };
 }
 
 function applyStoredReviewDraft(userId, documentId, normalizedData, draft) {
@@ -295,14 +364,21 @@ function restoreReviewDraftUiState(draft, setters) {
     setAcceptedFields,
     setCvExtractLocalization,
     setReviewDialogOpen,
+    inputQualityDiagnosisCacheRef,
+    inputQualityDiagnosisAppliedFingerprintRef,
   } = setters;
   if (typeof draft.reviewStep === 'number') {
     let step = draft.reviewStep;
-    // Legacy drafts used step 3 for context follow-ups; new flow uses step 5.
+    // Step order: 4 = context follow-ups, 5 = seniority. Migrate legacy drafts (4=seniority, 5=context).
     const hasContextFollowUps =
       Array.isArray(draft.step3FollowUps) && draft.step3FollowUps.length > 0;
     if (step === 3 && hasContextFollowUps) {
-      step = 5;
+      step = 4;
+    } else if (step === 5) {
+      step = 4;
+    } else if (step === 4 && !hasContextFollowUps) {
+      const seniority = draft.reviewProfile?.seniority;
+      step = seniority && validateSeniorityPayload(seniority).ok ? 5 : 4;
     }
     setReviewStep(step);
   }
@@ -317,6 +393,15 @@ function restoreReviewDraftUiState(draft, setters) {
     setCvExtractLocalization(draft.cvExtractLocalization);
   }
   if (draft.reviewDialogOpen) setReviewDialogOpen(true);
+  if (inputQualityDiagnosisCacheRef && draft.inputQualityDiagnosisCache) {
+    inputQualityDiagnosisCacheRef.current = diagnosisCacheMapFromDraft(draft.inputQualityDiagnosisCache);
+  }
+  if (
+    inputQualityDiagnosisAppliedFingerprintRef
+    && typeof draft.inputQualityDiagnosisAppliedFingerprint === 'string'
+  ) {
+    inputQualityDiagnosisAppliedFingerprintRef.current = draft.inputQualityDiagnosisAppliedFingerprint;
+  }
 }
 
 const DocumentUploadForm = ({
@@ -366,16 +451,48 @@ const DocumentUploadForm = ({
   const [extractedProfileData, setExtractedProfileData] = useState(null);
   /** Bilingual payloads from CV pipeline; forwarded on review save for profile merge. */
   const [cvExtractLocalization, setCvExtractLocalization] = useState(null);
-  const [extractionStatus, setExtractionStatus] = useState(null);
-  const [extractionMessage, setExtractionMessage] = useState(null);
-  const [extractionMessageKey, setExtractionMessageKey] = useState(null);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewProfile, setReviewProfile] = useState({});
-  const [reviewStep, setReviewStep] = useState(2);
+  const [reviewStep, setReviewStep] = useState(enableExtractionReview ? 1 : 2);
+  const reviewStep1FileInputRef = useRef(null);
+  const advancingToIdentityStepRef = useRef(false);
+  /** CV document ids the user dismissed via wizard cancel — blocks auto-resume polling. */
+  const dismissedCvWizardDocIdsRef = useRef(new Set());
+  /** True after explicit wizard cancel until the user starts a new CV upload. */
+  const cvWizardUserCanceledRef = useRef(false);
+  const [reviewStep1Advancing, setReviewStep1Advancing] = useState(false);
+
+  const isWizardCvDocDismissed = useCallback((docId) => {
+    if (!docId) return false;
+    return dismissedCvWizardDocIdsRef.current.has(String(docId));
+  }, []);
+
+  const clearCvExtractionUiState = useCallback(() => {
+    cvPollAbortRef.current?.abort();
+    cvPollAbortRef.current = null;
+    setCvPollTarget(null);
+    setCvPipelinePhase('idle');
+    setUploadSucceeded(false);
+    setCvPollTimedOutDocId(null);
+    setCvPollFailedDocId(null);
+    setCvZombieSnapshot(null);
+    setCvRecoveryUxPhase('normal');
+    setCvRecoveryBusy(false);
+    setExtractionEstimatedState(null);
+    setPollReconnecting(false);
+    setReviewStep1Advancing(false);
+    advancingToIdentityStepRef.current = false;
+    cvPollSnapshotRef.current = null;
+  }, []);
   const [step3FollowUps, setStep3FollowUps] = useState([]);
   const [step3FollowUpAnswers, setStep3FollowUpAnswers] = useState({});
   const [inputQualityDiagnosisError, setInputQualityDiagnosisError] = useState(null);
   const [inputQualityDiagnosisLoading, setInputQualityDiagnosisLoading] = useState(false);
+  const inputQualityDiagnosisAbortRef = useRef(null);
+  const inputQualityDiagnosisCacheRef = useRef(new Map());
+  const inputQualityDiagnosisInflightFingerprintRef = useRef('');
+  const inputQualityDiagnosisInflightPromiseRef = useRef(null);
+  const inputQualityDiagnosisAppliedFingerprintRef = useRef('');
   const [acceptedFields, setAcceptedFields] = useState({});
   const [savingReview, setSavingReview] = useState(false);
   const savingReviewActive = savingReview || parentSavingReview;
@@ -389,6 +506,11 @@ const DocumentUploadForm = ({
   const [reviewCancelConfirmOpen, setReviewCancelConfirmOpen] = useState(false);
   /** Validation/save errors shown inside the review dialog (not hidden behind the modal). */
   const [reviewDialogError, setReviewDialogError] = useState('');
+  /** True while context-step continue awaits diagnosis or narrative cache warm. */
+  const [reviewContinueBusy, setReviewContinueBusy] = useState(false);
+  /** Step 3 waiting for parallel structured enrichment after Step 2 continue. */
+  const [structuredReviewLoading, setStructuredReviewLoading] = useState(false);
+  const cvPollSnapshotRef = useRef(null);
   /** Per-field errors keyed by review path (e.g. userIdentity.workEnjoyMost). */
   const [reviewFieldErrors, setReviewFieldErrors] = useState({});
 
@@ -402,8 +524,20 @@ const DocumentUploadForm = ({
       setReviewDialogError('');
       setReviewFieldErrors({});
       pendingReviewScrollRef.current = null;
+      return undefined;
     }
+    inputQualityDiagnosisAbortRef.current?.abort();
+    inputQualityDiagnosisAbortRef.current = null;
+    inputQualityDiagnosisInflightFingerprintRef.current = '';
+    inputQualityDiagnosisInflightPromiseRef.current = null;
+    inputQualityDiagnosisAppliedFingerprintRef.current = '';
+    setInputQualityDiagnosisLoading(false);
+    return undefined;
   }, [reviewDialogOpen]);
+
+  useEffect(() => () => {
+    inputQualityDiagnosisAbortRef.current?.abort();
+  }, []);
 
   /** After intentional step changes, start at the top of the new step content. */
   useEffect(() => {
@@ -496,6 +630,8 @@ const DocumentUploadForm = ({
       setAcceptedFields,
       setCvExtractLocalization,
       setReviewDialogOpen,
+      inputQualityDiagnosisCacheRef,
+      inputQualityDiagnosisAppliedFingerprintRef,
     });
     return undefined;
   }, [reviewUserId]);
@@ -514,6 +650,8 @@ const DocumentUploadForm = ({
         acceptedFields,
         cvExtractLocalization,
         reviewDialogOpen,
+        inputQualityDiagnosisCache: diagnosisCacheMapToDraft(inputQualityDiagnosisCacheRef.current),
+        inputQualityDiagnosisAppliedFingerprint: inputQualityDiagnosisAppliedFingerprintRef.current,
       });
     }, 400);
     return () => clearTimeout(timer);
@@ -530,9 +668,9 @@ const DocumentUploadForm = ({
     extractedProfileData,
   ]);
 
-  /** Step 5: all follow-up prompts returned from quality diagnosis must have non-empty answers before save. */
+  /** Step 4 (context): follow-up prompts must be answered before continuing to seniority. */
   const step3FollowUpsAnsweredFully = useMemo(() => {
-    if (reviewStep !== 5) return true;
+    if (reviewStep !== 4) return true;
     if (!step3FollowUps.length) return true;
     return step3FollowUps.every((d) => String(step3FollowUpAnswers[d.field] || '').trim().length > 0);
   }, [reviewStep, step3FollowUps, step3FollowUpAnswers]);
@@ -568,6 +706,7 @@ const DocumentUploadForm = ({
       setReviewStep(2);
       setStep3FollowUps([]);
       setStep3FollowUpAnswers({});
+      inputQualityDiagnosisAppliedFingerprintRef.current = '';
     }
   }, [reviewUserId]);
 
@@ -586,7 +725,8 @@ const DocumentUploadForm = ({
         yearsOfExperience = Number.isFinite(parsed) && parsed >= 0 && parsed <= 50 ? parsed : null;
       }
     }
-    let currentStatus = sanitizeCurrentEmploymentStatus(seniority.currentStatus || '');
+    let currentStatus = sanitizeCurrentEmploymentStatus(seniority.currentStatus || '')
+      || inferCurrentEmploymentStatusFromText(seniority.currentStatus || '');
     let highestDegree = String(seniority.highestDegree || '').trim();
     if (highestDegree && !HIGHEST_DEGREE_ALLOWED.includes(highestDegree)) {
       highestDegree = inferHighestDegreeFromText(highestDegree);
@@ -599,11 +739,6 @@ const DocumentUploadForm = ({
       ? structuredUserInfo.skills
         .map((skill) => (typeof skill === 'string' ? { name: skill } : { name: skill?.name || '' }))
         .filter((skill) => skill.name.trim())
-      : [];
-    const derivedResponsibilities = Array.isArray(structuredUserInfo.workExperience)
-      ? structuredUserInfo.workExperience
-        .map((item) => String(item?.description || '').trim())
-        .filter(Boolean)
       : [];
     return {
       ...data,
@@ -633,7 +768,7 @@ const DocumentUploadForm = ({
           : [],
         keyResponsibilities: capGoodAtList(Array.isArray(structuredUserInfo.keyResponsibilities)
           ? structuredUserInfo.keyResponsibilities
-          : derivedResponsibilities),
+          : []),
         domains: capGoodAtList(Array.isArray(structuredUserInfo.domains)
           ? structuredUserInfo.domains
           : [])
@@ -732,10 +867,21 @@ const DocumentUploadForm = ({
   const queueFileForUpload = useCallback((file) => {
     if (!file) return;
     setUploadError('');
+    setExtractionError('');
+    setUploading(false);
     setSelectedFile(file);
+    if (enableExtractionReview) {
+      cvWizardUserCanceledRef.current = false;
+      clearCvExtractionUiState();
+      setPendingUploadedDocId(null);
+      setAutoStartUpload(true);
+      setReviewDialogOpen(true);
+      setReviewStep(1);
+      return;
+    }
     setUploadDialog(true);
     setAutoStartUpload(true);
-  }, []);
+  }, [enableExtractionReview, clearCvExtractionUiState]);
 
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles?.[0];
@@ -781,6 +927,7 @@ const DocumentUploadForm = ({
       'image/png': ['.png'],
     },
     maxSize: MAX_UPLOAD_SIZE_BYTES,
+    disabled: enableExtractionReview && reviewDialogOpen,
   });
 
   const handleDelete = async (documentId) => {
@@ -881,6 +1028,10 @@ const DocumentUploadForm = ({
         isCvDocumentType(defaultDocumentType);
 
       if (isCvUpload && uploadedDocId) {
+        if (enableExtractionReview) {
+          setReviewDialogOpen(true);
+          setReviewStep(1);
+        }
         setUploadSucceeded(true);
         setCvPipelinePhase('queued');
         setExtractionEstimatedState('normal');
@@ -894,10 +1045,6 @@ const DocumentUploadForm = ({
           jobId: data.jobId ? String(data.jobId) : null,
         });
       } else if (enableExtractionReview && (data.extractedProfileData || (data.extractionStatus && data.extractionStatus !== 'queued'))) {
-        setExtractionStatus(data.extractionStatus || null);
-        setExtractionMessage(data.extractionMessage || null);
-        setExtractionMessageKey(data.extractionMessageKey || null);
-
         if (data.extractedProfileData) {
           setCvExtractLocalization(
             data.cvExtractLocalization && typeof data.cvExtractLocalization === 'object'
@@ -947,16 +1094,85 @@ const DocumentUploadForm = ({
     t,
     loadReviewProfileFromExtraction,
     pendingUploadedDocId,
+    enableExtractionReview,
   ]);
 
+  const ensureStructuredSemanticForReview = useCallback(async (docId) => {
+    const token = localStorage.getItem('token') || '';
+    const langQuery = `lang=${encodeURIComponent(uiLangCode)}`;
+    const res = await fetch(
+      `/api/documents/${encodeURIComponent(String(docId))}/ensure-semantic-enrichment?${langQuery}`,
+      {
+        method: 'POST',
+        headers: { Authorization: token ? `Bearer ${token}` : '' },
+      }
+    );
+    if (!res.ok) throw new Error('structured semantic enrichment failed');
+    return res.json();
+  }, [uiLangCode]);
+
+  const mergeStructuredFieldsFromDocument = useCallback((document) => {
+    if (!document?.extractedProfileData) return;
+    const normalized = normalizeExtractedProfileData(
+      stripHeuristicGoodAtFromProfileData(document.extractedProfileData, document)
+    );
+    setExtractedProfileData(normalized);
+    setReviewProfile((prev) => ({
+      ...prev,
+      userIdentity: prev.userIdentity || normalized.userIdentity,
+      structuredUserInfo: normalized.structuredUserInfo,
+      seniority: normalized.seniority,
+      name: prev.name || normalized.name,
+      personalInfo: { ...(normalized.personalInfo || {}), ...(prev.personalInfo || {}) },
+    }));
+    setAcceptedFields((prev) => ({
+      ...buildAcceptedDefaults(normalized),
+      ...Object.fromEntries(
+        Object.entries(prev || {}).filter(([key]) => key.startsWith('userIdentity.'))
+      ),
+    }));
+    const mergedList = (documentsRef.current || []).map((d) =>
+      String(d.id) === String(document.id) ? { ...d, ...document, id: document.id || d.id } : d
+    );
+    onDocumentsUpdate(normalizeDocuments(mergedList));
+  }, [onDocumentsUpdate]);
+
   const hydrateFromDocument = useCallback(async (docId) => {
-    const res = await fetch(`/api/documents/${docId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    const token = localStorage.getItem('token') || '';
+    const langQuery = `lang=${encodeURIComponent(uiLangCode)}`;
+    const res = await fetch(`/api/documents/${docId}?${langQuery}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
     });
     if (!res.ok) throw new Error('document refresh failed');
-    const data = await res.json();
-    const document = data.document;
+    let data = await res.json();
+    let document = data.document;
     if (!document) return false;
+
+    if (documentNeedsCvLocalization(document, uiLangCode)) {
+      const ensureRes = await fetch(
+        `/api/documents/${encodeURIComponent(String(docId))}/ensure-localization?${langQuery}`,
+        {
+          method: 'POST',
+          headers: { Authorization: token ? `Bearer ${token}` : '' },
+        }
+      );
+      if (ensureRes.ok) {
+        data = await ensureRes.json();
+        document = data.document || document;
+      }
+    }
+
+    if (documentNeedsFullReviewQuality(document)) {
+      try {
+        const semanticData = await ensureStructuredSemanticForReview(String(docId));
+        if (semanticData?.document) {
+          document = semanticData.document;
+        }
+      } catch {
+        // Step 2→3 will retry structured enrichment.
+      }
+    }
+
     const mergedList = (documentsRef.current || []).map((d) =>
       String(d.id) === String(docId) ? { ...d, ...document, id: document.id || d.id } : d
     );
@@ -975,7 +1191,9 @@ const DocumentUploadForm = ({
           ? document.cvExtractLocalization
           : null
       );
-      const normalizedData = normalizeExtractedProfileData(extractedPayload);
+      const normalizedData = normalizeExtractedProfileData(
+        stripHeuristicGoodAtFromProfileData(extractedPayload, document)
+      );
       setExtractedProfileData(normalizedData);
       loadReviewProfileFromExtraction(normalizedData, docId);
       setAcceptedFields(buildAcceptedDefaults(normalizedData));
@@ -983,31 +1201,309 @@ const DocumentUploadForm = ({
       setStep3FollowUpAnswers({});
       setInputQualityDiagnosisError(null);
       setInputQualityDiagnosisLoading(false);
-      setReviewStep(2);
+      inputQualityDiagnosisAppliedFingerprintRef.current = '';
+      setReviewStep((prev) => (prev > 2 ? prev : 2));
       const reviewStatus =
         outcome === 'success' || outcome === 'partial' || outcome === 'failed'
           ? outcome
           : extractedPayload
             ? 'success'
             : 'partial';
-      setExtractionStatus(reviewStatus);
-      setExtractionMessage(document.extractionMessage || null);
-      setExtractionMessageKey(document.extractionMessageKey || null);
       if (reviewStatus === 'success' || reviewStatus === 'partial') {
         setReviewDialogOpen(true);
+        if (enableExtractionReview) {
+          setReviewStep((prev) => (prev < 2 ? 2 : prev));
+        }
       }
       return true;
     }
     return false;
-  }, [enableExtractionReview, onDocumentsUpdate, loadReviewProfileFromExtraction]);
+  }, [
+    enableExtractionReview,
+    onDocumentsUpdate,
+    loadReviewProfileFromExtraction,
+    uiLangCode,
+    ensureStructuredSemanticForReview,
+  ]);
+
+  const renderCvExtractionProgressAlert = () => (
+    <Alert
+      severity={
+        cvPipelinePhase === 'failed'
+          ? 'error'
+          : cvRecoveryUxPhase === 'stuck' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery'
+            ? 'warning'
+            : 'info'
+      }
+      sx={{ mb: 0 }}
+    >
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        {t('documentUpload.async.extractionHeader')}
+      </Typography>
+      <Typography variant="body2" sx={{ mb: (cvPollTarget || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck') ? 1 : 0 }}>
+        {(() => {
+          if (cvPipelinePhase === 'failed') {
+            return t('documentUpload.async.recovery.failed');
+          }
+          if (cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery') {
+            return t('documentUpload.async.recovery.pollStopped');
+          }
+          return t(resolveExtractionProgressMessageKey(cvZombieSnapshot, {
+            pollReconnecting,
+            extractionEstimatedState,
+            hasActivePoll: Boolean(cvPollTarget),
+            getZombieMessageKey: cvZombieSnapshot
+              ? () => getDelayReasonI18nKey(
+                cvZombieSnapshot.estimatedDelayReason,
+                cvZombieSnapshot.workerHealthSignal
+              )
+              : null,
+          }));
+        })()}
+      </Typography>
+      {cvPollTarget && isCvExtractionUiPhaseInProgress(cvPipelinePhase) && (
+        <LinearProgress
+          variant={
+            cvZombieSnapshot?.progress != null && Number.isFinite(Number(cvZombieSnapshot.progress))
+              ? 'determinate'
+              : 'indeterminate'
+          }
+          value={Math.min(100, Math.max(0, Number(cvZombieSnapshot?.progress ?? 0)))}
+          sx={{ mb: cvRecoveryUxPhase === 'stuck' ? 1 : 0 }}
+        />
+      )}
+      {(cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'recovery' || cvPipelinePhase === 'timedOut') && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={cvRecoveryBusy}
+            onClick={handleContinueWaiting}
+          >
+            {t('documentUpload.async.recovery.continueWaiting')}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={cvRecoveryBusy}
+            onClick={() => void handleRefreshExtractionStatus()}
+          >
+            {t('documentUpload.async.recovery.refreshStatus')}
+          </Button>
+          {(cvZombieSnapshot?.retryRecommended || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery') && (
+            <Button
+              size="small"
+              variant="contained"
+              disabled={cvRecoveryBusy}
+              onClick={() => void handleRetryExtraction()}
+            >
+              {t('documentUpload.async.recovery.retryExtraction')}
+            </Button>
+          )}
+        </Box>
+      )}
+      {cvPipelinePhase === 'failed' && (
+        <Box sx={{ mt: 1 }}>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={cvRecoveryBusy || uploading}
+            onClick={() => {
+              setCvPollFailedDocId(null);
+              setCvRecoveryUxPhase('normal');
+              setCvZombieSnapshot(null);
+              setExtractionError('');
+              setCvPipelinePhase('idle');
+              setUploadSucceeded(false);
+              setSelectedFile(null);
+              if (enableExtractionReview) {
+                reviewStep1FileInputRef.current?.click();
+              } else if (showUploadControls) {
+                open();
+              }
+            }}
+          >
+            {t('documentUpload.async.recovery.uploadAgain')}
+          </Button>
+        </Box>
+      )}
+    </Alert>
+  );
 
   const applyExtractionPollSnapshot = useCallback((snapshot, pollActive) => {
     if (!snapshot) return;
+    cvPollSnapshotRef.current = snapshot;
     setCvZombieSnapshot(snapshot);
     setCvRecoveryUxPhase(mapZombieSignalsToUxPhase(snapshot, pollActive));
     setExtractionEstimatedState(snapshot.estimatedState);
-    setCvPipelinePhase(mapExtractionStatusToUiPhase(snapshot.status, snapshot.stage));
+    setCvPipelinePhase(mapExtractionStatusToUiPhase(snapshot.status, snapshot.stage, {
+      isBackgroundEnriching: snapshot.isBackgroundEnriching,
+      displayStage: snapshot.displayStage,
+      phase: snapshot.phase,
+      blockingTask: snapshot.blockingTask,
+    }));
   }, []);
+
+  const reviewProfileRef = useRef(reviewProfile);
+  const reviewStepRef = useRef(reviewStep);
+  useEffect(() => {
+    reviewProfileRef.current = reviewProfile;
+  }, [reviewProfile]);
+  useEffect(() => {
+    reviewStepRef.current = reviewStep;
+  }, [reviewStep]);
+
+  const structuredExtractionReady = useMemo(() => {
+    if (!pendingUploadedDocId || !enableExtractionReview) return true;
+    const doc = (documents || []).find((d) => String(d.id) === String(pendingUploadedDocId));
+    if (doc?.semanticEnrichmentStatus === 'complete') return true;
+    if (cvZombieSnapshot?.structuredReviewReady) return true;
+    return reviewProfileHasStructuredGoodAt(reviewProfile);
+  }, [
+    documents,
+    pendingUploadedDocId,
+    enableExtractionReview,
+    cvZombieSnapshot,
+    reviewProfile,
+  ]);
+
+  const reviewProfileIdentityIsEmpty = useCallback((profile) => (
+    USER_IDENTITY_FIELDS.every(
+      ({ key }) => !String(profile?.userIdentity?.[key] || '').trim()
+    )
+  ), []);
+
+  const tryOpenIdentityReviewFromPoll = useCallback(async (snapshot, docId) => {
+    if (!enableExtractionReview || !snapshot?.identityReviewReady) {
+      return;
+    }
+    if (cvWizardUserCanceledRef.current) return;
+    const targetId = docId || cvPollTarget?.documentId || pendingUploadedDocId;
+    if (!targetId) return;
+    if (reviewDialogOpen && reviewStepRef.current === 1) {
+      return;
+    }
+    const layers = snapshot?.extractionLayers;
+    const identityDone = layers?.identity === 'done';
+    if (
+      reviewDialogOpen
+      && !identityDone
+      && !reviewProfileIdentityIsEmpty(reviewProfileRef.current)
+    ) {
+      return;
+    }
+    if (reviewDialogOpen && identityDone && reviewProfileIdentityIsEmpty(reviewProfileRef.current)) {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(
+          `/api/documents/${encodeURIComponent(String(targetId))}?lang=${encodeURIComponent(uiLangCode)}`,
+          { headers: { Authorization: token ? `Bearer ${token}` : '' } }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const document = data.document;
+        if (!document?.extractedProfileData) return;
+        const normalized = normalizeExtractedProfileData(
+          stripHeuristicGoodAtFromProfileData(document.extractedProfileData, document)
+        );
+        setExtractedProfileData(normalized);
+        setReviewProfile((prev) => ({
+          ...prev,
+          userIdentity: {
+            ...(prev.userIdentity || {}),
+            ...(normalized.userIdentity || {}),
+          },
+        }));
+        setAcceptedFields((prev) => ({
+          ...buildAcceptedDefaults(normalized),
+          ...Object.fromEntries(
+            Object.entries(prev || {}).filter(([key]) => key.startsWith('userIdentity.'))
+          ),
+        }));
+      } catch {
+        // Fall through to full hydrate below.
+      }
+      return;
+    }
+    if (reviewDialogOpen) return;
+    setReviewDialogOpen(true);
+    setReviewStep(2);
+    try {
+      await hydrateFromDocument(String(targetId));
+    } catch {
+      // Completed poll will retry hydration.
+    }
+  }, [
+    enableExtractionReview,
+    reviewDialogOpen,
+    cvPollTarget,
+    pendingUploadedDocId,
+    hydrateFromDocument,
+    reviewProfileIdentityIsEmpty,
+    uiLangCode,
+  ]);
+
+  /** Step 1 → 2: load identity extraction into the review dialog once ready. */
+  useEffect(() => {
+    if (!enableExtractionReview || cvWizardUserCanceledRef.current) return undefined;
+    if (!reviewDialogOpen || reviewStep !== 1 || !pendingUploadedDocId) {
+      return undefined;
+    }
+    const identityReady = Boolean(cvZombieSnapshot?.identityReviewReady);
+    const extractionDone = cvPipelinePhase === 'completed';
+    if (!identityReady && !extractionDone) return undefined;
+    if (advancingToIdentityStepRef.current) return undefined;
+    advancingToIdentityStepRef.current = true;
+    setReviewStep1Advancing(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        await hydrateFromDocument(String(pendingUploadedDocId));
+        if (!cancelled) setReviewStep(2);
+      } catch {
+        if (!cancelled) {
+          setReviewDialogError(t('documentUpload.errors.refreshAfterExtractionFailed'));
+        }
+      } finally {
+        advancingToIdentityStepRef.current = false;
+        if (!cancelled) setReviewStep1Advancing(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setReviewStep1Advancing(false);
+      advancingToIdentityStepRef.current = false;
+    };
+  }, [
+    enableExtractionReview,
+    reviewDialogOpen,
+    reviewStep,
+    pendingUploadedDocId,
+    cvZombieSnapshot?.identityReviewReady,
+    cvPipelinePhase,
+    hydrateFromDocument,
+    t,
+  ]);
+
+  /** Resume in-flight extraction inside the wizard after navigation or refresh. */
+  useEffect(() => {
+    if (!enableExtractionReview || reviewDialogOpen) return undefined;
+    if (cvWizardUserCanceledRef.current) return undefined;
+    if (reviewDraftRestoredRef.current) return undefined;
+    const resumeDocId = cvPollTarget?.documentId || pendingUploadedDocId;
+    if (!resumeDocId || isWizardCvDocDismissed(resumeDocId)) return undefined;
+    if (extractedProfileData && reviewStepRef.current >= 2) return undefined;
+    setReviewDialogOpen(true);
+    setReviewStep(1);
+    return undefined;
+  }, [
+    enableExtractionReview,
+    cvPollTarget,
+    pendingUploadedDocId,
+    extractedProfileData,
+    reviewDialogOpen,
+    isWizardCvDocDismissed,
+  ]);
 
   const handleContinueWaiting = useCallback(() => {
     const docId = cvPollTimedOutDocId || cvPollTarget?.documentId || pendingUploadedDocId;
@@ -1034,21 +1530,7 @@ const DocumentUploadForm = ({
         return;
       }
       const data = result.data;
-      const snapshot = {
-        status: data.status,
-        stage: data.stage ?? null,
-        progress: Number(data.progress ?? 0),
-        message: data.message || data.progressLabel || '',
-        estimatedState: data.estimatedState ?? null,
-        errorKey: data.errorKey ?? null,
-        elapsedMs: Number(data.elapsedMs ?? 0),
-        isSlow: Boolean(data.isSlow),
-        isStuck: Boolean(data.isStuck),
-        estimatedDelayReason: data.estimatedDelayReason ?? null,
-        workerHealthSignal: data.workerHealthSignal ?? null,
-        retryRecommended: Boolean(data.retryRecommended),
-        pollPhase: 'degraded',
-      };
+      const snapshot = buildPollSnapshot(data, Number(data.elapsedMs ?? 0), 'degraded');
       applyExtractionPollSnapshot(snapshot, false);
       setPollReconnecting(false);
 
@@ -1126,21 +1608,7 @@ const DocumentUploadForm = ({
       });
       if (statusPayload.status) {
         applyExtractionPollSnapshot(
-          {
-            status: statusPayload.status,
-            stage: statusPayload.stage ?? null,
-            progress: Number(statusPayload.progress ?? 0),
-            message: statusPayload.message || '',
-            estimatedState: statusPayload.estimatedState ?? null,
-            errorKey: null,
-            elapsedMs: Number(statusPayload.elapsedMs ?? 0),
-            isSlow: Boolean(statusPayload.isSlow),
-            isStuck: Boolean(statusPayload.isStuck),
-            estimatedDelayReason: statusPayload.estimatedDelayReason ?? null,
-            workerHealthSignal: statusPayload.workerHealthSignal ?? null,
-            retryRecommended: Boolean(statusPayload.retryRecommended),
-            pollPhase: 'fast',
-          },
+          buildPollSnapshot(statusPayload, Number(statusPayload.elapsedMs ?? 0), 'fast'),
           true
         );
       }
@@ -1174,8 +1642,10 @@ const DocumentUploadForm = ({
       token,
       signal: controller.signal,
       onUpdate: (snapshot) => {
+        if (enableExtractionReview && cvWizardUserCanceledRef.current) return;
         setPollReconnecting(false);
         applyExtractionPollSnapshot(snapshot, true);
+        void tryOpenIdentityReviewFromPoll(snapshot, docId);
       },
       onPollError: () => {
         setPollReconnecting(true);
@@ -1186,13 +1656,16 @@ const DocumentUploadForm = ({
           devCvExtractionLog('polling_stopped', { reason: 'unmount_or_retarget', documentId: docId });
           return;
         }
+        if (enableExtractionReview && cvWizardUserCanceledRef.current) {
+          return;
+        }
         if (outcome.kind === 'completed') {
           try {
             const openedReview = await hydrateFromDocument(docId);
             if (enableExtractionReview && !openedReview && outcome?.data?.hasResult) {
               // Keep UX moving when status says "completed with result" but hydration lags.
-              setReviewStep(2);
               setReviewDialogOpen(true);
+              setReviewStep((prev) => (prev < 2 ? 2 : prev));
             }
           } catch {
             setExtractionError(t('documentUpload.errors.refreshAfterExtractionFailed'));
@@ -1256,11 +1729,23 @@ const DocumentUploadForm = ({
       controller.abort();
       cvPollAbortRef.current = null;
     };
-  }, [cvPollTarget, hydrateFromDocument, t, applyExtractionPollSnapshot, enableExtractionReview]);
+  }, [
+    cvPollTarget,
+    hydrateFromDocument,
+    t,
+    applyExtractionPollSnapshot,
+    enableExtractionReview,
+    tryOpenIdentityReviewFromPoll,
+  ]);
 
   useEffect(() => {
+    if (enableExtractionReview && cvWizardUserCanceledRef.current) return;
     if (cvPollTarget?.documentId) return;
-    const activeDoc = (documents || []).find((d) => isActiveCvExtractionDocument(d));
+    const activeDoc = (documents || []).find((d) => {
+      const id = String(d.id || d._id || '');
+      if (!id || isWizardCvDocDismissed(id)) return false;
+      return isActiveCvExtractionDocument(d);
+    });
     if (!activeDoc) return;
     const docId = String(activeDoc.id || activeDoc._id || '');
     if (!docId) return;
@@ -1276,16 +1761,36 @@ const DocumentUploadForm = ({
     );
     setCvPollTarget({ documentId: docId, jobId: null });
     devCvExtractionLog('polling_resumed_after_hydrate', { documentId: docId });
-  }, [documents, cvPollTarget, cvPollTimedOutDocId, cvPollFailedDocId, cvPipelinePhase]);
+  }, [
+    enableExtractionReview,
+    documents,
+    cvPollTarget,
+    cvPollTimedOutDocId,
+    cvPollFailedDocId,
+    cvPipelinePhase,
+    isWizardCvDocDismissed,
+  ]);
 
   useEffect(() => {
     const effectiveDocumentType = documentType || defaultDocumentType;
-    if (!autoStartUpload || uploading || !uploadDialog || !selectedFile || !effectiveDocumentType) {
+    if (!autoStartUpload || uploading || !selectedFile || !effectiveDocumentType) {
+      return;
+    }
+    if (!enableExtractionReview && !uploadDialog) {
       return;
     }
     setAutoStartUpload(false);
     handleUpload();
-  }, [autoStartUpload, uploading, uploadDialog, selectedFile, documentType, defaultDocumentType, handleUpload]);
+  }, [
+    autoStartUpload,
+    uploading,
+    uploadDialog,
+    selectedFile,
+    documentType,
+    defaultDocumentType,
+    handleUpload,
+    enableExtractionReview,
+  ]);
 
   // Handler for saving reviewed profile data
   const handleReviewSave = async () => {
@@ -1306,7 +1811,7 @@ const DocumentUploadForm = ({
       const emptyFollowUpField = firstEmptyFollowUpFieldKey(step3FollowUps, step3FollowUpAnswers);
       if (emptyFollowUpField) {
         setReviewDialogError(t('documentUpload.review.errors.fixHighlightedFields'));
-        setReviewStep(5);
+        setReviewStep(4);
         queueReviewFieldScroll(emptyFollowUpField);
         return;
       }
@@ -1314,7 +1819,7 @@ const DocumentUploadForm = ({
       const seniorityCheck = validateSeniorityPayload(profileForSave.seniority || {});
       if (!seniorityCheck.ok) {
         setReviewDialogError(t(seniorityFieldErrorKey(seniorityCheck.field)));
-        setReviewStep(4);
+        setReviewStep(5);
         queueReviewFieldScroll(seniorityReviewFieldKey(seniorityCheck.field));
         return;
       }
@@ -1340,6 +1845,8 @@ const DocumentUploadForm = ({
         userIdentity: profileForSave.userIdentity || {},
         seniority: seniorityCheck.value,
         __reviewOptions: { mode: reviewSaveMode },
+        ...(pendingUploadedDocId ? { documentId: String(pendingUploadedDocId) } : {}),
+        ...(acceptedFields && typeof acceptedFields === 'object' ? { acceptedFields } : {}),
         ...(cvExtractLocalization && typeof cvExtractLocalization === 'object'
           ? { __cvExtractLocalization: cvExtractLocalization }
           : {})
@@ -1363,15 +1870,17 @@ const DocumentUploadForm = ({
       setReviewDialogOpen(false);
       setExtractedProfileData(null);
       setCvExtractLocalization(null);
-      setExtractionStatus(null);
-      setExtractionMessage(null);
-      setExtractionMessageKey(null);
       setReviewProfile({});
       setAcceptedFields({});
       setStep3FollowUps([]);
       setStep3FollowUpAnswers({});
       setInputQualityDiagnosisError(null);
       setInputQualityDiagnosisLoading(false);
+      inputQualityDiagnosisAbortRef.current?.abort();
+      inputQualityDiagnosisAbortRef.current = null;
+      inputQualityDiagnosisInflightFingerprintRef.current = '';
+      inputQualityDiagnosisInflightPromiseRef.current = null;
+      inputQualityDiagnosisAppliedFingerprintRef.current = '';
       setPendingUploadedDocId(null);
       setCvPollTarget(null);
       setCvPollTimedOutDocId(null);
@@ -1405,62 +1914,280 @@ const DocumentUploadForm = ({
     }
   };
 
-  const handleGoToNeedContextStep = async () => {
-    setReviewDialogError('');
-    const seniorityCheck = validateSeniorityPayload(reviewProfile?.seniority || {});
-    if (!seniorityCheck.ok) {
-      setReviewDialogError(t(seniorityFieldErrorKey(seniorityCheck.field)));
-      queueReviewFieldScroll(seniorityReviewFieldKey(seniorityCheck.field));
-      return;
-    }
-    if (!applyReviewValidationToUi(validateReviewIdentityStep(reviewProfile))) {
-      return;
-    }
-    if (!applyReviewValidationToUi(
-      validateReviewProfileInDialog(reviewProfile, acceptedFields, { requireGoodAt: true })
-    )) {
-      return;
+  const startInputQualityDiagnosis = useCallback(async (profileSnapshot, { force = false } = {}) => {
+    const fingerprint = qualityDiagnosisFingerprint(profileSnapshot, uiLangCode);
+    const preserveExistingAnswers = inputQualityDiagnosisAppliedFingerprintRef.current === fingerprint;
+    const cached = !force ? inputQualityDiagnosisCacheRef.current.get(fingerprint) : null;
+    if (cached) {
+      setStep3FollowUps(cached.followUps);
+      setStep3FollowUpAnswers((prev) =>
+        mergeFollowUpAnswersForQuestions(prev, cached.followUps, preserveExistingAnswers)
+      );
+      setInputQualityDiagnosisError(null);
+      setInputQualityDiagnosisLoading(false);
+      inputQualityDiagnosisAppliedFingerprintRef.current = fingerprint;
+      return { followUps: cached.followUps, fromCache: true };
     }
 
-    const sui = reviewProfile.structuredUserInfo || {};
-    setInputQualityDiagnosisLoading(true);
-    setInputQualityDiagnosisError(null);
-    try {
-      const res = await fetch(`/api/profile/input-quality-diagnosis?lang=${encodeURIComponent(uiLangCode)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          lang: uiLangCode,
-          userIdentity: reviewProfile.userIdentity || {},
-          structuredUserInfo: sui
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error || data?.details || `Quality analysis failed (${res.status})`);
-      }
-      setStep3FollowUps(Array.isArray(data.followUps) ? data.followUps : []);
-      setStep3FollowUpAnswers({});
-    } catch (e) {
-      setInputQualityDiagnosisError(e.message || t('documentUpload.errors.qualityAnalysisFailed'));
-      setStep3FollowUps([]);
-      setStep3FollowUpAnswers({});
-    } finally {
-      setInputQualityDiagnosisLoading(false);
+    if (
+      !force
+      && inputQualityDiagnosisInflightFingerprintRef.current === fingerprint
+      && inputQualityDiagnosisInflightPromiseRef.current
+    ) {
+      return inputQualityDiagnosisInflightPromiseRef.current;
     }
+
+    const supersededFingerprint = inputQualityDiagnosisInflightFingerprintRef.current;
+    if (supersededFingerprint && supersededFingerprint !== fingerprint) {
+      inputQualityDiagnosisAbortRef.current?.abort();
+    }
+    const controller = new AbortController();
+    inputQualityDiagnosisAbortRef.current = controller;
+    inputQualityDiagnosisInflightFingerprintRef.current = fingerprint;
+
+    const run = async () => {
+      setInputQualityDiagnosisLoading(true);
+      setInputQualityDiagnosisError(null);
+      try {
+        const payload = qualityDiagnosisInputFromProfile(profileSnapshot);
+        const res = await fetch(`/api/profile/input-quality-diagnosis?lang=${encodeURIComponent(uiLangCode)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            lang: uiLangCode,
+            userIdentity: payload.userIdentity,
+            structuredUserInfo: payload.structuredUserInfo
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || data?.details || `Quality analysis failed (${res.status})}`);
+        }
+        const followUps = Array.isArray(data.followUps) ? data.followUps : [];
+      inputQualityDiagnosisCacheRef.current.set(fingerprint, { followUps });
+      trimDiagnosisCacheMap(inputQualityDiagnosisCacheRef.current);
+      if (inputQualityDiagnosisInflightFingerprintRef.current === fingerprint) {
+          setStep3FollowUps(followUps);
+          setStep3FollowUpAnswers((prev) =>
+            mergeFollowUpAnswersForQuestions(prev, followUps, preserveExistingAnswers)
+          );
+          inputQualityDiagnosisAppliedFingerprintRef.current = fingerprint;
+        }
+        return { followUps, fromCache: false };
+      } catch (e) {
+        if (e?.name === 'AbortError') return { followUps: [], aborted: true };
+        if (inputQualityDiagnosisInflightFingerprintRef.current === fingerprint) {
+          setInputQualityDiagnosisError(e?.message || t('documentUpload.errors.qualityAnalysisFailed'));
+        }
+        return { followUps: [], error: e };
+      } finally {
+        if (inputQualityDiagnosisInflightFingerprintRef.current === fingerprint) {
+          setInputQualityDiagnosisLoading(false);
+        }
+      }
+    };
+
+    const promise = run();
+    inputQualityDiagnosisInflightPromiseRef.current = promise;
+    promise.finally(() => {
+      if (inputQualityDiagnosisInflightPromiseRef.current === promise) {
+        inputQualityDiagnosisInflightPromiseRef.current = null;
+      }
+    });
+    return promise;
+  }, [t, uiLangCode]);
+
+  const diagnosisPrefetchKey = useMemo(
+    () => qualityDiagnosisFingerprint(reviewProfile, uiLangCode),
+    [reviewProfile, uiLangCode]
+  );
+
+  useEffect(() => {
+    if (!reviewDialogOpen) return undefined;
+    if (reviewStep !== 3 && reviewStep !== 4) return undefined;
+    if (diagnosisPrefetchKey === inputQualityDiagnosisAppliedFingerprintRef.current) {
+      return undefined;
+    }
+    if (
+      diagnosisPrefetchKey === inputQualityDiagnosisInflightFingerprintRef.current
+      && inputQualityDiagnosisInflightPromiseRef.current
+    ) {
+      return undefined;
+    }
+    const debounceMs = inputQualityDiagnosisPrefetchDebounceMs(reviewStep);
+    const timer = setTimeout(() => {
+      void startInputQualityDiagnosis(reviewProfile);
+    }, debounceMs);
+    return () => clearTimeout(timer);
+  }, [reviewDialogOpen, reviewStep, diagnosisPrefetchKey, startInputQualityDiagnosis, reviewProfile]);
+
+  const followUpNarrativeWarmKey = useMemo(() => {
+    if (reviewStep !== 4) return '';
+    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+      reviewProfile,
+      step3FollowUps,
+      step3FollowUpAnswers
+    );
+    return JSON.stringify({
+      userIdentity: profileForWarm.userIdentity || {},
+      structured: buildStructuredGoodAtFromReview(profileForWarm, acceptedFields),
+    });
+  }, [reviewStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields]);
+
+  useEffect(() => {
+    if (!reviewDialogOpen || reviewStep !== 4 || !pendingUploadedDocId || !followUpNarrativeWarmKey) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+        reviewProfile,
+        step3FollowUps,
+        step3FollowUpAnswers
+      );
+      void warmReviewNarrativeCacheForStep({
+        documentId: pendingUploadedDocId,
+        reviewProfile: profileForWarm,
+        acceptedFields,
+        step: 4,
+        langQuery: getProfileApiLangQuery(),
+        translate: t,
+        awaitReady: false,
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    reviewDialogOpen,
+    reviewStep,
+    pendingUploadedDocId,
+    followUpNarrativeWarmKey,
+    reviewProfile,
+    step3FollowUps,
+    step3FollowUpAnswers,
+    acceptedFields,
+    t,
+  ]);
+
+  const seniorityNarrativeWarmKey = useMemo(() => {
+    if (reviewStep !== 5) return '';
+    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+      reviewProfile,
+      step3FollowUps,
+      step3FollowUpAnswers
+    );
+    return JSON.stringify({
+      userIdentity: profileForWarm.userIdentity || {},
+      structured: buildStructuredGoodAtFromReview(profileForWarm, acceptedFields),
+    });
+  }, [reviewStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields]);
+
+  useEffect(() => {
+    if (!reviewDialogOpen || reviewStep !== 5 || !pendingUploadedDocId || !seniorityNarrativeWarmKey) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+        reviewProfile,
+        step3FollowUps,
+        step3FollowUpAnswers
+      );
+      void warmReviewNarrativeCacheForStep({
+        documentId: pendingUploadedDocId,
+        reviewProfile: profileForWarm,
+        acceptedFields,
+        step: 4,
+        langQuery: getProfileApiLangQuery(),
+        translate: t,
+        awaitReady: false,
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [
+    reviewDialogOpen,
+    reviewStep,
+    pendingUploadedDocId,
+    seniorityNarrativeWarmKey,
+    reviewProfile,
+    step3FollowUps,
+    step3FollowUpAnswers,
+    acceptedFields,
+    t,
+  ]);
+
+  const handleContinueFromContextStep = async () => {
+    setReviewDialogError('');
+
+    if (step3FollowUps.length > 0) {
+      const emptyFollowUpField = firstEmptyFollowUpFieldKey(step3FollowUps, step3FollowUpAnswers);
+      if (emptyFollowUpField) {
+        setReviewDialogError(t('documentUpload.review.errors.fixHighlightedFields'));
+        queueReviewFieldScroll(emptyFollowUpField);
+        return;
+      }
+    }
+
+    const fingerprint = qualityDiagnosisFingerprint(reviewProfile, uiLangCode);
+    const diagnosisReady = inputQualityDiagnosisAppliedFingerprintRef.current === fingerprint;
+
+    if (!diagnosisReady) {
+      setReviewContinueBusy(true);
+      try {
+        let diagnosisResult;
+        if (
+          inputQualityDiagnosisInflightFingerprintRef.current === fingerprint
+          && inputQualityDiagnosisInflightPromiseRef.current
+        ) {
+          diagnosisResult = await inputQualityDiagnosisInflightPromiseRef.current;
+        } else {
+          diagnosisResult = await startInputQualityDiagnosis(reviewProfile);
+          if (
+            diagnosisResult?.aborted
+            && inputQualityDiagnosisInflightPromiseRef.current
+            && inputQualityDiagnosisInflightFingerprintRef.current === fingerprint
+          ) {
+            diagnosisResult = await inputQualityDiagnosisInflightPromiseRef.current;
+          }
+        }
+        if (diagnosisResult?.error && !Array.isArray(diagnosisResult?.followUps)) {
+          setReviewDialogError(
+            diagnosisResult.error?.message
+              || inputQualityDiagnosisError
+              || t('documentUpload.errors.qualityAnalysisFailed')
+          );
+          return;
+        }
+      } finally {
+        setReviewContinueBusy(false);
+      }
+    }
+
     setReviewStep(5);
+
+    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+      reviewProfile,
+      step3FollowUps,
+      step3FollowUpAnswers
+    );
+    if (pendingUploadedDocId) {
+      void warmReviewNarrativeCacheForStep({
+        documentId: pendingUploadedDocId,
+        reviewProfile: profileForWarm,
+        acceptedFields,
+        step: 4,
+        langQuery: getProfileApiLangQuery(),
+        translate: t,
+        awaitReady: false,
+      });
+    }
   };
 
   const handleReviewBack = () => {
     setReviewDialogError('');
     if (reviewStep === 5) {
-      setStep3FollowUps([]);
-      setStep3FollowUpAnswers({});
       setInputQualityDiagnosisError(null);
-      setInputQualityDiagnosisLoading(false);
       setReviewStep(4);
       return;
     }
@@ -1475,7 +2202,48 @@ const DocumentUploadForm = ({
       if (!applyReviewValidationToUi(validateReviewIdentityStep(reviewProfile))) {
         return;
       }
+      const docId = pendingUploadedDocId;
+      let structuredReady = structuredExtractionReady;
+
+      if (docId && enableExtractionReview && !structuredReady) {
+        setStructuredReviewLoading(true);
+        try {
+          const data = await ensureStructuredSemanticForReview(docId);
+          if (data?.document) {
+            mergeStructuredFieldsFromDocument(data.document);
+            structuredReady = data.document.semanticEnrichmentStatus === 'complete'
+              || reviewProfileHasStructuredGoodAt(
+                normalizeExtractedProfileData(
+                  stripHeuristicGoodAtFromProfileData(data.document.extractedProfileData, data.document)
+                )
+              );
+          }
+        } catch {
+          setReviewDialogError(t('documentUpload.errors.refreshAfterExtractionFailed'));
+          return;
+        } finally {
+          setStructuredReviewLoading(false);
+        }
+      } else if (docId && enableExtractionReview && structuredReady) {
+        const doc = (documentsRef.current || []).find((d) => String(d.id) === String(docId));
+        if (doc?.extractedProfileData) {
+          mergeStructuredFieldsFromDocument(doc);
+        }
+      }
+
+      if (docId && enableExtractionReview && !structuredReady) {
+        return;
+      }
+
       setReviewStep(3);
+      void warmReviewNarrativeCacheForStep({
+        documentId: pendingUploadedDocId,
+        reviewProfile,
+        acceptedFields,
+        step: 3,
+        langQuery: getProfileApiLangQuery(),
+        translate: t,
+      });
       return;
     }
     if (reviewStep === 3) {
@@ -1485,10 +2253,19 @@ const DocumentUploadForm = ({
         return;
       }
       setReviewStep(4);
+      void warmReviewNarrativeCacheForStep({
+        documentId: pendingUploadedDocId,
+        reviewProfile,
+        acceptedFields,
+        step: 4,
+        langQuery: getProfileApiLangQuery(),
+        translate: t,
+      });
+      void startInputQualityDiagnosis(reviewProfile);
       return;
     }
     if (reviewStep === 4) {
-      await handleGoToNeedContextStep();
+      void handleContinueFromContextStep();
     }
   };
 
@@ -1496,34 +2273,52 @@ const DocumentUploadForm = ({
   const handleReviewCancel = async () => {
     setReviewCancelConfirmOpen(false);
     setReviewDialogError('');
+    const canceledDocId = pendingUploadedDocId
+      ? String(pendingUploadedDocId)
+      : cvPollTarget?.documentId
+        ? String(cvPollTarget.documentId)
+        : null;
+    if (canceledDocId) {
+      dismissedCvWizardDocIdsRef.current.add(canceledDocId);
+    }
+    cvWizardUserCanceledRef.current = true;
+    setUploading(false);
+    setAutoStartUpload(false);
+    clearCvExtractionUiState();
+    setReviewDialogOpen(false);
     if (reviewUserId) clearCvReviewDraft(reviewUserId);
-    if (rollbackOnReviewCancel && pendingUploadedDocId) {
+    if (rollbackOnReviewCancel && canceledDocId) {
       try {
-        await fetch(`/api/documents/${pendingUploadedDocId}`, {
+        await fetch(`/api/documents/${canceledDocId}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         });
-        onDocumentsUpdate(normalizeDocuments(documents.filter((doc) => doc.id !== pendingUploadedDocId)));
+        onDocumentsUpdate(normalizeDocuments(
+          documents.filter((doc) => String(doc.id) !== String(canceledDocId))
+        ));
       } catch (error) {
         console.warn('Failed to rollback uploaded document on review cancel:', error);
       }
     }
-    setReviewDialogOpen(false);
     setExtractedProfileData(null);
     setCvExtractLocalization(null);
-    setExtractionStatus(null);
-    setExtractionMessage(null);
-    setExtractionMessageKey(null);
     setReviewProfile({});
     setAcceptedFields({});
     setStep3FollowUps([]);
     setStep3FollowUpAnswers({});
     setInputQualityDiagnosisError(null);
     setInputQualityDiagnosisLoading(false);
-    setReviewStep(2);
+    inputQualityDiagnosisAppliedFingerprintRef.current = '';
+    inputQualityDiagnosisAbortRef.current?.abort();
+    inputQualityDiagnosisAbortRef.current = null;
+    inputQualityDiagnosisInflightFingerprintRef.current = '';
+    inputQualityDiagnosisInflightPromiseRef.current = null;
+    setReviewStep(enableExtractionReview ? 1 : 2);
     setPendingUploadedDocId(null);
+    setSelectedFile(null);
+    setExtractionError('');
   };
 
   // Handler for editing extracted skills list items.
@@ -1598,7 +2393,7 @@ const DocumentUploadForm = ({
         </Alert>
       )}
 
-      {uploading && (
+      {!enableExtractionReview && uploading && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 1 }}>
             {t('documentUpload.async.uploading')}
@@ -1607,7 +2402,7 @@ const DocumentUploadForm = ({
         </Alert>
       )}
 
-      {!uploading && uploadSucceeded && cvPollTarget && (
+      {!enableExtractionReview && !uploading && uploadSucceeded && cvPollTarget && (
         <Alert severity="success" sx={{ mb: 2 }}>
           <Typography variant="body2">
             {t('documentUpload.async.uploadComplete')}
@@ -1615,111 +2410,11 @@ const DocumentUploadForm = ({
         </Alert>
       )}
 
-      {!uploading && (cvPollTarget || cvPipelinePhase === 'failed' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'slow') && (
-        <Alert
-          severity={
-            cvPipelinePhase === 'failed'
-              ? 'error'
-              : cvRecoveryUxPhase === 'stuck' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery'
-                ? 'warning'
-                : 'info'
-          }
-          sx={{ mb: 2 }}
-        >
-          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-            {t('documentUpload.async.extractionHeader')}
-          </Typography>
-          <Typography variant="body2" sx={{ mb: (cvPollTarget || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck') ? 1 : 0 }}>
-            {(() => {
-              if (cvPipelinePhase === 'failed') {
-                return t('documentUpload.async.recovery.failed');
-              }
-              if (cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery') {
-                return t('documentUpload.async.recovery.pollStopped');
-              }
-              if (pollReconnecting) return t('documentUpload.async.pollReconnecting');
-              if (cvZombieSnapshot) {
-                return t(getDelayReasonI18nKey(
-                  cvZombieSnapshot.estimatedDelayReason,
-                  cvZombieSnapshot.workerHealthSignal
-                ));
-              }
-              if (extractionEstimatedState === 'retrying') {
-                return t('documentUpload.async.retrying');
-              }
-              if (extractionEstimatedState === 'delayed') {
-                return t('documentUpload.async.takingLonger');
-              }
-              if (cvPollTarget && extractionEstimatedState === 'normal') {
-                return t('documentUpload.async.stillProcessing');
-              }
-              const map = {
-                queued: 'documentUpload.async.extractionQueued',
-                ocr: 'documentUpload.async.ocr',
-                extraction: 'documentUpload.async.extraction',
-                localization: 'documentUpload.async.localization',
-                completed: 'documentUpload.async.completed',
-              };
-              return t(map[cvPipelinePhase] || 'documentUpload.async.extractionQueued');
-            })()}
-          </Typography>
-          {cvPollTarget && cvPipelinePhase !== 'failed' && cvPipelinePhase !== 'completed' && cvPipelinePhase !== 'timedOut' && (
-            <LinearProgress sx={{ mb: cvRecoveryUxPhase === 'stuck' ? 1 : 0 }} />
-          )}
-          {(cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'recovery' || cvPipelinePhase === 'timedOut') && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={cvRecoveryBusy}
-                onClick={handleContinueWaiting}
-              >
-                {t('documentUpload.async.recovery.continueWaiting')}
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={cvRecoveryBusy}
-                onClick={() => void handleRefreshExtractionStatus()}
-              >
-                {t('documentUpload.async.recovery.refreshStatus')}
-              </Button>
-              {(cvZombieSnapshot?.retryRecommended || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery') && (
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={cvRecoveryBusy}
-                  onClick={() => void handleRetryExtraction()}
-                >
-                  {t('documentUpload.async.recovery.retryExtraction')}
-                </Button>
-              )}
-            </Box>
-          )}
-          {cvPipelinePhase === 'failed' && (
-            <Box sx={{ mt: 1 }}>
-              <Button
-                size="small"
-                variant="contained"
-                disabled={cvRecoveryBusy || uploading}
-                onClick={() => {
-                  setCvPollFailedDocId(null);
-                  setCvRecoveryUxPhase('normal');
-                  setCvZombieSnapshot(null);
-                  setExtractionError('');
-                  setCvPipelinePhase('idle');
-                  setUploadSucceeded(false);
-                  if (showUploadControls) open();
-                }}
-              >
-                {t('documentUpload.async.recovery.uploadAgain')}
-              </Button>
-            </Box>
-          )}
-        </Alert>
+      {!enableExtractionReview && !uploading && (cvPollTarget || cvPipelinePhase === 'failed' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'slow') && (
+        renderCvExtractionProgressAlert()
       )}
 
-      {showUploadControls && (
+      {showUploadControls && !(enableExtractionReview && reviewDialogOpen) && (
         <Paper
           {...getRootProps()}
           sx={{
@@ -1922,7 +2617,7 @@ const DocumentUploadForm = ({
         </DialogActions>
       </Dialog>
 
-      {showUploadControls && (
+      {showUploadControls && !enableExtractionReview && (
         <Dialog open={uploadDialog} onClose={() => { setUploadDialog(false); setAutoStartUpload(false); }}>
           <DialogTitle>{t('documentUpload.uploadDialog.title')}</DialogTitle>
           <DialogContent>
@@ -1988,6 +2683,7 @@ const DocumentUploadForm = ({
       {/* Review extracted profile data dialog */}
       <Dialog
         open={reviewDialogOpen}
+        keepMounted={false}
         onClose={(event, reason) => {
           if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
             return;
@@ -2021,18 +2717,69 @@ const DocumentUploadForm = ({
             overscrollBehavior: 'contain',
           }}
         >
-          {shouldShowExtractionStatusBanner(extractionMessageKey, extractionMessage) && (
-            <Alert 
-              severity={extractionStatus === 'success' ? 'success' : extractionStatus === 'partial' ? 'warning' : extractionStatus === 'failed' ? 'error' : 'info'}
-              sx={{ mb: 2 }}
-            >
-              {extractionMessageKey ? t(extractionMessageKey) : extractionMessage}
-            </Alert>
-          )}
           {reviewDialogError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setReviewDialogError('')}>
               {reviewDialogError}
             </Alert>
+          )}
+          {reviewStep === 1 && enableExtractionReview && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                {t('documentUpload.review.step1Intro')}
+              </Typography>
+              <input
+                ref={reviewStep1FileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+              {selectedFile && (
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {selectedFile.name}
+                </Typography>
+              )}
+              {uploading && (
+                <Alert severity="info">
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    {t('documentUpload.async.uploading')}
+                  </Typography>
+                  <LinearProgress />
+                </Alert>
+              )}
+              {!uploading && uploadSucceeded && cvPollTarget && (
+                <Alert severity="success">
+                  <Typography variant="body2">
+                    {t('documentUpload.async.uploadComplete')}
+                  </Typography>
+                </Alert>
+              )}
+              {!uploading && (cvPollTarget || cvPipelinePhase === 'failed' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'slow') && (
+                renderCvExtractionProgressAlert()
+              )}
+              {!uploading && !cvPollTarget && cvPipelinePhase === 'idle' && !uploadSucceeded && (
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {t('documentUpload.dropzone.supportedFormats')}
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<UploadIcon />}
+                    onClick={() => reviewStep1FileInputRef.current?.click()}
+                  >
+                    {t('documentUpload.dropzone.cta')}
+                  </Button>
+                </Box>
+              )}
+              {reviewStep1Advancing && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1 }}>
+                  <CircularProgress size={20} />
+                  <Typography variant="body2" color="text.secondary">
+                    {t('documentUpload.review.step1Advancing')}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           )}
           {extractedProfileData ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -2077,6 +2824,14 @@ const DocumentUploadForm = ({
                     </Box>
                     );
                   })}
+                  {(structuredReviewLoading || !structuredExtractionReady) && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1 }}>
+                      <CircularProgress size={20} />
+                      <Typography variant="body2" color="text.secondary">
+                        {t('documentUpload.review.structuredLoading')}
+                      </Typography>
+                    </Box>
+                  )}
                 </>
               )}
               {reviewStep === 3 && (
@@ -2403,6 +3158,66 @@ const DocumentUploadForm = ({
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {t('documentUpload.review.step4Intro')}
                   </Typography>
+                  {inputQualityDiagnosisLoading && step3FollowUps.length === 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <LinearProgress />
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        {t('documentUpload.review.analyzing')}
+                      </Typography>
+                    </Box>
+                  )}
+                  {inputQualityDiagnosisError && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {t('documentUpload.review.step3QualityErrorPrefix')} {inputQualityDiagnosisError}
+                    </Alert>
+                  )}
+                  {step3FollowUps.length === 0 && !inputQualityDiagnosisLoading && !inputQualityDiagnosisError && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {t('documentUpload.review.step4NoFollowUps')}
+                    </Typography>
+                  )}
+                  {step3FollowUps.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      {step3FollowUps.map((d) => (
+                        <Box key={d.field} {...reviewFieldAnchorProps(d.field)} sx={{ mb: 2.5 }}>
+                          <Typography variant="body1" sx={REVIEW.subcategoryTitle}>
+                            {d.follow_up_question}
+                          </Typography>
+                          <TextField
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            hiddenLabel
+                            required
+                            placeholder={t('documentUpload.review.followUpPlaceholder')}
+                            value={step3FollowUpAnswers[d.field] || ''}
+                            onChange={(e) => {
+                              clearReviewFieldError(d.field);
+                              setStep3FollowUpAnswers((prev) => ({
+                                ...prev,
+                                [d.field]: e.target.value
+                              }));
+                            }}
+                            error={Boolean(reviewFieldErrors[d.field])}
+                            helperText={reviewFieldErrors[d.field]}
+                            inputProps={{
+                              'aria-required': true,
+                              ...(d.field.startsWith('userIdentity.')
+                                ? { maxLength: PROFILE_REVIEW_USER_IDENTITY_MAX }
+                                : {}),
+                            }}
+                          />
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </>
+              )}
+              {reviewStep === 5 && (
+                <>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {t('documentUpload.review.step5Intro')}
+                  </Typography>
                   <Divider sx={{ mb: 2 }} />
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <Box sx={REVIEW.rowLabeledField} {...reviewFieldAnchorProps('seniority.currentStatus')}>
@@ -2562,57 +3377,10 @@ const DocumentUploadForm = ({
                   </Box>
                 </>
               )}
-              {reviewStep === 5 && (
-                <>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {t('documentUpload.review.step5Intro')}
-                  </Typography>
-                  {inputQualityDiagnosisError && (
-                    <Alert severity="warning" sx={{ mb: 2 }}>
-                      {t('documentUpload.review.step3QualityErrorPrefix')} {inputQualityDiagnosisError}
-                    </Alert>
-                  )}
-                  {step3FollowUps.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      {step3FollowUps.map((d) => (
-                        <Box key={d.field} {...reviewFieldAnchorProps(d.field)} sx={{ mb: 2.5 }}>
-                          <Typography variant="body1" sx={REVIEW.subcategoryTitle}>
-                            {d.follow_up_question}
-                          </Typography>
-                          <TextField
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            hiddenLabel
-                            required
-                            placeholder={t('documentUpload.review.followUpPlaceholder')}
-                            value={step3FollowUpAnswers[d.field] || ''}
-                            onChange={(e) => {
-                              clearReviewFieldError(d.field);
-                              setStep3FollowUpAnswers((prev) => ({
-                                ...prev,
-                                [d.field]: e.target.value
-                              }));
-                            }}
-                            error={Boolean(reviewFieldErrors[d.field])}
-                            helperText={reviewFieldErrors[d.field]}
-                            inputProps={{
-                              'aria-required': true,
-                              ...(d.field.startsWith('userIdentity.')
-                                ? { maxLength: PROFILE_REVIEW_USER_IDENTITY_MAX }
-                                : {}),
-                            }}
-                          />
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-                </>
-              )}
             </Box>
-          ) : (
+          ) : reviewStep !== 1 ? (
             <Typography>{t('documentUpload.review.noExtractedData')}</Typography>
-          )}
+          ) : null}
         </DialogContent>
         <DialogActions sx={{ flexShrink: 0 }}>
           <Button onClick={() => setReviewCancelConfirmOpen(true)} disabled={savingReviewActive}>
@@ -2623,16 +3391,27 @@ const DocumentUploadForm = ({
               {t('documentUpload.common.back')}
             </Button>
           )}
-          {reviewStep >= 2 && reviewStep <= 4 ? (
+          {reviewStep === 1 && enableExtractionReview ? null : reviewStep >= 2 && reviewStep <= 4 ? (
             <Button
-              onClick={() => void handleReviewContinue()}
+              onClick={handleReviewContinue}
               variant="contained"
-              disabled={savingReviewActive || (reviewStep === 4 && inputQualityDiagnosisLoading)}
-              startIcon={reviewStep === 4 && inputQualityDiagnosisLoading ? <CircularProgress size={16} color="inherit" /> : null}
+              disabled={
+                savingReviewActive
+                || reviewContinueBusy
+                || (reviewStep === 2 && (structuredReviewLoading || !structuredExtractionReady))
+                || (reviewStep === 4 && !step3FollowUpsAnsweredFully)
+              }
+              startIcon={
+                (reviewContinueBusy || (reviewStep === 2 && structuredReviewLoading))
+                  ? <CircularProgress size={16} color="inherit" />
+                  : null
+              }
             >
-              {reviewStep === 4 && inputQualityDiagnosisLoading
+              {reviewContinueBusy
                 ? t('documentUpload.review.analyzing')
-                : t('documentUpload.common.continue')}
+                : reviewStep === 2 && (structuredReviewLoading || !structuredExtractionReady)
+                  ? t('documentUpload.review.structuredLoading')
+                  : t('documentUpload.common.continue')}
             </Button>
           ) : (
             <Button

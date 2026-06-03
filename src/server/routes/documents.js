@@ -58,6 +58,26 @@ router.get('/:documentId/extraction-status',
   documentController.getDocumentExtractionStatus
 );
 
+router.post('/:documentId/ensure-semantic-enrichment',
+  auth,
+  documentController.ensureDocumentCvStructuredSemantic
+);
+
+router.post('/:documentId/ensure-localization',
+  auth,
+  documentController.ensureDocumentCvExtractLocalization
+);
+
+router.get('/:documentId/narrative-cache-status',
+  auth,
+  documentController.getDocumentNarrativeCacheStatus
+);
+
+router.post('/:documentId/narrative-cache-status',
+  auth,
+  documentController.getDocumentNarrativeCacheStatus
+);
+
 router.post('/:documentId/retry-extraction',
   auth,
   documentController.retryDocumentExtraction

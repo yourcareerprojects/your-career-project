@@ -1,4 +1,3 @@
-const { isCvDocumentType } = require('../../../constants/documentTypes');
 const { EXTRACTION_ERROR_KEYS } = require('../../../constants/cvExtractionErrors');
 const {
   EXTRACTION_EXPECTED_MS,
@@ -9,35 +8,71 @@ const {
   isStaleRequeuedJob,
 } = require('./cvExtractionErrorClassifier');
 const { buildZombieSignalsForJob } = require('./cvExtractionZombieSignals');
+const {
+  computeCvExtractionReadiness,
+  legacyPollStageFromReadiness,
+} = require('./cvExtractionReadiness');
+const { layerStatusFromJob } = require('../cv/cvExtractionStateManager');
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed']);
 
-const STAGE_PROGRESS = {
+const DISPLAY_PROGRESS = {
   upload: 10,
   ocr: 35,
   extraction: 65,
-  localization: 90,
+  /** CV text extracted; background enrichment may still run */
+  extracted: 72,
+  done: 100,
+  failed: 0,
 };
 
-const STAGE_MESSAGE = {
+/** Progress while `phase === enriching`, keyed by `blockingTask`. */
+const ENRICHMENT_PROGRESS_BY_TASK = {
+  structured: 78,
+  localization: 88,
+  narrative: 94,
+};
+
+const DISPLAY_MESSAGE = {
   upload: 'Waiting for processing',
   ocr: 'Reading your document',
   extraction: 'Analyzing skills and experience',
-  localization: 'Preparing your profile',
+  extracted: 'CV extracted — finishing background enhancements',
+  done: 'Profile preparation complete',
+  failed: 'Extraction failed',
 };
 
-function progressForStage(stage, status) {
-  if (status === 'completed') return 100;
-  if (status === 'failed') return 0;
-  if (status === 'queued') return STAGE_PROGRESS.upload;
-  return STAGE_PROGRESS[stage] ?? STAGE_PROGRESS.ocr;
+const ENRICHMENT_MESSAGE_BY_TASK = {
+  structured: 'Interpreting strengths and experience from your CV',
+  localization: 'Applying bilingual profile formatting',
+  narrative: 'Preparing profile summaries for review',
+};
+
+function progressForReadiness(readiness) {
+  if (readiness.pipeline === 'failed') return DISPLAY_PROGRESS.failed;
+  if (readiness.pipeline === 'completed' && readiness.isBackgroundEnriching) {
+    const task = readiness.blockingTask;
+    if (task && ENRICHMENT_PROGRESS_BY_TASK[task] != null) {
+      return ENRICHMENT_PROGRESS_BY_TASK[task];
+    }
+    return DISPLAY_PROGRESS.extracted;
+  }
+  if (readiness.pipeline === 'completed') return DISPLAY_PROGRESS.done;
+  if (readiness.pipeline === 'queued') return DISPLAY_PROGRESS.upload;
+  return DISPLAY_PROGRESS[readiness.displayStage] ?? DISPLAY_PROGRESS.ocr;
 }
 
-function messageForStatus(status, stage) {
-  if (status === 'completed') return 'Extraction completed';
-  if (status === 'failed') return 'Extraction failed';
-  if (status === 'queued') return STAGE_MESSAGE.upload;
-  return STAGE_MESSAGE[stage] || STAGE_MESSAGE.ocr;
+function messageForReadiness(readiness) {
+  if (readiness.pipeline === 'failed') return DISPLAY_MESSAGE.failed;
+  if (readiness.pipeline === 'completed' && readiness.isBackgroundEnriching) {
+    const task = readiness.blockingTask;
+    if (task && ENRICHMENT_MESSAGE_BY_TASK[task]) {
+      return ENRICHMENT_MESSAGE_BY_TASK[task];
+    }
+    return DISPLAY_MESSAGE.extracted;
+  }
+  if (readiness.pipeline === 'completed') return DISPLAY_MESSAGE.done;
+  return DISPLAY_MESSAGE[readiness.displayStage] || DISPLAY_MESSAGE.ocr;
 }
 
 /**
@@ -46,49 +81,19 @@ function messageForStatus(status, stage) {
  * @param {object|null} params.doc - lean embedded document
  * @param {object|null} params.job - lean CvExtractionJob
  */
+function resolveReadinessLanguage(job) {
+  return job?.language === 'de' ? 'de' : 'en';
+}
+
 function resolveExtractionMachineStatus({ doc, job }) {
-  const docPipeline = doc?.extractionStatus;
-  const docOutcome = doc?.extractionOutcomeStatus;
-  const hasDocResult = Boolean(doc?.extractedProfileData);
-
-  if (docPipeline === 'completed' || docOutcome === 'success' || docOutcome === 'partial') {
-    return { status: 'completed', stage: 'localization' };
-  }
-  if (docPipeline === 'failed' || docOutcome === 'failed') {
-    return { status: 'failed', stage: job?.stage || null };
-  }
-
-  if (job) {
-    if (job.status === 'completed') {
-      return { status: 'completed', stage: job.stage || 'localization' };
-    }
-    if (job.status === 'failed') {
-      return { status: 'failed', stage: job.stage || null };
-    }
-    if (job.status === 'processing') {
-      return { status: 'processing', stage: job.stage || 'ocr' };
-    }
-    if (job.status === 'queued') {
-      return { status: 'queued', stage: job.stage || 'upload' };
-    }
-  }
-
-  if (docPipeline === 'queued' || docPipeline === 'processing') {
-    return {
-      status: docPipeline === 'processing' ? 'processing' : 'queued',
-      stage: docPipeline === 'processing' ? 'ocr' : 'upload',
-    };
-  }
-
-  if (doc && isCvDocumentType(doc.type) && hasDocResult) {
-    return { status: 'completed', stage: 'localization' };
-  }
-
-  if (doc && isCvDocumentType(doc.type)) {
-    return { status: 'queued', stage: 'upload' };
-  }
-
-  return { status: 'queued', stage: 'upload' };
+  const readiness = computeCvExtractionReadiness(doc, job, {
+    language: resolveReadinessLanguage(job),
+  });
+  return {
+    status: readiness.pipeline,
+    stage: legacyPollStageFromReadiness(readiness, job),
+    readiness,
+  };
 }
 
 /**
@@ -107,7 +112,11 @@ function buildCvExtractionStatusResponse({
   now = new Date(),
   workerHealthSignal = null,
 }) {
-  const { status, stage } = resolveExtractionMachineStatus({ doc, job });
+  const readiness = computeCvExtractionReadiness(doc, job, {
+    language: resolveReadinessLanguage(job),
+  });
+  const status = readiness.pipeline;
+  const stage = legacyPollStageFromReadiness(readiness, job);
   const jobId = job?.jobId ? String(job.jobId) : null;
 
   const updatedAt = job?.updatedAt || job?.createdAt || doc?.uploadDate || null;
@@ -131,11 +140,11 @@ function buildCvExtractionStatusResponse({
     completedAt = job?.status === 'completed' && job?.updatedAt
       ? job.updatedAt
       : doc?.uploadDate || null;
-    hasResult = true;
+    hasResult = hasDocResult || Boolean(job?.result);
   }
 
-  const progress = progressForStage(stage, status);
-  const message = messageForStatus(status, stage);
+  const progress = progressForReadiness(readiness);
+  const message = messageForReadiness(readiness);
 
   const zombie = buildZombieSignalsForJob({
     status,
@@ -151,6 +160,8 @@ function buildCvExtractionStatusResponse({
     jobId,
     status,
     stage,
+    phase: readiness.phase,
+    displayStage: readiness.displayStage,
     progress,
     message,
     estimatedState,
@@ -164,6 +175,15 @@ function buildCvExtractionStatusResponse({
       ? new Date(completedAt).toISOString()
       : null,
     hasResult,
+    reviewReady: readiness.reviewReady,
+    identityReviewReady: readiness.identityReviewReady,
+    structuredReviewReady: readiness.structuredReviewReady,
+    reviewQuality: readiness.reviewQuality,
+    extractionLayers: layerStatusFromJob(job),
+    isBackgroundEnriching: readiness.isBackgroundEnriching,
+    backgroundEnrichment: readiness.backgroundEnrichment,
+    narrativesReady: readiness.narrativesReady,
+    blockingTask: readiness.blockingTask,
     isSlow: zombie.isSlow,
     isStuck: zombie.isStuck,
     estimatedDelayReason: zombie.estimatedDelayReason,
@@ -173,7 +193,8 @@ function buildCvExtractionStatusResponse({
 }
 
 module.exports = {
-  STAGE_PROGRESS,
+  DISPLAY_PROGRESS,
   resolveExtractionMachineStatus,
   buildCvExtractionStatusResponse,
+  computeCvExtractionReadiness,
 };

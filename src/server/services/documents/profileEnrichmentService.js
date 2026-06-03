@@ -1,6 +1,7 @@
 const User = require('../../models/User');
 const { isCvDocumentType } = require('../../../constants/documentTypes');
-const { parseDocumentToText, extractFromTextHeuristics, mapExtractedToSimulationInputs } = require('./documentProfileEnrichment');
+const { extractFromTextHeuristics, mapExtractedToSimulationInputs } = require('./documentProfileEnrichment');
+const { resolveCvDocumentPlainText } = require('./cvExtractedTextCacheService');
 
 function pickLatestCvDoc(profile) {
   const docs = profile && profile.documents ? profile.documents : [];
@@ -39,7 +40,12 @@ async function getEnrichedSimulationInputs({ userId, baseInputs, force = false, 
   if ((!enrichment || force) && !cacheOnly) {
     let text = '';
     try {
-      text = await parseDocumentToText(doc.path);
+      const resolved = await resolveCvDocumentPlainText({
+        userId,
+        documentId: docId,
+        filePath: doc.path,
+      });
+      text = resolved.text;
     } catch (e) {
       text = '';
     }

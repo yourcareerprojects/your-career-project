@@ -2,10 +2,18 @@ const {
   buildMergedStructuredPayload,
   buildMergedStructuredPayloadForNormalization,
   buildMergedUserIdentity,
+  buildStructuredBaselineFromExtraction,
+  resolveDeferDimensionKeysForExtraction,
+  userIdentityMatchesExtraction,
   mergeUniqueStrings,
   normalizeSeniorityFields,
   verifySeniorityPersisted,
 } = require('../services/profile/profileReviewSaveService');
+const {
+  POLISHED_SUMMARIES,
+  narrativeSummaryField,
+  stampQualityEnrichment,
+} = require('./helpers/narrativeCacheFixtures');
 
 describe('profileReviewSaveService', () => {
   test('mergeUniqueStrings deduplicates and trims', () => {
@@ -36,16 +44,12 @@ describe('profileReviewSaveService', () => {
   });
 
   test('buildMergedStructuredPayloadForNormalization reuses summary_text when raw_items unchanged', () => {
-    const existingSummary = {
-      en: '[Skills] SQL',
-      original_language: 'en',
-      translations: { en: '[Skills] SQL' },
-    };
+    const existingSummary = narrativeSummaryField(POLISHED_SUMMARIES.skills);
     const existing = {
       skills: { raw_items: ['SQL'], summary_text: existingSummary },
       domains: {
         raw_items: ['Finance'],
-        summary_text: { en: '[Domains] Finance', translations: { en: '[Domains] Finance' } },
+        summary_text: narrativeSummaryField(POLISHED_SUMMARIES.domains),
       },
     };
     const normalized = buildMergedStructuredPayloadForNormalization(
@@ -58,12 +62,33 @@ describe('profileReviewSaveService', () => {
       summary_text: existingSummary,
     });
     expect(normalized.domains.raw_items).toEqual(['Finance']);
-    expect(normalized.domains.summary_text.translations.en).toBe('[Domains] Finance');
+    expect(normalized.domains.summary_text.translations.en).toBe(POLISHED_SUMMARIES.domains);
+  });
+
+  test('buildMergedStructuredPayloadForNormalization applies extraction narrative cache for reuse keys', () => {
+    const cachedSummary = narrativeSummaryField(POLISHED_SUMMARIES.skills);
+    const normalized = buildMergedStructuredPayloadForNormalization(
+      {},
+      { skills: ['SQL'] },
+      'replace',
+      {
+        extractionNarrativeCache: stampQualityEnrichment({
+          structuredUserInfo: {
+            skills: { raw_items: ['SQL'], summary_text: cachedSummary },
+          },
+        }),
+        reuseExtractionNarrativeKeys: ['skills'],
+      }
+    );
+    expect(normalized.skills).toEqual({
+      raw_items: ['SQL'],
+      summary_text: cachedSummary,
+    });
   });
 
   test('buildMergedStructuredPayloadForNormalization passes plain arrays when lists change', () => {
     const existing = {
-      skills: { raw_items: ['SQL'], summary_text: { en: '[Skills] SQL' } },
+      skills: { raw_items: ['SQL'], summary_text: narrativeSummaryField(POLISHED_SUMMARIES.skills) },
     };
     const normalized = buildMergedStructuredPayloadForNormalization(
       existing,
@@ -109,6 +134,80 @@ describe('profileReviewSaveService', () => {
     expect(verifySeniorityPersisted(
       { currentStatus: 'employed', yearsOfExperience: 1, highestDegree: 'bachelor', mostSeniorWorkExperience: 'entry_level' },
       { currentStatus: 'employed', yearsOfExperience: 2, highestDegree: 'bachelor', mostSeniorWorkExperience: 'entry_level' }
+    )).toBe(false);
+  });
+
+  test('buildStructuredBaselineFromExtraction respects acceptedFields', () => {
+    const baseline = buildStructuredBaselineFromExtraction(
+      {
+        structuredUserInfo: {
+          skills: ['Keep', 'Skip'],
+          domains: ['Finance'],
+        },
+      },
+      { 'structuredUserInfo.skills.1': false }
+    );
+    expect(baseline.lists.skills).toEqual(['Keep']);
+    expect(baseline.lists.domains).toEqual(['Finance']);
+  });
+
+  test('resolveDeferDimensionKeysForExtraction defers unchanged dimensions on first save', () => {
+    const extraction = {
+      lists: {
+        skillDomains: [],
+        skills: ['SQL'],
+        skillsInDevelopment: [],
+        keyResponsibilities: ['Design APIs'],
+        domains: ['Finance'],
+      },
+      userIdentity: {},
+    };
+    const incoming = {
+      skills: ['SQL'],
+      domains: ['Finance'],
+      keyResponsibilities: ['Design APIs'],
+      skillDomains: [],
+      skillsInDevelopment: [],
+    };
+    const deferKeys = resolveDeferDimensionKeysForExtraction({
+      existingStructured: {},
+      incomingStructured: incoming,
+      extractionBaseline: extraction,
+      mode: 'replace',
+    });
+    expect(deferKeys.sort()).toEqual(
+      ['domains', 'keyResponsibilities', 'skillDomains', 'skills', 'skillsInDevelopment'].sort()
+    );
+  });
+
+  test('resolveDeferDimensionKeysForExtraction skips defer when incoming differs from extraction', () => {
+    const extraction = {
+      lists: {
+        skillDomains: [],
+        skills: ['SQL'],
+        skillsInDevelopment: [],
+        keyResponsibilities: [],
+        domains: ['Finance'],
+      },
+      userIdentity: {},
+    };
+    const deferKeys = resolveDeferDimensionKeysForExtraction({
+      existingStructured: {},
+      incomingStructured: { skills: ['Python'], domains: [], keyResponsibilities: [], skillDomains: [], skillsInDevelopment: [] },
+      extractionBaseline: extraction,
+      mode: 'replace',
+    });
+    expect(deferKeys).not.toContain('skills');
+  });
+
+  test('userIdentityMatchesExtraction compares normalized answers', () => {
+    expect(userIdentityMatchesExtraction(
+      { workEnjoyMost: 'A', topicsIndustriesInterest: '', naturallyGoodAt: '', workEnvironmentFit: '', workingLifeAchievement: '' },
+      { workEnjoyMost: 'A', topicsIndustriesInterest: '', naturallyGoodAt: '', workEnvironmentFit: '', workingLifeAchievement: '' }
+    )).toBe(true);
+    expect(userIdentityMatchesExtraction(
+      { workEnjoyMost: 'A' },
+      { workEnjoyMost: 'B' }
     )).toBe(false);
   });
 });

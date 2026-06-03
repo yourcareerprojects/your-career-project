@@ -22,6 +22,14 @@ const {
   serializeErrorSafe,
 } = require('../utils/metricsLogger');
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
+const { getDocumentNarrativeCacheReadiness } = require('../services/profile/profileNarrativeReadinessService');
+const { reviewNarrativeFingerprintMatchesDocument } = require('../services/profile/profileReviewNarrativeApplyService');
+const { isExtractionNarrativeInFlight } = require('../services/profile/extractionNarrativeEnrichmentService');
+const {
+  ensurePostExtractionTask,
+  maybeSchedulePendingPostExtractionWork,
+} = require('../services/documents/cvPostExtractionExecutor');
+const { getLocalizedCvExtract } = require('../services/documents/lazyCvExtractLocalizationService');
 const {
   storeDocumentFromPath,
   sendStoredDocumentDownload,
@@ -247,6 +255,7 @@ const documentController = {
         semanticInterpretation: null,
         semanticInterpretationLanguage: null,
         localizationStatus: null,
+        semanticEnrichmentStatus: null,
       });
     } catch (error) {
       const totalUploadMs = hrtimeDiffMs(uploadHrStart);
@@ -281,7 +290,9 @@ const documentController = {
         return res.status(404).json({ message: 'User not found' });
       }
 
-      const documents = user.profile.documents.map((doc) => serializeEmbeddedDocumentForClient(doc));
+      const documents = user.profile.documents.map((doc) =>
+        serializeEmbeddedDocumentForClient(doc, { uiLanguage: req.language })
+      );
 
       res.json({ documents });
     } catch (error) {
@@ -304,7 +315,7 @@ const documentController = {
       }
 
       res.json({
-        document: serializeEmbeddedDocumentForClient(document),
+        document: serializeEmbeddedDocumentForClient(document, { uiLanguage: req.language }),
       });
     } catch (error) {
       console.error('Get document error:', error);
@@ -347,6 +358,10 @@ const documentController = {
         job,
         workerHealthSignal,
       });
+
+      if (payload.status === 'completed' && payload.isBackgroundEnriching) {
+        maybeSchedulePendingPostExtractionWork(req.user.userId, documentIdParam, doc);
+      }
 
       return res.json(payload);
     } catch (err) {
@@ -479,6 +494,8 @@ const documentController = {
         console.error('Error deleting file:', error);
       }
       await deleteStoredDocumentBlob(docToDelete).catch(() => {});
+      const { deleteCvExtractedTextCacheForDocument } = require('../services/documents/cvExtractedTextCacheService');
+      await deleteCvExtractedTextCacheForDocument(req.user.userId, req.params.documentId).catch(() => {});
 
       // Remove document from user's documents array
       user.profile.documents.pull(req.params.documentId);
@@ -525,6 +542,100 @@ const documentController = {
     } catch (error) {
       console.error('Update document status error:', error);
       res.status(500).json({ message: 'Error updating document status' });
+    }
+  },
+
+  async ensureDocumentCvExtractLocalization(req, res) {
+    try {
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const document = user.profile.documents.id(req.params.documentId);
+      if (!document) {
+        return res.status(404).json({ message: 'Document not found' });
+      }
+
+      await getLocalizedCvExtract(req.user.userId, req.params.documentId, req.language);
+      const refreshedUser = await User.findById(req.user.userId);
+      const freshDoc = refreshedUser?.profile?.documents?.id(req.params.documentId);
+      return res.json({
+        document: serializeEmbeddedDocumentForClient(freshDoc || document, { uiLanguage: req.language }),
+      });
+    } catch (error) {
+      logger.error('ensure_document_cv_extract_localization_failed', {
+        documentId: String(req.params.documentId || ''),
+        ...serializeErrorSafe(error),
+      });
+      return res.status(500).json({ message: 'Error preparing document localization' });
+    }
+  },
+
+  async ensureDocumentCvStructuredSemantic(req, res) {
+    try {
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const document = user.profile.documents.id(req.params.documentId);
+      if (!document) {
+        return res.status(404).json({ message: 'Document not found' });
+      }
+
+      await ensurePostExtractionTask(req.user.userId, req.params.documentId, 'structuredSemantic', {
+        uiLanguage: req.language,
+      });
+      const refreshedUser = await User.findById(req.user.userId);
+      const freshDoc = refreshedUser?.profile?.documents?.id(req.params.documentId);
+      return res.json({
+        document: serializeEmbeddedDocumentForClient(freshDoc || document, { uiLanguage: req.language }),
+      });
+    } catch (error) {
+      logger.error('ensure_document_cv_structured_semantic_failed', {
+        documentId: String(req.params.documentId || ''),
+        ...serializeErrorSafe(error),
+      });
+      return res.status(500).json({ message: 'Error preparing structured profile enrichment' });
+    }
+  },
+
+  async getDocumentNarrativeCacheStatus(req, res) {
+    try {
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      const doc = user.profile?.documents?.id?.(req.params.documentId);
+      if (!doc) {
+        return res.status(404).json({ message: 'Document not found' });
+      }
+      const readiness = getDocumentNarrativeCacheReadiness(doc, req.language);
+      const acceptedFields =
+        req.body?.acceptedFields && typeof req.body.acceptedFields === 'object'
+          ? req.body.acceptedFields
+          : {};
+      let fingerprintMatches = false;
+      if (req.body && (req.body.userIdentity != null || req.body.structuredUserInfo != null)) {
+        fingerprintMatches = reviewNarrativeFingerprintMatchesDocument(
+          doc,
+          {
+            userIdentity: req.body.userIdentity,
+            structuredUserInfo: req.body.structuredUserInfo,
+          },
+          acceptedFields
+        );
+      }
+      res.json({
+        success: true,
+        ...readiness,
+        fingerprintMatches,
+        inFlight: isExtractionNarrativeInFlight(req.user.userId, req.params.documentId),
+      });
+    } catch (error) {
+      console.error('Document narrative cache status error:', error);
+      res.status(500).json({ message: 'Error reading narrative cache status' });
     }
   },
 

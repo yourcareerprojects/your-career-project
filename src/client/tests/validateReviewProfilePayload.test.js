@@ -28,8 +28,8 @@ describe('resolveReviewFocusStep', () => {
   test('maps field keys to wizard steps', () => {
     expect(resolveReviewFocusStep('userIdentity.workEnjoyMost')).toBe(2);
     expect(resolveReviewFocusStep('structuredUserInfo.skills.0')).toBe(3);
-    expect(resolveReviewFocusStep('seniority.highestDegree')).toBe(4);
-    expect(resolveReviewFocusStep('customFollowUp')).toBe(5);
+    expect(resolveReviewFocusStep('seniority.highestDegree')).toBe(5);
+    expect(resolveReviewFocusStep('customFollowUp')).toBe(4);
   });
 });
 
@@ -177,7 +177,7 @@ describe('requireGoodAt — all subcategories filled', () => {
       domains: [],
       keyResponsibilities: [],
       skillsInDevelopment: [],
-      skills: [{ name: 'Go' }],
+      skills: ['Go'],
     });
   });
 });

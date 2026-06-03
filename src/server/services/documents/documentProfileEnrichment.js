@@ -20,6 +20,80 @@ function normalizeSkill(value) {
     .substring(0, 80);
 }
 
+function looksLikeSkillCandidate(value) {
+  const s = normalizeSkill(value);
+  if (!s || s.length < 2 || s.length > 50) return false;
+  const words = s.split(/\s+/);
+  if (words.length > 6) return false;
+  if (/^\d{4}\b/.test(s) || /\b\d{4}\s*[-–—]\s*(?:\d{4}|present|current)\b/i.test(s)) return false;
+  if (/@|https?:\/\/|www\./i.test(s)) return false;
+  if (/^[+\d][\d\s\-().]{6,}$/.test(s)) return false;
+  if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(s)) return false;
+  if (/\b(university|college|school|institute|experience|education|certification|references?|curriculum vitae|resume)\b/i.test(s)) return false;
+  if (/[.!?]$/.test(s) && words.length > 4) return false;
+  return true;
+}
+
+function filterHeuristicSkillNames(values) {
+  return uniqStrings(values).filter(looksLikeSkillCandidate);
+}
+
+function filterHeuristicSkillObjects(values) {
+  return filterHeuristicSkillNames(
+    (Array.isArray(values) ? values : []).map((item) => (typeof item === 'string' ? item : item?.name))
+  ).map((name) => ({ name }));
+}
+
+const SKILLS_SECTION_END_PATTERN =
+  /\n\s*(?:Experience|Work\s+Experience|Professional\s+Experience|Employment|Education|Projects|Languages|Certifications|References?)\b/i;
+
+function extractSkillsSectionContent(text) {
+  const t = String(text || '');
+  // Require a standalone "Skills" section header (not "soft skills" mid-sentence).
+  const headerMatch = t.match(
+    /(?:^|\n)\s*(?:(?:Technical|Core|Key|Professional)\s+)?(?<![A-Za-z])Skills(?![A-Za-z])\s*(?::|[-–—])?\s*/i
+  );
+  if (!headerMatch || headerMatch.index == null) return '';
+
+  const afterHeaderStart = headerMatch.index + headerMatch[0].length;
+  const tail = t.slice(afterHeaderStart);
+  const endMatch = tail.match(SKILLS_SECTION_END_PATTERN);
+  const sectionBody = endMatch ? tail.slice(0, endMatch.index) : tail.slice(0, 1200);
+  return sectionBody.trim();
+}
+
+function parseSkillsFromSectionContent(skillsContent) {
+  if (!skillsContent) return [];
+
+  const stopWords = ['certification', 'experience', 'education', 'projects', 'languages'];
+  let skills = skillsContent
+    .split(/,/)
+    .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
+    .filter(Boolean);
+
+  if (skills.length < 3) {
+    skills = skillsContent
+      .split(/\n/)
+      .map((s) => s.trim().replace(/^[:\-•*]\s*/, ''))
+      .filter((s) => s && s.length <= 50);
+  }
+  if (skills.length < 3) {
+    skills = skillsContent
+      .split(/[•\-\*]/)
+      .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
+      .filter((s) => s && s.length <= 50);
+  }
+
+  const cleaned = [];
+  for (const s of skills) {
+    const low = s.toLowerCase();
+    if (stopWords.some((w) => low.includes(w))) break;
+    if (!looksLikeSkillCandidate(s)) continue;
+    cleaned.push(s);
+  }
+  return filterHeuristicSkillNames(cleaned).slice(0, 25);
+}
+
 function uniqStrings(values) {
   const seen = new Set();
   const out = [];
@@ -31,6 +105,88 @@ function uniqStrings(values) {
     out.push(s);
   }
   return out;
+}
+
+const INSTITUTION_NAME_PATTERN = /([A-Z][a-zA-Z\s&]+(?:University|College|Institute|School|Academy))/g;
+
+const EDUCATION_SECTION_STOP =
+  '(?=\\n\\s*(?:Experience|Skills|Work|Projects|Certifications|$))';
+const EXPERIENCE_SECTION_STOP =
+  '(?=\\n\\s*(?:Education|Skills|Projects|Certifications|$))';
+
+function extractEducationSectionText(text, maxSectionLen = 800) {
+  const t = String(text || '');
+  const match = t.match(
+    new RegExp(`Education[\\s\\S]{0,${maxSectionLen}}${EDUCATION_SECTION_STOP}`, 'i')
+  );
+  return match ? match[0] : '';
+}
+
+/**
+ * @param {string} text
+ * @param {{ maxEntries?: number, maxSectionLen?: number }} [options]
+ * @returns {Array<{ institution: string }>}
+ */
+function extractEducationInstitutionsFromText(text, options = {}) {
+  const { maxEntries = 8, maxSectionLen = 800 } = options;
+  const eduText = extractEducationSectionText(text, maxSectionLen);
+  if (!eduText) return [];
+  const institutions = eduText.match(INSTITUTION_NAME_PATTERN);
+  if (!institutions) return [];
+  return [...new Set(institutions)].slice(0, maxEntries).map((inst) => ({
+    institution: inst.trim(),
+  }));
+}
+
+function extractExperienceSectionText(text, maxSectionLen = 1400) {
+  const t = String(text || '');
+  const match = t.match(
+    new RegExp(`(?:Work\\s+)?Experience[\\s\\S]{0,${maxSectionLen}}${EXPERIENCE_SECTION_STOP}`, 'i')
+  );
+  return match ? match[0] : '';
+}
+
+/**
+ * @param {string} text
+ * @param {{ maxJobs?: number, maxSectionLen?: number }} [options]
+ * @returns {Array<{ title: string, company: string, description: string }>}
+ */
+function extractWorkExperienceJobsFromText(text, options = {}) {
+  const { maxJobs = 8, maxSectionLen = 1400 } = options;
+  const expText = extractExperienceSectionText(text, maxSectionLen);
+  if (!expText) return [];
+
+  const jobPatterns = [
+    /([A-Z][a-zA-Z\s]+)\s+at\s+([A-Z][a-zA-Z\s&]+)/g,
+    /([A-Z][a-zA-Z\s]+)\s*[-–]\s*([A-Z][a-zA-Z\s&]+)/g,
+  ];
+  const jobs = [];
+  for (const pattern of jobPatterns) {
+    let match;
+    // eslint-disable-next-line no-cond-assign
+    while ((match = pattern.exec(expText)) !== null && jobs.length < maxJobs) {
+      jobs.push({ title: match[1].trim(), company: match[2].trim(), description: '' });
+    }
+  }
+  return jobs;
+}
+
+/**
+ * Fallback when title/company patterns miss: long experience section lines as descriptions.
+ * @param {string} text
+ * @param {{ maxLines?: number, maxSectionLen?: number, minLineLen?: number }} [options]
+ * @returns {string[]}
+ */
+function extractWorkExperienceDescriptionLinesFromText(text, options = {}) {
+  const { maxLines = 4, maxSectionLen = 1000, minLineLen = 15 } = options;
+  const expText = extractExperienceSectionText(text, maxSectionLen);
+  if (!expText) return [];
+  const body = expText.replace(/(?:Work\s+)?Experience\s*/i, '');
+  return body
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > minLineLen)
+    .slice(0, maxLines);
 }
 
 function extractFromTextHeuristics(text) {
@@ -45,35 +201,10 @@ function extractFromTextHeuristics(text) {
     projects: []
   };
 
-  // Skills section heuristic
-  const skillsSection = t.match(/Skills?[\s\S]{0,800}(?=\n\s*(?:Experience|Education|Projects|Languages|Certifications|$))/i);
-  if (skillsSection) {
-    const skillsContent = skillsSection[0].replace(/Skills?\s*/i, '');
-    const stopWords = ['certification', 'experience', 'education', 'projects', 'languages'];
-    let skills = skillsContent
-      .split(/,/)
-      .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
-      .filter(Boolean);
-    if (skills.length < 3) {
-      skills = skillsContent
-        .split(/\n/)
-        .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
-        .filter((s) => s && s.length < 60);
-    }
-    if (skills.length < 3) {
-      skills = skillsContent
-        .split(/[•\-\*]/)
-        .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
-        .filter((s) => s && s.length < 60);
-    }
-    // Remove section header bleed (e.g. "Certifications: ...")
-    const cleaned = [];
-    for (const s of skills) {
-      const low = s.toLowerCase();
-      if (stopWords.some((w) => low.includes(w))) break;
-      cleaned.push(s);
-    }
-    extracted.skills = uniqStrings(cleaned).slice(0, 50);
+  // Skills section heuristic — only when an explicit Skills section header exists.
+  const skillsContent = extractSkillsSectionContent(t);
+  if (skillsContent) {
+    extracted.skills = parseSkillsFromSectionContent(skillsContent);
   }
 
   // Certifications heuristic
@@ -92,45 +223,9 @@ function extractFromTextHeuristics(text) {
     extracted.projects = lines.slice(0, 10).map((line) => ({ name: line.substring(0, 80), description: line, skills: [] }));
   }
 
-  // Experience heuristic (titles only)
-  const experienceSection = t.match(/(?:Work\s+)?Experience[\s\S]{0,1400}(?=\n\s*(?:Education|Skills|Projects|Certifications|$))/i);
-  if (experienceSection) {
-    const expText = experienceSection[0];
-    const jobPatterns = [
-      /([A-Z][a-zA-Z\s]+)\s+at\s+([A-Z][a-zA-Z\s&]+)/g,
-      /([A-Z][a-zA-Z\s]+)\s*[-–]\s*([A-Z][a-zA-Z\s&]+)/g
-    ];
-    const jobs = [];
-    for (const pattern of jobPatterns) {
-      let match;
-      // eslint-disable-next-line no-cond-assign
-      while ((match = pattern.exec(expText)) !== null && jobs.length < 8) {
-        jobs.push({ title: match[1].trim(), company: match[2].trim(), description: '' });
-      }
-    }
-    extracted.workExperience = jobs;
-  }
+  extracted.workExperience = extractWorkExperienceJobsFromText(t);
+  extracted.education = extractEducationInstitutionsFromText(t);
 
-  // Education heuristic (institutions)
-  const educationSection = t.match(/Education[\s\S]{0,800}(?=\n\s*(?:Experience|Skills|Projects|Certifications|$))/i);
-  if (educationSection) {
-    const eduText = educationSection[0];
-    const institutions = eduText.match(/([A-Z][a-zA-Z\s&]+(?:University|College|Institute|School|Academy))/g);
-    if (institutions) {
-      extracted.education = [...new Set(institutions)].slice(0, 8).map((inst) => ({ institution: inst.trim() }));
-    }
-  }
-
-  // If no skills section found, do a tiny fallback: pick frequent tokens that look like skills (very conservative)
-  if (extracted.skills.length === 0) {
-    const candidates = t
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length >= 2 && s.length <= 40)
-      .filter((s) => /[A-Za-z]/.test(s))
-      .slice(0, 200);
-    extracted.skills = uniqStrings(candidates).slice(0, 20);
-  }
 
   // Light sanity: if extraction is empty, return empty
   const any =
@@ -146,7 +241,11 @@ function extractFromTextHeuristics(text) {
   };
 }
 
-async function parseDocumentToText(filePath) {
+/**
+ * @param {string} filePath
+ * @returns {Promise<{ text: string, source: string }>}
+ */
+async function parseDocumentToTextWithMeta(filePath) {
   const ext = path.extname(filePath || '').toLowerCase();
 
   const inferKindFromBuffer = (buf) => {
@@ -182,34 +281,75 @@ async function parseDocumentToText(filePath) {
     const treatAsTxt = ext === '.txt';
 
     if (treatAsPdf) {
+      const {
+        normalizePdfPlainText,
+        isPdfTextLayerSufficient,
+        extractPdfTextViaPdfJs,
+        loadPdfJsDocument,
+        destroyPdfJsDocument,
+      } = require('./pdfTextExtraction');
+
       const pdf = await runStageIfCvPipeline('pdf_text_layer', { memory: true }, async () => pdfParse(buf));
-      let text = pdf.text || '';
-      const normalized = String(text).replace(/\u00a0/g, ' ').trim();
-      if (normalized.length === 0) {
-        const { extractPdfTextViaOcr } = require('./pdfImageOcr');
-        text = await runStageIfCvPipeline('pdf_ocr_total', { memory: true }, async () => extractPdfTextViaOcr(buf));
+      let text = normalizePdfPlainText(pdf.text || '');
+      let source = isPdfTextLayerSufficient(text) ? 'pdf_text_layer' : 'unknown';
+      let pdfDocument = null;
+
+      try {
+        if (!isPdfTextLayerSufficient(text)) {
+          text = await runStageIfCvPipeline('pdf_js_text_layer', { memory: true }, async () => {
+            pdfDocument = await loadPdfJsDocument(buf);
+            const pdfJsText = await extractPdfTextViaPdfJs(buf, { pdfDocument });
+            return normalizePdfPlainText(pdfJsText);
+          });
+          if (isPdfTextLayerSufficient(text)) {
+            source = 'pdf_js';
+          }
+        }
+
+        if (!isPdfTextLayerSufficient(text)) {
+          if (!pdfDocument) {
+            pdfDocument = await loadPdfJsDocument(buf);
+          }
+          const { extractPdfTextViaOcr } = require('./pdfImageOcr');
+          text = await runStageIfCvPipeline('pdf_ocr_total', { memory: true }, async () =>
+            extractPdfTextViaOcr(buf, { pdfDocument })
+          );
+          source = 'pdf_ocr';
+        }
+      } finally {
+        await destroyPdfJsDocument(pdfDocument);
       }
-      return text;
+
+      return { text: text || '', source };
     }
 
     if (treatAsImage) {
       const { extractImageTextViaOcr } = require('./pdfImageOcr');
-      return runStageIfCvPipeline('image_ocr_total', { memory: true }, async () => extractImageTextViaOcr(buf));
+      const text = await runStageIfCvPipeline('image_ocr_total', { memory: true }, async () =>
+        extractImageTextViaOcr(buf)
+      );
+      return { text: text || '', source: 'image_ocr' };
     }
 
     if ((treatAsDocx || treatAsDoc) && mammoth && treatAsDocx) {
-      return runStageIfCvPipeline('docx_extract_text', {}, async () => {
+      const text = await runStageIfCvPipeline('docx_extract_text', {}, async () => {
         const res = await mammoth.extractRawText({ buffer: buf });
         return res.value || '';
       });
+      return { text: text || '', source: 'docx' };
     }
 
     if (treatAsTxt) {
-      return buf.toString('utf8');
+      return { text: buf.toString('utf8'), source: 'txt' };
     }
 
-    return '';
+    return { text: '', source: 'unknown' };
   });
+}
+
+async function parseDocumentToText(filePath) {
+  const { text } = await parseDocumentToTextWithMeta(filePath);
+  return text;
 }
 
 function mapExtractedToSimulationInputs(extracted, baseInputs) {
@@ -253,7 +393,16 @@ function mapExtractedToSimulationInputs(extracted, baseInputs) {
 
 module.exports = {
   parseDocumentToText,
+  parseDocumentToTextWithMeta,
   extractFromTextHeuristics,
-  mapExtractedToSimulationInputs
+  mapExtractedToSimulationInputs,
+  looksLikeSkillCandidate,
+  filterHeuristicSkillNames,
+  filterHeuristicSkillObjects,
+  extractSkillsSectionContent,
+  parseSkillsFromSectionContent,
+  extractEducationInstitutionsFromText,
+  extractWorkExperienceJobsFromText,
+  extractWorkExperienceDescriptionLinesFromText,
 };
 

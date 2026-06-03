@@ -10,7 +10,9 @@ describe('cvExtractionStatus', () => {
       doc: { type: 'cv', extractionStatus: 'queued' },
       job: { status: 'processing', stage: 'extraction' },
     });
-    expect(result).toEqual({ status: 'processing', stage: 'extraction' });
+    expect(result.status).toBe('processing');
+    expect(result.stage).toBe('extraction');
+    expect(result.readiness.reviewReady).toBe(false);
   });
 
   test('buildCvExtractionStatusResponse uses only terminal machine statuses', () => {
@@ -50,12 +52,52 @@ describe('cvExtractionStatus', () => {
         type: 'reference',
         extractionOutcomeStatus: 'success',
         extractedProfileData: { foo: 1 },
+        narrativeEnrichment: {
+          structuredUserInfo: {
+            skillDomains: {},
+            skills: {},
+            skillsInDevelopment: {},
+            keyResponsibilities: {},
+            domains: {},
+          },
+          who_are_you: { raw_answers: [] },
+        },
         uploadDate: new Date(),
       },
       job: null,
     });
     expect(payload.status).toBe('completed');
+    expect(payload.phase).toBe('ready');
     expect(payload.progress).toBe(100);
+    expect(payload.reviewReady).toBe(true);
+    expect(payload.reviewQuality).toBe('baseline');
+    expect(payload.narrativesReady).toBe(true);
+  });
+
+  test('completed CV with pending enrichment reports enrichment progress and reviewReady', () => {
+    const payload = buildCvExtractionStatusResponse({
+      documentId: '507f1f77bcf86cd799439014',
+      doc: {
+        type: 'cv',
+        extractionStatus: 'completed',
+        extractedProfileData: { userIdentity: { workEnjoyMost: 'x' } },
+        semanticEnrichmentStatus: 'pending',
+        localizationStatus: 'pending',
+      },
+      job: { jobId: 'j1', status: 'completed', stage: 'extraction' },
+    });
+    expect(payload.status).toBe('completed');
+    expect(payload.reviewReady).toBe(true);
+    expect(payload.reviewQuality).toBe('baseline');
+    expect(payload.isBackgroundEnriching).toBe(true);
+    expect(payload.phase).toBe('enriching');
+    expect(payload.blockingTask).toBe('structured');
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.backgroundEnrichment.narrative).toBe('idle');
+    expect(payload.displayStage).toBe('enrichment');
+    expect(payload.stage).toBe('structured');
+    expect(payload.progress).toBe(78);
+    expect(payload.message).toContain('Interpreting');
   });
 
   test('failed job surfaces failed status and errorKey only', () => {

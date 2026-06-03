@@ -42,6 +42,7 @@ function inferHighestDegreeFromText(value) {
   if (/associate/.test(t)) return 'associate';
   if (/staatsexamen|state examination/.test(t)) return 'staatsexamen';
   if (/fachabitur|fachhochschulreife/.test(t)) return 'fachabitur';
+  if (/\babitur\b/.test(t)) return 'high_school';
   if (/\bausbildung\b|berufsausbildung|\blehre\b/.test(t)) return 'ausbildung';
   if (/realschulabschluss|mittlere reife|realschule/.test(t)) return 'realschulabschluss';
   if (/hauptschulabschluss|hauptschule/.test(t)) return 'hauptschulabschluss';

@@ -325,7 +325,51 @@ async function refreshUserIdentityEmbeddingOnUserDocument(user, options = {}) {
 
   csi.embeddingOptimizedUserIdentityText = text;
   csi.embeddingUserIdentitySourceFingerprint = fp;
-  await user.save();
+  await persistUserIdentityEmbeddingCacheFields(user, text, fp);
+}
+
+/**
+ * Persist embedding cache on Mongo without overwriting unrelated profile fields.
+ *
+ * @param {{ _id?: unknown, profile?: object, save?: () => Promise<unknown> }} user
+ * @param {string} text
+ * @param {string} fp
+ */
+async function persistUserIdentityEmbeddingCacheFields(user, text, fp) {
+  if (!user?._id) {
+    await user.save();
+    return;
+  }
+  const User = require('../../models/User');
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        'profile.careerSimulationInputs.embeddingOptimizedUserIdentityText': text,
+        'profile.careerSimulationInputs.embeddingUserIdentitySourceFingerprint': fp,
+      },
+    }
+  );
+}
+
+/**
+ * Reload user and refresh identity embedding cache after profile save (non-blocking).
+ *
+ * @param {string} userId
+ * @param {{ forceRegenerate?: boolean, reuseWhoAreYouText?: boolean }} [options]
+ */
+function scheduleRefreshUserIdentityEmbeddingForUser(userId, options = {}) {
+  if (!userId) return;
+  void (async () => {
+    try {
+      const User = require('../../models/User');
+      const user = await User.findById(userId);
+      if (!user) return;
+      await refreshUserIdentityEmbeddingOnUserDocument(user, options);
+    } catch (e) {
+      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e?.message || e);
+    }
+  })();
 }
 
 /**
@@ -369,6 +413,7 @@ module.exports = {
   buildUserIdentityTextLegacy,
   resolveUserIdentityEmbeddingText,
   refreshUserIdentityEmbeddingOnUserDocument,
+  scheduleRefreshUserIdentityEmbeddingForUser,
   ensureUserIdentityEmbeddingCachedByUserId,
   generateUserIdentityEmbeddingTextLlm,
   coalesceLegacyUserIdentityToAnswers,

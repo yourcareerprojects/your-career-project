@@ -1,0 +1,262 @@
+/**
+ * Background narrative generation for profile dimensions / who_are_you deferred on CV review-save.
+ */
+
+const User = require('../../models/User');
+const localizedContentService = require('../localization/localizedContentService');
+const { cachedTranslate } = require('../ai/translationCache');
+const { translateStructured } = require('../ai/translateStructured');
+const { generateDimensionSummary, EMPTY_PLACEHOLDER } = require('../jobAnalysis/dimensionSummaryGenerator');
+const {
+  generateWhoAreYouNarratives,
+  PLACEHOLDER: WHO_ARE_YOU_PLACEHOLDER,
+} = require('../jobAnalysis/whoAreYouNarrativeGenerator');
+const { generateWhoAreYouIdentityEmbeddingText } = require('../jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
+const { filterIndustryDomainRawItems } = require('../../constants/industryDomainFilters');
+const { getRawItems } = require('./profileReviewSaveService');
+
+const STRUCTURED_DIMENSIONS = [
+  { key: 'skillDomains', label: 'Strengths' },
+  { key: 'skills', label: 'Skills' },
+  { key: 'skillsInDevelopment', label: 'Skills in Development' },
+  { key: 'keyResponsibilities', label: 'Responsibilities' },
+  { key: 'domains', label: 'Industry sectors' },
+];
+
+const SUPPORTED_NARRATIVE_LANGS = ['en', 'de'];
+
+function normalizeLangCode(value, fallback = 'en') {
+  const code = String(value || fallback).toLowerCase().split('-')[0] || fallback;
+  return SUPPORTED_NARRATIVE_LANGS.includes(code) ? code : fallback;
+}
+
+function readDimensionSummaryText(value, language = 'en') {
+  if (value && typeof value === 'object') {
+    const summary = localizedContentService.get(value.summary_text, normalizeLangCode(language, 'en'));
+    if (typeof summary === 'string') return summary.trim();
+  }
+  return '';
+}
+
+function isPlaceholderSummary(summaryText) {
+  const s = String(summaryText || '').trim();
+  return !s || s === EMPTY_PLACEHOLDER;
+}
+
+function readDimensionRawItems(value) {
+  const raw = getRawItems(value);
+  return raw.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
+function hydrateLocalizedSummaryField(existingField, canonicalText, canonicalLanguage, localizedMap = {}) {
+  const canonicalLang = normalizeLangCode(canonicalLanguage, 'en');
+  let field = localizedContentService.ensureNested(existingField, canonicalLang);
+  field.original_language = canonicalLang;
+  field.original = canonicalText;
+  field.translations = {
+    ...(field.translations || {}),
+    [canonicalLang]: canonicalText,
+  };
+  for (const lang of SUPPORTED_NARRATIVE_LANGS) {
+    const localizedText = localizedMap?.[lang];
+    if (typeof localizedText !== 'string' || !localizedText.trim()) continue;
+    field.translations[lang] = localizedText.trim();
+  }
+  return field;
+}
+
+async function ensureBilingualSummaryField(existingField, canonicalText, canonicalLanguage, localizedMap = {}) {
+  const canonicalLang = normalizeLangCode(canonicalLanguage, 'en');
+  let field = hydrateLocalizedSummaryField(existingField, canonicalText, canonicalLang, localizedMap);
+  for (const lang of SUPPORTED_NARRATIVE_LANGS) {
+    if (lang === canonicalLang) continue;
+    const existing = String(localizedContentService.get(field, lang) || '').trim();
+    if (existing) continue;
+    try {
+      const translated = await cachedTranslate(canonicalText, lang, () => translateStructured(canonicalText, lang));
+      const safe = String(translated || '').trim();
+      if (safe) {
+        field = localizedContentService.set(field, lang, safe);
+      }
+    } catch (_) {
+      // Keep canonical only if translation fails.
+    }
+  }
+  return field;
+}
+
+async function ensureBilingualWhoAreYouSummaryField(existingField, canonicalSummaryText, canonicalLanguage, localizedMap = {}) {
+  const canonicalLang = normalizeLangCode(canonicalLanguage, 'en');
+  const canonicalArray = parseWhoAreYouNarratives(canonicalSummaryText);
+  let field = hydrateLocalizedSummaryField(existingField, canonicalSummaryText, canonicalLang, localizedMap);
+  for (const lang of SUPPORTED_NARRATIVE_LANGS) {
+    if (lang === canonicalLang) continue;
+    const existingRaw = String(localizedContentService.get(field, lang) || '').trim();
+    if (existingRaw) continue;
+    try {
+      const translated = await cachedTranslate(canonicalArray, lang, () => translateStructured(canonicalArray, lang));
+      if (Array.isArray(translated) && translated.length === 5) {
+        const safeJson = JSON.stringify(
+          translated.map((value) => String(value || '').trim() || WHO_ARE_YOU_PLACEHOLDER)
+        );
+        field = localizedContentService.set(field, lang, safeJson);
+      }
+    } catch (_) {
+      // Keep canonical text only if translation fails.
+    }
+  }
+  return field;
+}
+
+/**
+ * Regenerate deferred dimension narratives on a loaded user document.
+ *
+ * @param {import('mongoose').Document} user
+ * @param {string[]} dimensionKeys
+ * @param {{ language?: string, sourceLanguage?: string }} [options]
+ */
+async function refreshDeferredDimensionNarrativesOnUser(user, dimensionKeys = [], options = {}) {
+  if (!user?.profile || !Array.isArray(dimensionKeys) || dimensionKeys.length === 0) return;
+
+  const targetLang = normalizeLangCode(options.language, 'en');
+  const sourceLang = normalizeLangCode(options.sourceLanguage, 'en');
+  const structured = user.profile.structuredUserInfo || {};
+
+  for (const key of dimensionKeys) {
+    const meta = STRUCTURED_DIMENSIONS.find((d) => d.key === key);
+    if (!meta) continue;
+
+    const dim = structured[key];
+    let rawItems = readDimensionRawItems(dim);
+    if (key === 'domains') {
+      rawItems = filterIndustryDomainRawItems(rawItems);
+    }
+    if (rawItems.length === 0) continue;
+
+    const existingSummary = readDimensionSummaryText(dim, sourceLang);
+    if (!isPlaceholderSummary(existingSummary)) continue;
+
+    try {
+      const generated = await generateDimensionSummary(
+        { dimension: meta.label, rawItems },
+        { lang: targetLang, sourceLang, returnBundle: true }
+      );
+      const summaryText = String(generated?.canonical || '').trim() || EMPTY_PLACEHOLDER;
+      const canonicalLanguage = normalizeLangCode(generated?.canonicalLanguage || sourceLang, sourceLang);
+      const summaryField = await ensureBilingualSummaryField(
+        dim?.summary_text,
+        summaryText,
+        canonicalLanguage,
+        generated?.localized || {}
+      );
+      if (!structured[key] || typeof structured[key] !== 'object') {
+        structured[key] = { raw_items: rawItems };
+      }
+      structured[key].raw_items = rawItems;
+      structured[key].summary_text = summaryField;
+      user.markModified(`profile.structuredUserInfo.${key}`);
+    } catch (err) {
+      console.warn(`[deferredProfileNarrative] dimension ${key} failed:`, err?.message || err);
+    }
+  }
+}
+
+function parseWhoAreYouNarratives(summaryText = '') {
+  const fallback = Array(5).fill(WHO_ARE_YOU_PLACEHOLDER);
+  const raw = String(summaryText || '').trim();
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== 5) return fallback;
+    return parsed.map((value) => String(value || '').trim() || WHO_ARE_YOU_PLACEHOLDER);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/**
+ * @param {import('mongoose').Document} user
+ * @param {{ language?: string, sourceLanguage?: string }} [options]
+ */
+async function refreshDeferredWhoAreYouOnUser(user, options = {}) {
+  if (!user?.profile) return;
+
+  const targetLang = normalizeLangCode(options.language, 'en');
+  const sourceLang = normalizeLangCode(options.sourceLanguage, 'en');
+  const who = user.profile.who_are_you || {};
+  const rawAnswers = Array.isArray(who.raw_answers)
+    ? who.raw_answers.map((v) => String(v || '').trim())
+    : [];
+  if (!rawAnswers.some(Boolean)) return;
+
+  const summaryRaw = String(localizedContentService.get(who.summary_text, sourceLang) || '').trim();
+  const parsed = parseWhoAreYouNarratives(summaryRaw);
+  const needsNarratives = !summaryRaw || parsed.every((v) => v === WHO_ARE_YOU_PLACEHOLDER);
+  const needsIdentity = !String(who.identity_embedding_text || '').trim();
+
+  if (!needsNarratives && !needsIdentity) return;
+
+  try {
+    if (needsNarratives) {
+      const generated = await generateWhoAreYouNarratives(rawAnswers, {
+        lang: targetLang,
+        sourceLang,
+        returnBundle: true,
+      });
+      const safeNarratives = Array.isArray(generated?.canonical) && generated.canonical.length === 5
+        ? generated.canonical.map((value) => String(value || '').trim() || WHO_ARE_YOU_PLACEHOLDER)
+        : Array(5).fill(WHO_ARE_YOU_PLACEHOLDER);
+      const summaryJson = JSON.stringify(safeNarratives);
+      const canonicalLang = normalizeLangCode(generated?.canonicalLanguage || sourceLang, sourceLang);
+      who.summary_text = await ensureBilingualWhoAreYouSummaryField(
+        who.summary_text,
+        summaryJson,
+        canonicalLang,
+        generated?.localized || {}
+      );
+    }
+    if (needsIdentity) {
+      who.identity_embedding_text = await generateWhoAreYouIdentityEmbeddingText(rawAnswers);
+    }
+    user.profile.who_are_you = who;
+    user.markModified('profile.who_are_you');
+  } catch (err) {
+    console.warn('[deferredProfileNarrative] who_are_you failed:', err?.message || err);
+  }
+}
+
+/**
+ * @param {string} userId
+ * @param {{ dimensionKeys?: string[], deferWhoAreYou?: boolean, language?: string, sourceLanguage?: string }} [options]
+ */
+function scheduleDeferredProfileNarrativesForUser(userId, options = {}) {
+  if (!userId) return;
+  const dimensionKeys = Array.isArray(options.dimensionKeys) ? options.dimensionKeys : [];
+  const deferWhoAreYou = Boolean(options.deferWhoAreYou);
+  if (dimensionKeys.length === 0 && !deferWhoAreYou) return;
+
+  void (async () => {
+    try {
+      const user = await User.findById(userId);
+      if (!user) return;
+      if (dimensionKeys.length > 0) {
+        await refreshDeferredDimensionNarrativesOnUser(user, dimensionKeys, options);
+      }
+      if (deferWhoAreYou) {
+        await refreshDeferredWhoAreYouOnUser(user, options);
+      }
+      await user.save();
+      const { scheduleRefreshUserIdentityEmbeddingForUser } = require('../embedding/userIdentityEmbeddingTextService');
+      scheduleRefreshUserIdentityEmbeddingForUser(userId);
+    } catch (e) {
+      console.warn('scheduleDeferredProfileNarrativesForUser failed (non-fatal):', e?.message || e);
+    }
+  })();
+}
+
+module.exports = {
+  scheduleDeferredProfileNarrativesForUser,
+  refreshDeferredDimensionNarrativesOnUser,
+  refreshDeferredWhoAreYouOnUser,
+  isPlaceholderSummary,
+};

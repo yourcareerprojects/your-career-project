@@ -56,9 +56,14 @@ jest.mock('../services/embedding/userIdentityEmbeddingTextService', () => {
   return {
     ...actual,
     refreshUserIdentityEmbeddingOnUserDocument: jest.fn(async () => undefined),
+    scheduleRefreshUserIdentityEmbeddingForUser: jest.fn(),
     ensureUserIdentityEmbeddingCachedByUserId: jest.fn(async () => null),
   };
 });
+
+jest.mock('../services/profile/deferredProfileNarrativeService', () => ({
+  scheduleDeferredProfileNarrativesForUser: jest.fn(),
+}));
 
 jest.mock('../services/embedding/userOccupationInference', () => ({
   inferIscoFromDomains: jest.fn(async () => ({ inferred: [], methodUsed: 'rule_based' })),

@@ -73,6 +73,45 @@ function sanitizeCurrentEmploymentStatus(value) {
   return '';
 }
 
+/**
+ * Map CV / LLM free text (or full document text) to a currentStatus slug.
+ * @param {string} text
+ * @param {{ hasWorkExperience?: boolean }} [options]
+ */
+function inferCurrentEmploymentStatusFromText(text, options = {}) {
+  const direct = sanitizeCurrentEmploymentStatus(text);
+  if (direct) return direct;
+
+  const t = String(text || '').toLowerCase();
+  if (!t) return options.hasWorkExperience ? 'employed' : '';
+
+  if (/\b(schülerin|schüler|schuelerin|schueler|pupil|school\s+pupil|high\s+school\s+student)\b/.test(t)) {
+    return 'pupil';
+  }
+  if (/\b(studentin|student|studierende|studierender|university\s+student|college\s+student|werkstudent)\b/.test(t)) {
+    return 'student';
+  }
+  if (/\b(internship|praktikum|praktikant|trainee|auszubildende?|apprentice|lehrling)\b/.test(t)) {
+    return 'intern';
+  }
+  if (/\b(intern\b)/.test(t) && !/\binternational\b/.test(t)) return 'intern';
+  if (/\bpart[\s-]?time\b|\bteilzeit\b/.test(t)) return 'part_time';
+  if (/\bself[\s-]?employed\b|\bselbstständig\b|\bselbststaendig\b|\bfreiberuflich\b/.test(t)) {
+    return 'self-employed';
+  }
+  if (/\bcontractor\b|\bfreelancer\b|\bfreelance\b|\bzeitvertrag\b/.test(t)) return 'contractor';
+  if (/\bunemployed\b|\barbeitslos\b|\bjob[\s-]?seeking\b|\berwerbssuchend\b/.test(t)) return 'unemployed';
+  if (/\bretired\b|\bim\s+ruhestand\b|\brentner\b/.test(t)) return 'retired';
+  if (/\b(elternzeit|sabbatical|career\s+break|extended\s+leave|parental\s+leave)\b/.test(t)) {
+    return 'extended_leave';
+  }
+  if (/\b(employed|angestellt|beschäftigt|beschaeftigt|arbeitnehmer|full[\s-]?time)\b/.test(t)) {
+    return 'employed';
+  }
+  if (options.hasWorkExperience) return 'employed';
+  return '';
+}
+
 module.exports = {
   CURRENT_EMPLOYMENT_STATUS_OPTIONS,
   CURRENT_EMPLOYMENT_STATUS_CANONICAL,
@@ -81,4 +120,5 @@ module.exports = {
   LEGACY_CURRENT_EMPLOYMENT_STATUS_VALUES,
   currentEmploymentStatusLabel,
   sanitizeCurrentEmploymentStatus,
+  inferCurrentEmploymentStatusFromText,
 };

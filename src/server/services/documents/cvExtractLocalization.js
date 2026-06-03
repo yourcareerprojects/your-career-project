@@ -1,4 +1,5 @@
 const localizedContentService = require('../localization/localizedContentService');
+const { normalizeStructuredListItemLabel } = require('../../../constants/structuredListItemLabel');
 const { translateCvExtractBatch } = require('../ai/translateText');
 const logger = require('../../utils/logger');
 const { normalizeExternalApiError } = require('../../utils/httpTimeouts');
@@ -332,12 +333,7 @@ function overlayStructuredUserInfoListsWithCvLocalization(structuredUserInfo, cv
     const nextRaw = raw.map((item, idx) => {
       const row = skillPairs[idx];
       const namePair = row?.name;
-      const fallbackLabel =
-        typeof item === 'string'
-          ? String(item).trim()
-          : typeof item === 'object' && item != null
-            ? String(item.name ?? '').trim()
-            : '';
+      const fallbackLabel = normalizeStructuredListItemLabel(item, lang);
       if (!namePair || typeof namePair !== 'object') return fallbackLabel;
       const picked = String(pickLocalizedFromPair(namePair, lang) || '').trim();
       return picked || fallbackLabel;

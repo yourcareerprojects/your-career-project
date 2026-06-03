@@ -4,6 +4,7 @@ const {
   PROFILE_REVIEW_STRUCTURED_KEYS,
   PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY,
 } = require('../../constants/profileReviewFieldLimits');
+const { normalizeStructuredListItemLabel } = require('../../constants/structuredListItemLabel');
 
 const USER_IDENTITY_KEYS = [
   'workEnjoyMost',
@@ -43,28 +44,18 @@ function buildStructuredGoodAtFromReview(reviewProfile, acceptedFields = {}) {
     const out = [];
     for (let i = 0; i < items.length && out.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
       if (acceptedFields[`structuredUserInfo.${key}.${i}`] === false) continue;
-      const v = String(items[i] ?? '').trim();
+      const v = normalizeStructuredListItemLabel(items[i]);
       if (v) out.push(v);
     }
     return out;
   };
-
-  const items = structuredUserInfo.skills || [];
-  const skillsOut = [];
-  for (let i = 0; i < items.length && skillsOut.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
-    if (acceptedFields[`structuredUserInfo.skills.${i}`] === false) continue;
-    const s = items[i];
-    const raw = typeof s === 'string' ? s : s?.name;
-    const v = String(raw ?? '').trim();
-    if (v) skillsOut.push({ name: v });
-  }
 
   return {
     skillDomains: pickStrings('skillDomains'),
     domains: pickStrings('domains'),
     keyResponsibilities: pickStrings('keyResponsibilities'),
     skillsInDevelopment: pickStrings('skillsInDevelopment'),
-    skills: skillsOut,
+    skills: pickStrings('skills'),
   };
 }
 
@@ -74,11 +65,7 @@ function countStructuredGoodAtItems(structuredUserInfo = {}) {
     const items = structuredUserInfo[arrayKey];
     if (!Array.isArray(items)) continue;
     for (const item of items) {
-      const raw =
-        arrayKey === 'skills'
-          ? (typeof item === 'string' ? item : item?.name)
-          : item;
-      if (String(raw ?? '').trim()) count += 1;
+      if (normalizeStructuredListItemLabel(item)) count += 1;
     }
   }
   return count;
@@ -89,11 +76,7 @@ function countCategoryItems(structuredUserInfo, arrayKey) {
   if (!Array.isArray(items)) return 0;
   let count = 0;
   for (const item of items) {
-    const raw =
-      arrayKey === 'skills'
-        ? (typeof item === 'string' ? item : item?.name)
-        : item;
-    if (String(raw ?? '').trim()) count += 1;
+    if (normalizeStructuredListItemLabel(item)) count += 1;
   }
   return count;
 }
@@ -178,13 +161,13 @@ function validateReviewIdentityStep(reviewProfile = {}) {
  * @param {string} value
  * @param {Record<string, ReviewFieldErrorSpec>} fieldErrors
  */
-/** Map a review field key to wizard step (2=identity, 3=good at, 4=experience, 5=context). */
+/** Map a review field key to wizard step (2=identity, 3=good at, 4=context, 5=seniority). */
 function resolveReviewFocusStep(fieldKey) {
   if (!fieldKey || typeof fieldKey !== 'string') return 2;
   if (fieldKey.startsWith('userIdentity.')) return 2;
   if (fieldKey === 'structuredUserInfo' || fieldKey.startsWith('structuredUserInfo.')) return 3;
-  if (fieldKey.startsWith('seniority.')) return 4;
-  return 5;
+  if (fieldKey.startsWith('seniority.')) return 5;
+  return 4;
 }
 
 function validateStructuredItemLength(arrayKey, index, value, fieldErrors) {
@@ -214,10 +197,7 @@ function validateStructuredPayloadLengths(structuredUserInfo = {}, fieldErrors) 
     if (!Array.isArray(items)) continue;
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
-      const raw =
-        arrayKey === 'skills'
-          ? (typeof item === 'string' ? item : item?.name)
-          : item;
+      const raw = normalizeStructuredListItemLabel(item);
       validateStructuredItemLength(arrayKey, i, raw, fieldErrors);
     }
   }
@@ -242,10 +222,7 @@ function validateReviewProfileInDialog(reviewProfile = {}, acceptedFields = {}, 
       const fieldKey = `structuredUserInfo.${arrayKey}.${i}`;
       if (!isAccepted(fieldKey)) continue;
       const item = items[i];
-      const raw =
-        arrayKey === 'skills'
-          ? (typeof item === 'string' ? item : item?.name)
-          : item;
+      const raw = normalizeStructuredListItemLabel(item);
       validateStructuredItemLength(arrayKey, i, raw, fieldErrors);
     }
   }

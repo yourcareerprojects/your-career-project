@@ -3,10 +3,18 @@ const {
   USER_IDENTITY_ANSWER_KEYS,
 } = require('../embedding/userIdentityEmbeddingTextService');
 const localizedContentService = require('../localization/localizedContentService');
+const { EMPTY_PLACEHOLDER } = require('../jobAnalysis/dimensionSummaryGenerator');
 const { filterIndustryDomainRawItems } = require('../../constants/industryDomainFilters');
+const { PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY } = require('../../../constants/profileReviewFieldLimits');
+const { normalizeStructuredListItemLabel, normalizeStructuredListItemLabels } = require('../../../constants/structuredListItemLabel');
+const { meetsDimensionSummaryQuality } = require('./narrativeQualityGate');
 
 function mergeUniqueStrings(a = [], b = []) {
-  return [...new Set([...(a || []), ...(b || [])].map((v) => String(v || '').trim()).filter(Boolean))];
+  return [...new Set(
+    [...(a || []), ...(b || [])]
+      .map((v) => normalizeStructuredListItemLabel(v))
+      .filter(Boolean)
+  )];
 }
 
 function getRawItems(value) {
@@ -30,7 +38,7 @@ function canReuseDimensionNarrative(dimensionValue, language = 'en') {
   if (!dimensionValue.summary_text) return false;
   const lang = String(language || 'en').toLowerCase().split('-')[0] || 'en';
   const summaryText = String(localizedContentService.get(dimensionValue.summary_text, lang) || '').trim();
-  return summaryText.length > 0;
+  return meetsDimensionSummaryQuality(summaryText, dimensionValue.raw_items);
 }
 
 function structuredRawListsEqual(left = [], right = []) {
@@ -38,6 +46,153 @@ function structuredRawListsEqual(left = [], right = []) {
   const b = (Array.isArray(right) ? right : []).map((v) => String(v || '').trim()).filter(Boolean);
   if (a.length !== b.length) return false;
   return a.every((item, index) => item === b[index]);
+}
+
+function comparableRawListForDimension(key, rawList = []) {
+  const list = Array.isArray(rawList) ? rawList : [];
+  if (key === 'domains') {
+    return filterIndustryDomainRawItems(normalizeStructuredListItemLabels(list));
+  }
+  return normalizeStructuredListItemLabels(list);
+}
+
+function isAcceptedField(acceptedFields, fieldKey) {
+  if (!acceptedFields || typeof acceptedFields !== 'object') return true;
+  return acceptedFields[fieldKey] !== false;
+}
+
+/**
+ * Effective structured lists from CV extraction + review checkboxes (mirrors client buildStructuredGoodAtFromReview).
+ *
+ * @param {object} extractedProfileData
+ * @param {Record<string, boolean>} [acceptedFields]
+ * @returns {{ lists: Record<string, string[]>, userIdentity: Record<string, string> }}
+ */
+function buildStructuredBaselineFromExtraction(extractedProfileData = {}, acceptedFields = {}) {
+  const structuredUserInfo = extractedProfileData?.structuredUserInfo || {};
+  const pickStrings = (key) => {
+    const items = structuredUserInfo[key] || [];
+    const out = [];
+    for (let i = 0; i < items.length && out.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
+      if (!isAcceptedField(acceptedFields, `structuredUserInfo.${key}.${i}`)) continue;
+      const v = normalizeStructuredListItemLabel(items[i]);
+      if (v) out.push(v);
+    }
+    return out;
+  };
+
+  const skillItems = structuredUserInfo.skills || [];
+  const skillsOut = [];
+  for (let i = 0; i < skillItems.length && skillsOut.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
+    if (!isAcceptedField(acceptedFields, `structuredUserInfo.skills.${i}`)) continue;
+    const v = normalizeStructuredListItemLabel(skillItems[i]);
+    if (v) skillsOut.push(v);
+  }
+
+  let keyResponsibilities = pickStrings('keyResponsibilities');
+  if (keyResponsibilities.length === 0) {
+    keyResponsibilities = extractKeyResponsibilities(structuredUserInfo);
+  }
+
+  return {
+    lists: {
+      skillDomains: pickStrings('skillDomains'),
+      skills: skillsOut,
+      skillsInDevelopment: pickStrings('skillsInDevelopment'),
+      keyResponsibilities,
+      domains: pickStrings('domains'),
+    },
+    userIdentity: normalizeUserIdentityAnswers(extractedProfileData?.userIdentity || {}),
+  };
+}
+
+function normalizeIncomingStructuredLists(incomingStructured = {}) {
+  const incoming = incomingStructured && typeof incomingStructured === 'object' ? incomingStructured : {};
+  const incomingSkills = Array.isArray(incoming.skills)
+    ? incoming.skills.map((skill) => normalizeStructuredListItemLabel(skill)).filter(Boolean)
+    : [];
+  return {
+    skillDomains: Array.isArray(incoming.skillDomains)
+      ? normalizeStructuredListItemLabels(incoming.skillDomains)
+      : [],
+    skills: incomingSkills,
+    skillsInDevelopment: Array.isArray(incoming.skillsInDevelopment)
+      ? normalizeStructuredListItemLabels(incoming.skillsInDevelopment)
+      : [],
+    keyResponsibilities: extractKeyResponsibilities(incoming),
+    domains: Array.isArray(incoming.domains)
+      ? normalizeStructuredListItemLabels(incoming.domains)
+      : [],
+  };
+}
+
+function userIdentityMatchesExtraction(incomingIdentity = {}, extractionIdentity = {}) {
+  const a = normalizeUserIdentityAnswers(incomingIdentity);
+  const b = normalizeUserIdentityAnswers(extractionIdentity);
+  return USER_IDENTITY_ANSWER_KEYS.every((key) => (a[key] || '') === (b[key] || ''));
+}
+
+/**
+ * Dimensions whose incoming lists match extraction baseline and do not already reuse stored narratives.
+ *
+ * @param {object} params
+ * @returns {string[]}
+ */
+function resolveDeferDimensionKeysForExtraction({
+  existingStructured = {},
+  incomingStructured = {},
+  extractionBaseline = null,
+  mode = 'merge',
+}) {
+  if (!extractionBaseline?.lists) return [];
+  const incomingLists = normalizeIncomingStructuredLists(incomingStructured);
+  const deferKeys = [];
+
+  for (const key of STRUCTURED_DIMENSION_KEYS) {
+    const incomingComparable = comparableRawListForDimension(key, incomingLists[key]);
+    const extractionComparable = comparableRawListForDimension(key, extractionBaseline.lists[key]);
+    if (!structuredRawListsEqual(incomingComparable, extractionComparable)) continue;
+
+    const mergedArrays = buildMergedStructuredPayload(existingStructured, incomingStructured, mode);
+    const mergedComparable = comparableRawListForDimension(key, mergedArrays[key]);
+    const existingDim = existingStructured[key];
+    const existingComparable = comparableRawListForDimension(key, getRawItems(existingDim));
+
+    if (
+      structuredRawListsEqual(mergedComparable, existingComparable)
+      && canReuseDimensionNarrative(existingDim)
+    ) {
+      continue;
+    }
+    deferKeys.push(key);
+  }
+  return deferKeys;
+}
+
+/**
+ * @param {object} extractedProfile
+ * @param {Record<string, boolean>} [acceptedFields]
+ * @returns {{ lists: Record<string, string[]>, userIdentity: Record<string, string> } | null}
+ */
+function loadExtractionBaselineFromDocument(doc, acceptedFields = {}) {
+  if (!doc?.extractedProfileData || typeof doc.extractedProfileData !== 'object') return null;
+  return buildStructuredBaselineFromExtraction(doc.extractedProfileData, acceptedFields);
+}
+
+/**
+ * Dimension keys in merged normalize payload that still need LLM (plain arrays, no summary_text).
+ *
+ * @param {object} mergedPayload
+ * @returns {string[]}
+ */
+function resolveDimensionKeysNeedingLlmRegeneration(mergedPayload = {}) {
+  const input = mergedPayload && typeof mergedPayload === 'object' ? mergedPayload : {};
+  return STRUCTURED_DIMENSION_KEYS.filter((key) => {
+    const value = input[key];
+    if (Array.isArray(value)) return true;
+    if (!value || typeof value !== 'object') return false;
+    return !value.summary_text;
+  });
 }
 
 function extractKeyResponsibilities(structuredUserInfo = {}) {
@@ -56,15 +211,19 @@ function buildMergedStructuredPayload(existingStructured = {}, incomingStructure
   const merge = mode === 'merge';
   const incoming = incomingStructured && typeof incomingStructured === 'object' ? incomingStructured : {};
 
-  const incomingSkillDomains = Array.isArray(incoming.skillDomains) ? incoming.skillDomains.filter(Boolean) : [];
+  const incomingSkillDomains = Array.isArray(incoming.skillDomains)
+    ? normalizeStructuredListItemLabels(incoming.skillDomains)
+    : [];
   const incomingSkills = Array.isArray(incoming.skills)
-    ? incoming.skills.map((skill) => (typeof skill === 'string' ? skill : skill?.name)).filter(Boolean)
+    ? normalizeStructuredListItemLabels(incoming.skills)
     : [];
   const incomingSkillsInDevelopment = Array.isArray(incoming.skillsInDevelopment)
-    ? incoming.skillsInDevelopment.filter(Boolean)
+    ? normalizeStructuredListItemLabels(incoming.skillsInDevelopment)
     : [];
   const incomingKeyResponsibilities = extractKeyResponsibilities(incoming);
-  const incomingDomains = Array.isArray(incoming.domains) ? incoming.domains.filter(Boolean) : [];
+  const incomingDomains = Array.isArray(incoming.domains)
+    ? normalizeStructuredListItemLabels(incoming.domains)
+    : [];
 
   return {
     skillDomains: merge
@@ -92,8 +251,16 @@ function buildMergedStructuredPayload(existingStructured = {}, incomingStructure
 function buildMergedStructuredPayloadForNormalization(
   existingStructured = {},
   incomingStructured = {},
-  mode = 'merge'
+  mode = 'merge',
+  options = {}
 ) {
+  const {
+    extractionNarrativeCache = null,
+    reuseExtractionNarrativeKeys = [],
+  } = options;
+  const reuseSet = new Set(Array.isArray(reuseExtractionNarrativeKeys) ? reuseExtractionNarrativeKeys : []);
+  const cachedStructured = extractionNarrativeCache?.structuredUserInfo || {};
+
   const mergedArrays = buildMergedStructuredPayload(existingStructured, incomingStructured, mode);
   const existing = existingStructured && typeof existingStructured === 'object' ? existingStructured : {};
   const out = {};
@@ -111,9 +278,19 @@ function buildMergedStructuredPayloadForNormalization(
         raw_items: mergedRaw,
         summary_text: existingDim.summary_text,
       };
-    } else {
-      out[key] = mergedRaw;
+      continue;
     }
+    if (reuseSet.has(key) && cachedStructured[key]?.summary_text) {
+      const cachedDim = {
+        raw_items: mergedRaw,
+        summary_text: cachedStructured[key].summary_text,
+      };
+      if (canReuseDimensionNarrative(cachedDim)) {
+        out[key] = cachedDim;
+        continue;
+      }
+    }
+    out[key] = mergedRaw;
   }
   return out;
 }
@@ -195,9 +372,17 @@ module.exports = {
   getRawItems,
   canReuseDimensionNarrative,
   structuredRawListsEqual,
+  comparableRawListForDimension,
   extractKeyResponsibilities,
   buildMergedStructuredPayload,
   buildMergedStructuredPayloadForNormalization,
+  buildStructuredBaselineFromExtraction,
+  normalizeIncomingStructuredLists,
+  userIdentityMatchesExtraction,
+  resolveDeferDimensionKeysForExtraction,
+  resolveReuseExtractionNarrativeKeys: resolveDeferDimensionKeysForExtraction,
+  resolveDimensionKeysNeedingLlmRegeneration,
+  loadExtractionBaselineFromDocument,
   buildMergedUserIdentity,
   normalizeSeniorityFields,
   applySeniorityToUser,

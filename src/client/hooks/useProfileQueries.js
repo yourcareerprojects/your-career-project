@@ -60,6 +60,16 @@ export async function fetchFullProfile(lang) {
   return res.data;
 }
 
+/**
+ * Always hits GET /api/profile and writes the result into the React Query cache.
+ * Use after review-save seeding: fetchQuery would return the fresh partial seed while staleTime is active.
+ */
+export async function refetchFullProfileIntoCache(lang, queryClientImpl = queryClient) {
+  const profileData = await fetchFullProfile(lang);
+  queryClientImpl.setQueryData(getProfileFullQueryKeyFull(lang), profileData);
+  return profileData;
+}
+
 export function useFullProfileQuery(options = {}) {
   const { enabled = true } = options;
   const lang = baseUILanguage();

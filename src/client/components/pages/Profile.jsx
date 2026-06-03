@@ -47,6 +47,7 @@ import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveIscoDisplayEntry } from '../../utils/iscoLabels';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
+import { normalizeStructuredListItemLabel } from '../../../constants/structuredListItemLabel';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
 import { hasActiveCareerSimulationSession } from '../../utils/simulationPersistence';
 import localizedContentService from '../../utils/localizedContentService';
@@ -57,6 +58,7 @@ import {
   fetchProfileCompletion,
   getProfileFullQueryKeyFull,
   fetchFullProfile,
+  refetchFullProfileIntoCache,
   baseUILanguage,
   PROFILE_QUERY_STALE_TIME_MS,
   PROFILE_QUERY_CACHE_TIME_MS,
@@ -100,8 +102,15 @@ function getWhoAreYouNarratives(whoAreYou, lang) {
  */
 function getWhoAreYouDisplayStrings(whoAreYou, userIdentity, lang) {
   const narratives = getWhoAreYouNarratives(whoAreYou, lang);
+  const storedAnswers = Array.isArray(whoAreYou?.raw_answers)
+    ? whoAreYou.raw_answers.map((v) => String(v || '').trim())
+    : [];
+  const identityAnswers = USER_IDENTITY_FIELDS.map(({ key }) => String(userIdentity?.[key] ?? '').trim());
+  const answersAligned =
+    storedAnswers.length === USER_IDENTITY_FIELDS.length
+    && storedAnswers.every((value, idx) => value === identityAnswers[idx]);
   return USER_IDENTITY_FIELDS.map(({ key }, idx) => {
-    const n = String(narratives[idx] ?? '').trim();
+    const n = answersAligned ? String(narratives[idx] ?? '').trim() : '';
     const direct = String(userIdentity?.[key] ?? '').trim();
     return n || direct;
   });
@@ -201,26 +210,13 @@ const Profile = ({
     []
   );
   const getRawItems = (value) => {
-    if (Array.isArray(value)) return value;
-    if (value && typeof value === 'object' && Array.isArray(value.raw_items)) return value.raw_items;
-    return [];
+    const raw = Array.isArray(value)
+      ? value
+      : (value && typeof value === 'object' && Array.isArray(value.raw_items) ? value.raw_items : []);
+    return raw.map((item) => normalizeStructuredListItemLabel(item, currentLang)).filter(Boolean);
   };
   /** Chips expect a string label; CV overlay / legacy rows may store `{ name }` objects in raw_items. */
-  const chipLabelFromGoodAtItem = (item) => {
-    if (item == null) return '';
-    if (typeof item === 'string') return item.trim();
-    if (typeof item === 'object') {
-      const v =
-        item.name ??
-        item.label ??
-        item.title ??
-        item.preferredLabel ??
-        item.value ??
-        item.description;
-      return typeof v === 'string' ? v.trim() : '';
-    }
-    return '';
-  };
+  const chipLabelFromGoodAtItem = (item) => normalizeStructuredListItemLabel(item, currentLang);
   const getSummaryText = (value) => {
     if (!value || typeof value !== 'object') return 'No information available yet';
     return localizedContentService.getLocalizedWithFallback(value.summary_text, currentLang, 'No information available yet');
@@ -294,21 +290,37 @@ const Profile = ({
           }
           setLoading(false);
 
-          queryClient
-            .prefetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
-              staleTime: PROFILE_QUERY_STALE_TIME_MS,
-              cacheTime: PROFILE_QUERY_CACHE_TIME_MS
-            })
-            .then(() => {
-              const latestCompletionData = queryClient.getQueryData(profileCompletionQueryKey);
-              if (latestCompletionData?.completion) {
-                setCompletion(latestCompletionData.completion);
-                seedProfileCompletionQueryData(latestCompletionData);
-              }
-            })
-            .catch((completionErr) => {
-              console.error('Profile completion refresh failed:', completionErr);
-            });
+          const refreshCompletionInBackground = () => {
+            queryClient
+              .prefetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
+                staleTime: PROFILE_QUERY_STALE_TIME_MS,
+                cacheTime: PROFILE_QUERY_CACHE_TIME_MS
+              })
+              .then(() => {
+                const latestCompletionData = queryClient.getQueryData(profileCompletionQueryKey);
+                if (latestCompletionData?.completion) {
+                  setCompletion(latestCompletionData.completion);
+                  seedProfileCompletionQueryData(latestCompletionData);
+                }
+              })
+              .catch((completionErr) => {
+                console.error('Profile completion refresh failed:', completionErr);
+              });
+          };
+
+          if (cachedProfile._seededFromReviewSave) {
+            refetchFullProfileIntoCache(currentLang)
+              .then((profileData) => {
+                setProfile(profileData);
+              })
+              .catch((profileErr) => {
+                console.error('Profile background refresh after review-save failed:', profileErr);
+              });
+            refreshCompletionInBackground();
+            return;
+          }
+
+          refreshCompletionInBackground();
           return;
         }
       } else {
@@ -1115,9 +1127,7 @@ const Profile = ({
                   key={chipKey}
                   size="small"
                   autoFocus
-                  defaultValue={
-                    chip
-                  }
+                  defaultValue={chipLabelFromGoodAtItem(chip)}
                   onBlur={(e) => handleEditChip(field, index, e.target.value)}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
@@ -1136,7 +1146,7 @@ const Profile = ({
                 key={chipKey}
                 label={
                   field === 'languages' ? `${chip.language} (${chip.proficiency})` :
-                  chip
+                  chipLabelFromGoodAtItem(chip)
                 }
                 color={chipColor}
                 variant="outlined"
@@ -2109,7 +2119,11 @@ const Profile = ({
                 {(() => {
                   const required = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills);
                   const learning = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment);
-                  const merged = [...new Set([...required, ...learning].map((v) => String(v || '').trim()).filter(Boolean))];
+                  const merged = [...new Set(
+                    [...required, ...learning]
+                      .map((v) => normalizeStructuredListItemLabel(v, currentLang))
+                      .filter(Boolean)
+                  )];
                   if (merged.length === 0) {
                     return (
                       <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>

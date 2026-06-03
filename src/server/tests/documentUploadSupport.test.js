@@ -13,13 +13,30 @@ jest.mock('fs', () => {
   };
 });
 
+jest.mock('pdf-parse', () => jest.fn());
+
 jest.mock('../services/documents/pdfImageOcr', () => ({
   extractPdfTextViaOcr: jest.fn(),
   extractImageTextViaOcr: jest.fn(),
 }));
 
+jest.mock('../services/documents/pdfTextExtraction', () => {
+  const actual = jest.requireActual('../services/documents/pdfTextExtraction');
+  return {
+    ...actual,
+    loadPdfJsDocument: jest.fn(),
+    destroyPdfJsDocument: jest.fn(async () => undefined),
+    extractPdfTextViaPdfJs: jest.fn(),
+  };
+});
+
 const { promises: fs } = require('fs');
-const { extractImageTextViaOcr } = require('../services/documents/pdfImageOcr');
+const pdfParse = require('pdf-parse');
+const { extractImageTextViaOcr, extractPdfTextViaOcr } = require('../services/documents/pdfImageOcr');
+const {
+  loadPdfJsDocument,
+  extractPdfTextViaPdfJs,
+} = require('../services/documents/pdfTextExtraction');
 const { parseDocumentToText } = require('../services/documents/documentProfileEnrichment');
 const {
   validateDocumentBuffer,
@@ -112,5 +129,36 @@ describe('document image upload support', () => {
     expect(fs.readFile).toHaveBeenCalledWith('C:/tmp/resume.png');
     expect(extractImageTextViaOcr).toHaveBeenCalledWith(imageBytes);
     expect(text).toBe('Jane Doe');
+  });
+
+  test('uses pdfjs text layer before OCR when pdf-parse output is insufficient', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 fake');
+    fs.readFile.mockResolvedValue(pdfBytes);
+    pdfParse.mockResolvedValue({ text: 'Page 1' });
+    loadPdfJsDocument.mockResolvedValue({ numPages: 1 });
+    extractPdfTextViaPdfJs.mockResolvedValue(
+      'Jane Doe Senior Engineer with extensive experience in JavaScript, Node.js, platform delivery, and stakeholder management across multiple teams.'
+    );
+
+    const text = await parseDocumentToText('C:/tmp/resume.pdf');
+
+    expect(extractPdfTextViaPdfJs).toHaveBeenCalled();
+    expect(extractPdfTextViaOcr).not.toHaveBeenCalled();
+    expect(text).toContain('Jane Doe');
+  });
+
+  test('falls back to OCR when pdf text layers are insufficient', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.4 fake');
+    fs.readFile.mockResolvedValue(pdfBytes);
+    pdfParse.mockResolvedValue({ text: '' });
+    loadPdfJsDocument.mockResolvedValue({ numPages: 1 });
+    extractPdfTextViaPdfJs.mockResolvedValue('Page 1');
+    extractPdfTextViaOcr.mockResolvedValue('OCR Jane Doe');
+
+    const text = await parseDocumentToText('C:/tmp/scanned.pdf');
+
+    expect(extractPdfTextViaPdfJs).toHaveBeenCalled();
+    expect(extractPdfTextViaOcr).toHaveBeenCalledWith(pdfBytes, expect.objectContaining({ pdfDocument: expect.anything() }));
+    expect(text).toBe('OCR Jane Doe');
   });
 });

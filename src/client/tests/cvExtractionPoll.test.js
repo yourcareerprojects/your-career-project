@@ -1,4 +1,14 @@
-const { watchCvExtractionUntilTerminal, getPollPhase } = require('../utils/cvExtractionPoll');
+const {
+  watchCvExtractionUntilTerminal,
+  getPollPhase,
+  mapExtractionStatusToUiPhase,
+  mapBlockingTaskToMessageKey,
+  resolveExtractionProgressMessageKey,
+  documentNeedsFullReviewQuality,
+  buildPollSnapshot,
+  isCvExtractionPollTerminal,
+  isCvExtractionUiPhaseInProgress,
+} = require('../utils/cvExtractionPoll');
 const { EXTRACTION_SLOW_WARNING_MS } = require('../../constants/cvExtractionTiming');
 
 describe('watchCvExtractionUntilTerminal', () => {
@@ -60,7 +70,12 @@ describe('watchCvExtractionUntilTerminal', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ status: 'completed', stage: null, progress: 100 }),
+        json: async () => ({
+          status: 'completed',
+          phase: 'ready',
+          stage: 'done',
+          progress: 100,
+        }),
       });
 
     const promise = watchCvExtractionUntilTerminal({
@@ -177,5 +192,182 @@ describe('watchCvExtractionUntilTerminal', () => {
     const outcome = await promise;
     expect(outcome.kind).toBe('timedOut');
     expect(outcome.snapshot?.isSlow).toBe(true);
+  });
+
+  test('keeps polling while phase is enriching', async () => {
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'completed',
+          phase: 'enriching',
+          blockingTask: 'structured',
+          progress: 78,
+          isBackgroundEnriching: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'completed',
+          phase: 'ready',
+          progress: 100,
+        }),
+      });
+
+    const promise = watchCvExtractionUntilTerminal({
+      documentId: 'doc-enrich',
+      token: 'token',
+      maxDurationMs: 60_000,
+    });
+
+    await flushPollMicrotasks();
+    jest.setSystemTime(2000);
+    await jest.runAllTimersAsync();
+    const outcome = await promise;
+
+    expect(outcome.kind).toBe('completed');
+    expect(outcome.data.phase).toBe('ready');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('cv extraction readiness client helpers', () => {
+  test('isCvExtractionPollTerminal waits for enriching to finish', () => {
+    expect(
+      isCvExtractionPollTerminal({
+        status: 'completed',
+        phase: 'enriching',
+        isBackgroundEnriching: true,
+      })
+    ).toBe(false);
+    expect(isCvExtractionPollTerminal({ status: 'completed', phase: 'ready' })).toBe(true);
+  });
+
+  test('mapExtractionStatusToUiPhase uses API phase when provided', () => {
+    expect(
+      mapExtractionStatusToUiPhase('completed', 'structured', {
+        phase: 'enriching',
+        isBackgroundEnriching: true,
+        blockingTask: 'structured',
+      })
+    ).toBe('enrichingStructured');
+    expect(
+      mapExtractionStatusToUiPhase('completed', 'localization', { phase: 'ready' })
+    ).toBe('completed');
+    expect(
+      mapExtractionStatusToUiPhase('processing', 'ocr', { phase: 'extraction' })
+    ).toBe('extraction');
+  });
+
+  test('resolveExtractionProgressMessageKey uses blockingTask during enriching phase', () => {
+    expect(
+      resolveExtractionProgressMessageKey({
+        status: 'completed',
+        phase: 'enriching',
+        blockingTask: 'narrative',
+        isBackgroundEnriching: true,
+      })
+    ).toBe(mapBlockingTaskToMessageKey('narrative'));
+    expect(
+      resolveExtractionProgressMessageKey({
+        status: 'completed',
+        phase: 'enriching',
+        blockingTask: 'structured',
+      })
+    ).toBe('documentUpload.async.enrichingStructured');
+  });
+
+  test('mapExtractionStatusToUiPhase maps each blocking task during background enrichment', () => {
+    expect(
+      mapExtractionStatusToUiPhase('completed', 'localization', {
+        isBackgroundEnriching: true,
+        displayStage: 'enrichment',
+        blockingTask: 'localization',
+      })
+    ).toBe('enrichingLocalization');
+    expect(
+      mapExtractionStatusToUiPhase('completed', 'done', {
+        isBackgroundEnriching: false,
+        displayStage: 'done',
+        phase: 'ready',
+      })
+    ).toBe('completed');
+  });
+
+  test('isCvExtractionUiPhaseInProgress treats enriching sub-phases as in progress', () => {
+    expect(isCvExtractionUiPhaseInProgress('enrichingStructured')).toBe(true);
+    expect(isCvExtractionUiPhaseInProgress('completed')).toBe(false);
+  });
+
+  test('documentNeedsCvLocalization only when UI locale differs from source', () => {
+    const { documentNeedsCvLocalization } = require('../utils/cvExtractionPoll');
+    expect(
+      documentNeedsCvLocalization(
+        {
+          extractedProfileData: {},
+          semanticInterpretationLanguage: 'de',
+          localizationStatus: 'idle',
+        },
+        'en'
+      )
+    ).toBe(true);
+    expect(
+      documentNeedsCvLocalization(
+        {
+          extractedProfileData: {},
+          semanticInterpretationLanguage: 'en',
+          localizationStatus: 'idle',
+        },
+        'en'
+      )
+    ).toBe(false);
+    expect(
+      documentNeedsCvLocalization(
+        {
+          extractedProfileData: {},
+          semanticInterpretationLanguage: 'de',
+          localizationStatus: 'complete',
+        },
+        'en'
+      )
+    ).toBe(false);
+  });
+
+  test('documentNeedsFullReviewQuality prefers reviewQuality when present', () => {
+    expect(documentNeedsFullReviewQuality({ reviewQuality: 'full' })).toBe(false);
+    expect(documentNeedsFullReviewQuality({ reviewQuality: 'baseline' })).toBe(true);
+    expect(documentNeedsFullReviewQuality({ semanticEnrichmentStatus: 'pending' })).toBe(true);
+  });
+
+  test('buildPollSnapshot forwards readiness fields from API', () => {
+    const snapshot = buildPollSnapshot(
+      {
+        status: 'completed',
+        stage: 'enrichment',
+        phase: 'enriching',
+        displayStage: 'enrichment',
+        progress: 92,
+        reviewReady: true,
+        reviewQuality: 'baseline',
+        isBackgroundEnriching: true,
+        narrativesReady: false,
+        blockingTask: 'structured',
+        backgroundEnrichment: {
+          structured: 'pending',
+          localization: 'pending',
+          narrative: 'idle',
+        },
+      },
+      1000,
+      'fast'
+    );
+    expect(snapshot.reviewReady).toBe(true);
+    expect(snapshot.reviewQuality).toBe('baseline');
+    expect(snapshot.phase).toBe('enriching');
+    expect(snapshot.narrativesReady).toBe(false);
+    expect(snapshot.blockingTask).toBe('structured');
+    expect(snapshot.isBackgroundEnriching).toBe(true);
+    expect(snapshot.displayStage).toBe('enrichment');
   });
 });

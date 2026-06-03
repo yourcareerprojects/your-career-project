@@ -3,8 +3,16 @@ const {
   buildDeterministicDiagnosis,
   evaluateProfileReviewFollowUps,
   buildStep3ReviewTextMap,
+  parseBatchScoringJson,
+  parseFollowUpQuestionsJson,
+  sortDiagnosesByQuality,
+  REVIEW_STEP3_QUALITY_FIELD_ORDER,
   ALLOWED_ISSUES
 } = require('../services/jobAnalysis/inputQualityDiagnosisService');
+const { qualityDiagnosisFingerprint } = require('../utils/inputQualityDiagnosisFingerprint');
+const {
+  clearInputQualityDiagnosisSessionCache,
+} = require('../services/jobAnalysis/inputQualityDiagnosisSessionCache');
 
 describe('inputQualityDiagnosisService', () => {
   test('buildStep3ReviewTextMap has seven keys only', () => {
@@ -216,5 +224,196 @@ describe('inputQualityDiagnosisService', () => {
     process.env.OPENAI_API_KEY = prev;
 
     expect(d.follow_up_questions.length).toBe(3);
+  });
+
+  test('parseBatchScoringJson requires all seven fields', () => {
+    const sections = REVIEW_STEP3_QUALITY_FIELD_ORDER.map((field, i) => {
+      const score = Math.round(Math.max(0, Math.min(1, 0.12 + i * 0.08)) * 100) / 100;
+      return {
+        field,
+        quality_score: score,
+        dimension_scores: {
+          specificity: score,
+          information_density: score,
+          clarity: score,
+          relevance: score,
+          completeness: score
+        },
+        issues: ['too_short']
+      };
+    });
+    const parsed = parseBatchScoringJson(JSON.stringify({ sections }), REVIEW_STEP3_QUALITY_FIELD_ORDER);
+    expect(parsed).toHaveLength(7);
+    expect(sortDiagnosesByQuality(parsed)[0].field).toBe(REVIEW_STEP3_QUALITY_FIELD_ORDER[0]);
+  });
+
+  test('parseFollowUpQuestionsJson accepts follow_up_questions array', () => {
+    const qs = parseFollowUpQuestionsJson(
+      JSON.stringify({ follow_up_questions: ['A?', 'B?', 'C?'] }),
+      'skills'
+    );
+    expect(qs).toEqual(['A?', 'B?', 'C?']);
+  });
+
+  test('evaluateProfileReviewFollowUps uses heuristic scoring plus three follow-up LLM calls', async () => {
+    clearInputQualityDiagnosisSessionCache();
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-key';
+
+    const llmProvider = jest.fn(async (messages) => {
+      const user = JSON.parse(messages.find((m) => m.role === 'user').content);
+      expect(user.sections).toBeUndefined();
+      expect(REVIEW_STEP3_QUALITY_FIELD_ORDER).toContain(user.field);
+      return JSON.stringify({
+        field: user.field,
+        follow_up_questions: [`Q1 for ${user.field}?`, 'Q2?', 'Q3?']
+      });
+    });
+
+    const { followUps } = await evaluateProfileReviewFollowUps(
+      {
+        userIdentity: {
+          workEnjoyMost: 'x',
+          topicsIndustriesInterest: 'yy',
+          naturallyGoodAt: 'zzz',
+          workEnvironmentFit: 'aaaa',
+          workingLifeAchievement: 'bbbbb'
+        },
+        structuredUserInfo: {
+          keyResponsibilities: ['Built pipelines in Python'],
+          skillsInDevelopment: []
+        }
+      },
+      { llmProvider, userId: 'batch-test-user', lang: 'en' }
+    );
+
+    process.env.OPENAI_API_KEY = prev;
+    expect(llmProvider).toHaveBeenCalledTimes(3);
+
+    const cachedRun = await evaluateProfileReviewFollowUps(
+      {
+        userIdentity: {
+          workEnjoyMost: 'x',
+          topicsIndustriesInterest: 'yy',
+          naturallyGoodAt: 'zzz',
+          workEnvironmentFit: 'aaaa',
+          workingLifeAchievement: 'bbbbb',
+        },
+        structuredUserInfo: {
+          keyResponsibilities: ['Built pipelines in Python'],
+          skillsInDevelopment: [],
+        },
+      },
+      { llmProvider, userId: 'batch-test-user', lang: 'en' }
+    );
+    expect(cachedRun.cached).toBe(true);
+    expect(llmProvider).toHaveBeenCalledTimes(3);
+
+    expect(followUps).toHaveLength(3);
+    followUps.forEach((f) => {
+      expect(REVIEW_STEP3_QUALITY_FIELD_ORDER).toContain(f.field);
+      expect(f.follow_up_question).toMatch(/^Q1 for /);
+    });
+  });
+
+  test('server and client diagnosis fingerprints match for same profile', () => {
+    const { qualityDiagnosisFingerprint: clientFp } = require('../../client/utils/inputQualityDiagnosisCache');
+    const snapshot = {
+      userIdentity: { workEnjoyMost: 'design systems' },
+      structuredUserInfo: {
+        keyResponsibilities: ['Shipped analytics'],
+        skillsInDevelopment: ['Rust'],
+      },
+    };
+    expect(qualityDiagnosisFingerprint(snapshot, 'de')).toBe(clientFp(snapshot, 'de'));
+  });
+
+  test('evaluateProfileReviewFollowUps returns cached result for same user and content', async () => {
+    clearInputQualityDiagnosisSessionCache();
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    const snapshot = {
+      userIdentity: {
+        workEnjoyMost: 'x',
+        topicsIndustriesInterest: 'yy',
+        naturallyGoodAt: 'zzz',
+        workEnvironmentFit: 'aaaa',
+        workingLifeAchievement: 'bbbbb',
+      },
+      structuredUserInfo: {
+        keyResponsibilities: ['Did something'],
+        skillsInDevelopment: [],
+      },
+    };
+
+    const first = await evaluateProfileReviewFollowUps(snapshot, { userId: 'user-cache-test', lang: 'en' });
+    const second = await evaluateProfileReviewFollowUps(snapshot, { userId: 'user-cache-test', lang: 'en' });
+
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(first.cached).toBe(false);
+    expect(second.cached).toBe(true);
+    expect(second.followUps).toEqual(first.followUps);
+  });
+
+  test('evaluateProfileReviewFollowUps session cache is per user', async () => {
+    clearInputQualityDiagnosisSessionCache();
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    const snapshot = {
+      userIdentity: {
+        workEnjoyMost: 'shared text',
+        topicsIndustriesInterest: 'yy',
+        naturallyGoodAt: 'zzz',
+        workEnvironmentFit: 'aaaa',
+        workingLifeAchievement: 'bbbbb',
+      },
+      structuredUserInfo: { keyResponsibilities: ['R'], skillsInDevelopment: [] },
+    };
+
+    await evaluateProfileReviewFollowUps(snapshot, { userId: 'user-a', lang: 'en' });
+    const forB = await evaluateProfileReviewFollowUps(snapshot, { userId: 'user-b', lang: 'en' });
+
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(forB.cached).toBe(false);
+  });
+
+  test('evaluateProfileReviewFollowUps normalizes each section once', async () => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'OPENAI_API_KEY');
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    jest.resetModules();
+    const normalizeSpy = jest.fn(async (text) => text);
+    jest.doMock('../services/ai/normalizeForProcessing', () => ({
+      normalizeForProcessing: normalizeSpy
+    }));
+    const { evaluateProfileReviewFollowUps: evaluateFollowUps } = require(
+      '../services/jobAnalysis/inputQualityDiagnosisService'
+    );
+
+    await evaluateFollowUps(
+      {
+        userIdentity: {
+          workEnjoyMost: 'x',
+          topicsIndustriesInterest: 'yy',
+          naturallyGoodAt: 'zzz',
+          workEnvironmentFit: 'aaaa',
+          workingLifeAchievement: 'bbbbb'
+        },
+        structuredUserInfo: {
+          keyResponsibilities: ['Did something'],
+          skillsInDevelopment: []
+        }
+      },
+      { lang: 'de' }
+    );
+
+    if (had) process.env.OPENAI_API_KEY = prev;
+    expect(normalizeSpy).toHaveBeenCalledTimes(7);
+    jest.resetModules();
   });
 });

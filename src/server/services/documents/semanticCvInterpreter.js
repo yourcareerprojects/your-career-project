@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { LRUCache } = require('lru-cache');
-const { buildMessages } = require('../../prompts/interpretCvToProfile');
+const { buildMessages: buildIdentityMessages } = require('../../prompts/interpretCvIdentity');
+const { buildMessages: buildStructuredMessages } = require('../../prompts/interpretCvStructured');
 const { openaiProvider } = require('../jobAnalysis/roleIdentityComposer');
 const { runStageIfCvPipeline, logCvEvent, getCvPipeline } = require('../../utils/metricsLogger');
 
@@ -235,7 +236,7 @@ function normalizeInterpretationShape(parsed) {
   };
 }
 
-async function interpretCvText(cvText, options = {}) {
+async function interpretCvLayer(cvText, options, layer) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !String(apiKey).trim()) {
     return null;
@@ -248,12 +249,12 @@ async function interpretCvText(cvText, options = {}) {
 
   const fingerprint = crypto
     .createHash('sha256')
-    .update(`${documentLang}|${normalizedText}`, 'utf8')
+    .update(`${layer.cacheSuffix}|${documentLang}|${normalizedText}`, 'utf8')
     .digest('hex');
   const cached = RESULT_CACHE.get(fingerprint);
   if (cached !== undefined) {
     if (getCvPipeline()) {
-      logCvEvent('cv_semantic_cache_hit', { layer: 'interpret_cv_text' });
+      logCvEvent('cv_semantic_cache_hit', { layer: layer.cacheHitLayer });
     }
     return cached;
   }
@@ -262,14 +263,14 @@ async function interpretCvText(cvText, options = {}) {
   }
 
   const task = (async () => {
-    return runStageIfCvPipeline('interpret_cv_text_total', { memory: true }, async () => {
-      const messages = buildMessages(normalizedText, documentLang);
-      const raw = await runStageIfCvPipeline('openai_interpret_cv', {}, async () =>
+    return runStageIfCvPipeline(layer.stageTotal, { memory: true }, async () => {
+      const messages = layer.buildMessages(normalizedText, documentLang);
+      const raw = await runStageIfCvPipeline(layer.stageOpenAi, {}, async () =>
         openaiProvider(messages, { temperature: 0.1 })
       );
-      const normalized = await runStageIfCvPipeline('interpret_cv_normalize', {}, async () => {
+      const normalized = await runStageIfCvPipeline(layer.stageNormalize, {}, async () => {
         const parsed = JSON.parse(stripFences(raw));
-        return normalizeInterpretationShape(parsed);
+        return layer.normalize(parsed);
       });
       RESULT_CACHE.set(fingerprint, normalized);
       return normalized;
@@ -282,8 +283,44 @@ async function interpretCvText(cvText, options = {}) {
   return task;
 }
 
+async function interpretCvIdentityText(cvText, options = {}) {
+  return interpretCvLayer(cvText, options, {
+    cacheSuffix: 'identity',
+    cacheHitLayer: 'interpret_cv_identity',
+    stageTotal: 'interpret_cv_identity_total',
+    stageOpenAi: 'openai_interpret_cv_identity',
+    stageNormalize: 'interpret_cv_identity_normalize',
+    buildMessages: buildIdentityMessages,
+    normalize: (parsed) => ({
+      userIdentity: normalizeInterpretationShape({ userIdentity: parsed?.userIdentity }).userIdentity,
+    }),
+  });
+}
+
+async function interpretCvStructuredText(cvText, options = {}) {
+  return interpretCvLayer(cvText, options, {
+    cacheSuffix: 'structured',
+    cacheHitLayer: 'interpret_cv_structured',
+    stageTotal: 'interpret_cv_structured_total',
+    stageOpenAi: 'openai_interpret_cv_structured',
+    stageNormalize: 'interpret_cv_structured_normalize',
+    buildMessages: buildStructuredMessages,
+    normalize: (parsed) => {
+      const normalized = normalizeInterpretationShape({
+        structuredProfile: parsed?.structuredProfile,
+        seniority: parsed?.seniority,
+      });
+      return {
+        structuredProfile: normalized.structuredProfile,
+        seniority: normalized.seniority,
+      };
+    },
+  });
+}
+
 module.exports = {
-  interpretCvText,
+  interpretCvIdentityText,
+  interpretCvStructuredText,
   normalizeInterpretationShape,
   __testables: {
     CACHE_TTL_MS,

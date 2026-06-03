@@ -1,8 +1,26 @@
 const { documentTypeDisplaySlug } = require('../../../constants/documentTypes');
+const { fallbackCvProfileWithoutLocalization } = require('./cvExtractLocalization');
+const { computeCvExtractionReadiness } = require('./cvExtractionReadiness');
 
-function serializeEmbeddedDocumentForClient(doc) {
+function normalizeUiLanguage(value, fallback = 'en') {
+  const code = String(value || fallback).toLowerCase().split('-')[0] || fallback;
+  return code === 'de' ? 'de' : 'en';
+}
+
+function resolveExtractedProfileForClient(doc, uiLanguage) {
+  const profile = doc?.extractedProfileData ?? null;
+  if (!profile || typeof profile !== 'object') return profile;
+  const locStatus = String(doc?.localizationStatus || '');
+  if (locStatus !== 'pending' && locStatus !== 'idle') return profile;
+  return fallbackCvProfileWithoutLocalization(profile, normalizeUiLanguage(uiLanguage, 'en'));
+}
+
+function serializeEmbeddedDocumentForClient(doc, options = {}) {
   if (!doc) return null;
   const o = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: false }) : doc;
+  const uiLanguage = options.uiLanguage;
+  const lang = normalizeUiLanguage(uiLanguage, 'en');
+  const readiness = computeCvExtractionReadiness(o, null, { language: lang });
   return {
     id: o._id,
     type: o.type,
@@ -19,13 +37,23 @@ function serializeEmbeddedDocumentForClient(doc) {
     status: o.status,
     extractionStatus: o.extractionStatus ?? null,
     extractionOutcomeStatus: o.extractionOutcomeStatus ?? null,
-    extractedProfileData: o.extractedProfileData ?? null,
+    extractedProfileData: resolveExtractedProfileForClient(o, uiLanguage),
     cvExtractLocalization: o.cvExtractLocalization ?? null,
     extractionMessage: o.extractionMessage ?? null,
     extractionMessageKey: o.extractionMessageKey ?? null,
     localizationStatus: o.localizationStatus ?? null,
     semanticInterpretation: o.semanticInterpretation ?? null,
     semanticInterpretationLanguage: o.semanticInterpretationLanguage ?? null,
+    semanticEnrichmentStatus: o.semanticEnrichmentStatus ?? null,
+    narrativeEnrichmentStatus: o.narrativeEnrichmentStatus ?? null,
+    reviewReady: readiness.reviewReady,
+    reviewQuality: readiness.reviewQuality,
+    isBackgroundEnriching: readiness.isBackgroundEnriching,
+    backgroundEnrichment: readiness.backgroundEnrichment,
+    displayStage: readiness.displayStage,
+    phase: readiness.phase,
+    narrativesReady: readiness.narrativesReady,
+    blockingTask: readiness.blockingTask,
   };
 }
 

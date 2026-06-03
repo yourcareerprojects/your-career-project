@@ -39,6 +39,9 @@ async function createExtractionJob(documentId, userId, language = 'en') {
   const { getRateLimitService } = require('../rateLimit/RateLimitService');
   await getRateLimitService().checkGlobalQueuePressure();
 
+  const { deleteCvExtractedTextCacheForDocument } = require('./cvExtractedTextCacheService');
+  await deleteCvExtractedTextCacheForDocument(userId, documentId).catch(() => {});
+
   const id = new mongoose.Types.ObjectId();
   const snapshotLanguage = normalizeCvJobLanguage(language);
   const job = await CvExtractionJob.create({

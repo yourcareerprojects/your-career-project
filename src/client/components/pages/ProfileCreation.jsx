@@ -5,7 +5,6 @@ import { Box, Typography, Paper, Alert, Button } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import DocumentUploadForm from '../profile/DocumentUploadForm';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
-import { invalidateFullProfileQuery, invalidateProfileCompletionQuery } from '../../hooks/useProfileQueries';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
@@ -91,8 +90,6 @@ const ProfileCreation = () => {
 
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setProfileExists(true);
-      invalidateProfileCompletionQuery();
-      await invalidateFullProfileQuery();
       navigate('/profile');
     } catch (err) {
       setError(buildReviewSaveUserMessage(err, t));

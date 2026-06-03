@@ -1,3 +1,19 @@
+jest.mock('../hooks/useProfileQueries', () => ({
+  getProfileFullQueryKeyFull: (lang) => ['profile', 'full', lang],
+  invalidateProfileCompletionQuery: jest.fn(),
+  invalidateFullProfileQuery: jest.fn(() => Promise.resolve()),
+  fetchFullProfile: jest.fn(),
+}));
+
+jest.mock('../queryClient', () => ({
+  queryClient: {
+    getQueryData: jest.fn(() => undefined),
+    setQueryData: jest.fn(),
+  },
+}));
+
+const { queryClient } = require('../queryClient');
+const { invalidateFullProfileQuery } = require('../hooks/useProfileQueries');
 const {
   saveExtractedProfileReview,
   buildReviewSaveUserMessage,
@@ -52,19 +68,51 @@ describe('isReviewUserIdentityComplete', () => {
 });
 
 describe('saveExtractedProfileReview', () => {
-  test('resolves on successful save', async () => {
-    const fetchImpl = mockFetchOk();
+  test('resolves on successful save when narratives are ready', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          ready: true,
+          fingerprintMatches: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          seniority: validSeniority,
+          narrativesReady: true,
+          usedNarrativeCacheFastPath: true,
+          who_are_you: { raw_answers: [], summary_text: '' },
+          structuredUserInfo: {},
+          documents: [{ id: 'doc-1', name: 'resume.pdf', type: 'resume' }],
+        }),
+      });
     const result = await saveExtractedProfileReview({
-      profileData: buildProfilePayload(),
+      profileData: buildProfilePayload({ documentId: 'doc-1' }),
       refreshUser: async () => ({ success: true }),
       fetchImpl,
       getAuthToken: () => 'token-1',
       langQuery: 'lang=en',
+      prefetchProfile: false,
     });
 
     expect(result.reviewSaveData.success).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0]).toBe('/api/profile/review-save?lang=en');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][0]).toContain('/narrative-cache-status');
+    expect(fetchImpl.mock.calls[1][0]).toBe('/api/profile/review-save?lang=en');
+    expect(invalidateFullProfileQuery).not.toHaveBeenCalled();
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['profile', 'full', 'en'],
+      expect.objectContaining({
+        _seededFromReviewSave: true,
+        profile: expect.objectContaining({
+          documents: [{ id: 'doc-1', name: 'resume.pdf', type: 'resume' }],
+        }),
+      })
+    );
   });
 
   test('rejects on seniority validation failure without calling API', async () => {

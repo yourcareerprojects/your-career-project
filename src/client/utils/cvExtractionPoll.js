@@ -46,11 +46,22 @@ function buildPollSnapshot(data, elapsedMs, pollPhase) {
   return {
     status: data.status,
     stage: data.stage ?? null,
+    displayStage: data.displayStage ?? null,
     progress: Number(data.progress ?? 0),
     message: data.message || data.progressLabel || '',
     estimatedState: data.estimatedState ?? null,
     errorKey: data.errorKey ?? null,
     elapsedMs: Number(data.elapsedMs ?? elapsedMs),
+    reviewReady: Boolean(data.reviewReady),
+    identityReviewReady: Boolean(data.identityReviewReady ?? data.reviewReady),
+    structuredReviewReady: Boolean(data.structuredReviewReady),
+    extractionLayers: data.extractionLayers ?? null,
+    reviewQuality: data.reviewQuality ?? null,
+    phase: data.phase ?? null,
+    narrativesReady: Boolean(data.narrativesReady),
+    blockingTask: data.blockingTask ?? null,
+    isBackgroundEnriching: Boolean(data.isBackgroundEnriching),
+    backgroundEnrichment: data.backgroundEnrichment ?? null,
     isSlow: zombie.isSlow,
     isStuck: zombie.isStuck,
     estimatedDelayReason: zombie.estimatedDelayReason,
@@ -230,14 +241,14 @@ async function watchCvExtractionUntilTerminal({
     lastSnapshot = snapshot;
     onUpdate?.(snapshot);
 
-    if (data.status === 'completed') {
-      return { kind: 'completed', data };
-    }
     if (data.status === 'failed') {
       return { kind: 'failed', data };
     }
+    if (data.status === 'completed' && isCvExtractionPollTerminal(data)) {
+      return { kind: 'completed', data };
+    }
 
-    const fingerprint = `${data.status}:${snapshot.stage}:${snapshot.progress}`;
+    const fingerprint = `${data.status}:${snapshot.phase}:${snapshot.blockingTask}:${snapshot.progress}`;
     const delay = getPollDelayForPhase(elapsedMs, maxDurationMs, pollPhase);
     const stallMultiplier = fingerprint === lastFingerprint ? 1.25 : 1;
     lastFingerprint = fingerprint;
@@ -271,6 +282,13 @@ function isActiveCvExtractionDocument(doc) {
   const isCv = type === 'cv' || type === 'resume';
   if (!isCv) return false;
 
+  if (typeof doc.reviewReady === 'boolean') {
+    const pipeline = doc.extractionStatus;
+    if (pipeline === 'failed') return false;
+    if (pipeline === 'queued' || pipeline === 'processing') return true;
+    return !doc.reviewReady;
+  }
+
   const outcome = doc.extractionOutcomeStatus;
   if (outcome === 'success' || outcome === 'partial' || outcome === 'failed') {
     return false;
@@ -284,22 +302,193 @@ function isActiveCvExtractionDocument(doc) {
   return true;
 }
 
+/** @typedef {'structured'|'localization'|'narrative'} CvBackgroundBlockingTask */
+
+/**
+ * @param {CvBackgroundBlockingTask|null|undefined} blockingTask
+ * @returns {string}
+ */
+function mapBlockingTaskToMessageKey(blockingTask) {
+  const map = {
+    structured: 'documentUpload.async.enrichingStructured',
+    localization: 'documentUpload.async.enrichingLocalization',
+    narrative: 'documentUpload.async.enrichingNarrative',
+  };
+  return map[blockingTask] || 'documentUpload.async.enriching';
+}
+
+/**
+ * @param {CvBackgroundBlockingTask|null|undefined} blockingTask
+ * @param {string|null|undefined} [legacyStage]
+ */
+function uiPhaseForBackgroundEnrichment(blockingTask, legacyStage = null) {
+  const task = blockingTask || legacyStage;
+  if (task === 'structured') return 'enrichingStructured';
+  if (task === 'localization') return 'enrichingLocalization';
+  if (task === 'narrative') return 'enrichingNarrative';
+  return 'enriching';
+}
+
+/**
+ * Poll stops when worker failed or extraction is completed and background enrichment settled.
+ * @param {Record<string, unknown>} data
+ */
+function isCvExtractionPollTerminal(data) {
+  if (data.status === 'failed') return true;
+  if (data.status !== 'completed') return false;
+  const phase = data.phase != null ? String(data.phase) : null;
+  if (phase === 'ready') return true;
+  if (phase === 'enriching' || Boolean(data.isBackgroundEnriching)) return false;
+  return true;
+}
+
+/**
+ * True while worker or post-extraction enrichment UI should show in-progress state.
+ * @param {string|null|undefined} uiPhase
+ */
+function isCvExtractionUiPhaseInProgress(uiPhase) {
+  if (!uiPhase || uiPhase === 'idle') return false;
+  return uiPhase !== 'completed' && uiPhase !== 'failed' && uiPhase !== 'timedOut';
+}
+
 /**
  * Map API status/stage to UI sub-phase keys used by DocumentUploadForm.
  * @param {CvExtractionStatus} status
  * @param {string|null} stage
+ * @param {{ isBackgroundEnriching?: boolean, displayStage?: string|null, phase?: string|null, blockingTask?: CvBackgroundBlockingTask|null }} [extras]
  */
-function mapExtractionStatusToUiPhase(status, stage) {
-  if (status === 'completed') return 'completed';
+function mapExtractionStatusToUiPhase(status, stage, extras = {}) {
+  const phase = extras.phase != null ? String(extras.phase) : null;
+  const isBackgroundEnriching = Boolean(extras.isBackgroundEnriching);
+  const displayStage = extras.displayStage ?? null;
+  const blockingTask = extras.blockingTask ?? null;
+
+  if (phase === 'ready' || (status === 'completed' && phase === 'ready')) return 'completed';
+  if (phase === 'enriching' || (status === 'completed' && isBackgroundEnriching)) {
+    return uiPhaseForBackgroundEnrichment(blockingTask, stage);
+  }
+  if (phase === 'failed' || status === 'failed') return 'failed';
+  if (phase === 'upload' || status === 'queued') return 'queued';
+  if (phase === 'extraction') return 'extraction';
+  if (phase === 'ocr') return 'ocr';
+
+  if (status === 'completed') {
+    if (isBackgroundEnriching) {
+      return uiPhaseForBackgroundEnrichment(blockingTask, stage);
+    }
+    return 'completed';
+  }
   if (status === 'failed') return 'failed';
   if (status === 'queued') return 'queued';
   if (status === 'processing') {
-    if (stage === 'localization') return 'localization';
-    if (stage === 'extraction') return 'extraction';
-    if (stage === 'ocr' || stage === 'upload') return 'ocr';
+    if (stage === 'structured' || stage === 'localization' || stage === 'narrative') {
+      return uiPhaseForBackgroundEnrichment(stage, null);
+    }
+    if (stage === 'enrichment' || displayStage === 'enrichment') return 'enriching';
+    if (stage === 'extraction' || displayStage === 'extraction') return 'extraction';
+    if (stage === 'ocr' || stage === 'upload' || displayStage === 'ocr' || displayStage === 'upload') {
+      return 'ocr';
+    }
     return 'ocr';
   }
   return 'queued';
+}
+
+/**
+ * Resolve i18n key for extraction progress copy (prefers API `phase` / `blockingTask`).
+ * @param {object|null|undefined} snapshot — poll snapshot or status payload
+ * @param {object} [context]
+ * @param {boolean} [context.pollReconnecting]
+ * @param {'normal'|'delayed'|'retrying'|null} [context.extractionEstimatedState]
+ * @param {boolean} [context.hasActivePoll]
+ * @param {() => string|null} [context.getZombieMessageKey] — returns i18n key from zombie helpers
+ */
+function resolveExtractionProgressMessageKey(snapshot, context = {}) {
+  const {
+    pollReconnecting = false,
+    extractionEstimatedState = null,
+    hasActivePoll = false,
+    getZombieMessageKey = null,
+  } = context;
+
+  if (pollReconnecting) return 'documentUpload.async.pollReconnecting';
+  if (typeof getZombieMessageKey === 'function') {
+    const zombieKey = getZombieMessageKey();
+    if (zombieKey) return zombieKey;
+  }
+  if (extractionEstimatedState === 'retrying') return 'documentUpload.async.retrying';
+  if (extractionEstimatedState === 'delayed') return 'documentUpload.async.takingLonger';
+  if (hasActivePoll && extractionEstimatedState === 'normal') {
+    return 'documentUpload.async.stillProcessing';
+  }
+
+  const phase = snapshot?.phase != null ? String(snapshot.phase) : null;
+  if (phase === 'enriching' && snapshot?.blockingTask) {
+    return mapBlockingTaskToMessageKey(snapshot.blockingTask);
+  }
+  if (phase === 'upload') return 'documentUpload.async.extractionQueued';
+  if (phase === 'ocr') return 'documentUpload.async.ocr';
+  if (phase === 'extraction') return 'documentUpload.async.extraction';
+  if (phase === 'ready') return 'documentUpload.async.completed';
+
+  const map = {
+    queued: 'documentUpload.async.extractionQueued',
+    ocr: 'documentUpload.async.ocr',
+    extraction: 'documentUpload.async.extraction',
+    enriching: 'documentUpload.async.enriching',
+    enrichingStructured: 'documentUpload.async.enrichingStructured',
+    enrichingLocalization: 'documentUpload.async.enrichingLocalization',
+    enrichingNarrative: 'documentUpload.async.enrichingNarrative',
+    completed: 'documentUpload.async.completed',
+  };
+  const uiPhase = mapExtractionStatusToUiPhase(
+    snapshot?.status,
+    snapshot?.stage ?? null,
+    {
+      isBackgroundEnriching: snapshot?.isBackgroundEnriching,
+      displayStage: snapshot?.displayStage,
+      phase: snapshot?.phase,
+    }
+  );
+  return map[uiPhase] || 'documentUpload.async.extractionQueued';
+}
+
+/**
+ * @param {object} doc
+ * @returns {boolean}
+ */
+function documentNeedsFullReviewQuality(doc) {
+  if (!doc) return true;
+  if (doc.reviewQuality === 'full') return false;
+  if (doc.reviewQuality === 'baseline') return true;
+  const status = String(doc.semanticEnrichmentStatus || '');
+  const messageKey = String(doc.extractionMessageKey || '');
+  return (
+    status !== 'complete'
+    || messageKey === 'documentUpload.extraction.heuristicFallback'
+    || messageKey === 'documentUpload.extraction.aiTimeout'
+  );
+}
+
+/**
+ * True when review should call ensure-localization (UI locale differs from CV source).
+ * @param {object|null|undefined} doc
+ * @param {string} uiLangCode
+ */
+function documentNeedsCvLocalization(doc, uiLangCode) {
+  if (!doc?.extractedProfileData) return false;
+  const locStatus = String(doc.localizationStatus || '').toLowerCase();
+  if (locStatus === 'complete' || locStatus === 'partial' || locStatus === 'skipped') {
+    return false;
+  }
+  const source =
+    doc.semanticInterpretationLanguage === 'de' || doc.semanticInterpretationLanguage === 'en'
+      ? doc.semanticInterpretationLanguage
+      : doc.cvExtractLocalization?.documentLanguage === 'de'
+        ? 'de'
+        : 'en';
+  const target = String(uiLangCode || 'en').toLowerCase().split('-')[0] === 'de' ? 'de' : 'en';
+  return source !== target;
 }
 
 module.exports = {
@@ -307,6 +496,13 @@ module.exports = {
   watchCvExtractionUntilTerminal,
   isActiveCvExtractionDocument,
   mapExtractionStatusToUiPhase,
+  mapBlockingTaskToMessageKey,
+  uiPhaseForBackgroundEnrichment,
+  isCvExtractionPollTerminal,
+  isCvExtractionUiPhaseInProgress,
+  resolveExtractionProgressMessageKey,
+  documentNeedsFullReviewQuality,
+  documentNeedsCvLocalization,
   buildPollSnapshot,
   getPollPhase,
 };

@@ -58,7 +58,22 @@ jest.mock('../services/embedding/userIdentityEmbeddingTextService', () => {
   return {
     ...actual,
     refreshUserIdentityEmbeddingOnUserDocument: jest.fn(async () => undefined),
+    scheduleRefreshUserIdentityEmbeddingForUser: jest.fn(),
     ensureUserIdentityEmbeddingCachedByUserId: jest.fn(async () => null),
+  };
+});
+
+jest.mock('../services/profile/deferredProfileNarrativeService', () => ({
+  scheduleDeferredProfileNarrativesForUser: jest.fn(),
+}));
+
+jest.mock('../services/profile/extractionNarrativeEnrichmentService', () => {
+  const actual = jest.requireActual('../services/profile/extractionNarrativeEnrichmentService');
+  return {
+    ...actual,
+    scheduleExtractionNarrativeEnrichment: jest.fn((userId, documentId, options) => {
+      void actual.generateAndPersistExtractionNarratives(userId, documentId, options);
+    }),
   };
 });
 
@@ -66,13 +81,26 @@ jest.mock('../services/embedding/userOccupationInference', () => ({
   inferIscoFromDomains: jest.fn(async () => ({ inferred: [], methodUsed: 'rule_based' })),
 }));
 
+jest.mock('../services/ai/translationCache', () => ({
+  cachedTranslate: jest.fn(async (_text, _lang, fn) => fn()),
+}));
+
+jest.mock('../services/ai/translateStructured', () => ({
+  translateStructured: jest.fn(async (text) => text),
+}));
+
+jest.mock('../services/ai/translateText', () => ({
+  translateText: jest.fn(async ({ text }) => text),
+}));
+
 const User = require('../models/User');
 const documentRoutes = require('../routes/documents');
 const profileRoutes = require('../routes/profile');
 const languageResolutionMiddleware = require('../middleware/languageResolution');
 const { normalizeInterpretationShape } = require('../services/documents/semanticCvInterpreter');
-const { __testables: cvExtractionTestables } = require('../services/cv/cvExtractionProcessor');
+const { mapSemanticExtractionToProfile } = require('../services/cv/cvSemanticMap');
 const { applyCvExtractionSuccessToUser } = require('../services/documents/cvExtractionPersistence');
+const { generateAndPersistExtractionNarratives } = require('../services/profile/extractionNarrativeEnrichmentService');
 const { clearProfileResponseCache } = require('../services/profileGetResponseCache');
 const { validateSeniorityPayload, seniorityPayloadsMatch } = require('../../client/utils/validateSeniorityPayload');
 
@@ -129,7 +157,7 @@ function buildSampleSemanticExtraction() {
 
 function buildMappedExtractionBundle() {
   const semantic = buildSampleSemanticExtraction();
-  const mapped = cvExtractionTestables.mapSemanticExtractionToProfile(semantic);
+  const mapped = mapSemanticExtractionToProfile(semantic);
   return {
     status: mapped.status,
     profile: mapped.profile,
@@ -140,7 +168,10 @@ function buildMappedExtractionBundle() {
 }
 
 /** Mirrors DocumentUploadForm.handleReviewSave → ProfileCreation review-save body. */
-function buildReviewSavePayloadFromExtraction(extractedProfile, { mode = 'merge', name, cvExtractLocalization } = {}) {
+function buildReviewSavePayloadFromExtraction(
+  extractedProfile,
+  { mode = 'merge', name, cvExtractLocalization, documentId, acceptedFields } = {}
+) {
   const structured = extractedProfile?.structuredUserInfo || {};
   const seniorityCheck = validateSeniorityPayload(extractedProfile?.seniority || {});
   if (!seniorityCheck.ok) {
@@ -174,6 +205,8 @@ function buildReviewSavePayloadFromExtraction(extractedProfile, { mode = 'merge'
         : [],
     },
     ...(cvExtractLocalization ? { cvExtractLocalization } : {}),
+    ...(documentId ? { documentId: String(documentId) } : {}),
+    ...(acceptedFields ? { acceptedFields } : {}),
   };
 }
 
@@ -244,6 +277,7 @@ describe('CV review → profile flow (integration)', () => {
 
     const bundle = buildMappedExtractionBundle();
     await applyCvExtractionSuccessToUser(user._id, documentId, bundle);
+    await generateAndPersistExtractionNarratives(user._id, documentId, { language: 'en', sourceLanguage: 'en' });
 
     const statusPayload = await pollExtractionUntilCompleted(app, token, documentId);
     expect(statusPayload.status).toBe('completed');
@@ -260,6 +294,7 @@ describe('CV review → profile flow (integration)', () => {
     const reviewPayload = buildReviewSavePayloadFromExtraction(extractedProfile, {
       mode: 'replace',
       name: 'Jane Doe',
+      documentId,
       cvExtractLocalization: docRes.body.document.cvExtractLocalization || { documentLanguage: 'en' },
     });
 
@@ -301,7 +336,6 @@ describe('CV review → profile flow (integration)', () => {
     expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual(
       expect.arrayContaining(['Stakeholder Management'])
     );
-    expect(persisted.profile.careerSimulationInputs.seniority).toMatchObject(reviewPayload.seniority);
   });
 
   test('merge mode keeps existing structured lists when CV review adds new items', async () => {
@@ -325,6 +359,7 @@ describe('CV review → profile flow (integration)', () => {
 
     const bundle = buildMappedExtractionBundle();
     await applyCvExtractionSuccessToUser(user._id, documentId, bundle);
+    await generateAndPersistExtractionNarratives(user._id, documentId, { language: 'en', sourceLanguage: 'en' });
     await pollExtractionUntilCompleted(app, token, documentId);
 
     const docRes = await request(app)

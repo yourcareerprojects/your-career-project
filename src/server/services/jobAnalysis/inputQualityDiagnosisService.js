@@ -1,4 +1,10 @@
 const { buildMessages } = require('../../prompts/generateInputQualityDiagnosis');
+const { buildBatchScoringMessages } = require('../../prompts/generateInputQualityBatchScoring');
+const { buildFollowUpOnlyMessages } = require('../../prompts/generateInputQualityFollowUpQuestions');
+const {
+  getCachedProfileReviewDiagnosis,
+  setCachedProfileReviewDiagnosis,
+} = require('./inputQualityDiagnosisSessionCache');
 const { openaiProvider } = require('./roleIdentityComposer');
 const { normalizeForProcessing } = require('../ai/normalizeForProcessing');
 const { translateText } = require('../ai/translateText');
@@ -129,6 +135,79 @@ function parseDiagnosisJson(raw, field) {
   const cleaned = stripFences(raw);
   const parsed = JSON.parse(cleaned);
   return coerceParsedDiagnosis(parsed, field);
+}
+
+/**
+ * @param {string} raw
+ * @param {readonly string[]} fieldOrder
+ * @returns {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[] }[] | null}
+ */
+function parseBatchScoringJson(raw, fieldOrder) {
+  const cleaned = stripFences(raw);
+  const parsed = JSON.parse(cleaned);
+  const sections = Array.isArray(parsed?.sections) ? parsed.sections : null;
+  if (!sections || sections.length < fieldOrder.length) return null;
+
+  /** @type {Map<string, { field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[] }>} */
+  const byField = new Map();
+  for (const item of sections) {
+    const coerced = coerceParsedDiagnosis({ ...item, follow_up_questions: [] }, String(item?.field || ''));
+    if (!coerced) continue;
+    const { follow_up_questions: _fq, ...scoring } = coerced;
+    byField.set(coerced.field, scoring);
+  }
+
+  const out = [];
+  for (const field of fieldOrder) {
+    const row = byField.get(field);
+    if (!row) return null;
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * @param {string} raw
+ * @param {string} field
+ * @returns {string[]}
+ */
+function parseFollowUpQuestionsJson(raw, field) {
+  const cleaned = stripFences(raw);
+  const parsed = JSON.parse(cleaned);
+  if (Array.isArray(parsed?.follow_up_questions)) {
+    return parsed.follow_up_questions.map((q) => String(q || '').trim()).filter(Boolean);
+  }
+  const coerced = coerceParsedDiagnosis(parsed, field);
+  return coerced?.follow_up_questions ?? [];
+}
+
+/**
+ * @param {{ quality_score: number, field: string }[]} diagnoses
+ */
+function sortDiagnosesByQuality(diagnoses) {
+  return [...diagnoses].sort((a, b) => {
+    if (a.quality_score !== b.quality_score) return a.quality_score - b.quality_score;
+    return String(a.field).localeCompare(String(b.field));
+  });
+}
+
+/**
+ * @param {Record<string, string>} normalizedTextMap
+ * @param {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[] }} row
+ */
+function mergeInconsistentIssueForField(normalizedTextMap, row) {
+  const text = normalizedTextMap[row.field] ?? '';
+  const otherFields = { ...normalizedTextMap };
+  delete otherFields[row.field];
+  let issues = [...row.issues];
+  if (detectInconsistentWithOtherFields(text, otherFields) && !issues.includes('inconsistent_with_other_fields')) {
+    issues.push('inconsistent_with_other_fields');
+  }
+  return finalizeDiagnosis({
+    ...row,
+    issues: [...new Set(issues)],
+    follow_up_questions: []
+  });
 }
 
 /**
@@ -375,7 +454,7 @@ async function localizeFollowUpQuestion(question, lang, translator = translateTe
 /**
  * Quality diagnosis for a single profile input field (LLM when configured, else heuristics).
  *
- * @param {{ field: string, text: string, otherFields?: Record<string, unknown> }} params
+ * @param {{ field: string, text: string, otherFields?: Record<string, unknown>, lang?: string, textAlreadyNormalized?: boolean }} params
  * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object }} [options]
  * @returns {Promise<{ field: string, quality_score: number, dimension_scores: { specificity: number, information_density: number, clarity: number, relevance: number, completeness: number }, issues: QualityIssue[], follow_up_questions: string[] }>}
  */
@@ -383,9 +462,16 @@ async function evaluateInputFieldQuality(params, options = {}) {
   const field = String(params?.field || '').trim() || 'field';
   const language = String(params?.lang || 'en').toLowerCase().split('-')[0] || 'en';
   // ENGLISH_ONLY_PIPELINE: deterministic regex/NLP heuristics below operate on EN-normalized text.
-  const text = String(await normalizeForProcessing(String(params?.text ?? ''), language, translateText) ?? '');
-  const otherFieldsRaw = normalizeOtherFields(params?.otherFields);
-  const otherFields = await normalizeTextMapForProcessing(otherFieldsRaw, language);
+  let text;
+  let otherFields;
+  if (params?.textAlreadyNormalized === true) {
+    text = String(params?.text ?? '');
+    otherFields = normalizeOtherFields(params?.otherFields);
+  } else {
+    text = String(await normalizeForProcessing(String(params?.text ?? ''), language, translateText) ?? '');
+    const otherFieldsRaw = normalizeOtherFields(params?.otherFields);
+    otherFields = await normalizeTextMapForProcessing(otherFieldsRaw, language);
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !String(apiKey).trim()) {
@@ -506,32 +592,127 @@ function pickSingleFollowUpQuestion(diagnosis) {
 }
 
 /**
+ * Heuristic scoring for all seven sections (no LLM).
+ *
+ * @param {Record<string, string>} normalizedTextMap
+ */
+function scoreAllSectionsHeuristically(normalizedTextMap) {
+  return REVIEW_STEP3_QUALITY_FIELD_ORDER.map((field) => {
+    const otherFields = { ...normalizedTextMap };
+    delete otherFields[field];
+    return buildDeterministicDiagnosis(field, normalizedTextMap[field] ?? '', otherFields);
+  });
+}
+
+/**
+ * Variant B: one batched LLM scoring call for all sections, then follow-up-only LLM for the three weakest.
+ *
+ * @param {Record<string, string>} normalizedTextMap
+ * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object }} options
+ */
+async function scoreSectionsWithBatchLlm(normalizedTextMap, options = {}) {
+  const provider = options.llmProvider || openaiProvider;
+  const providerOpts = { temperature: 0.15, ...(options.providerOpts || {}) };
+
+  /** @type {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[], follow_up_questions: string[] }[]} */
+  let scoringDiagnoses;
+
+  try {
+    const raw = await provider(buildBatchScoringMessages(normalizedTextMap), providerOpts);
+    const parsed = parseBatchScoringJson(raw, REVIEW_STEP3_QUALITY_FIELD_ORDER);
+    if (!parsed) throw new Error('Invalid batch scoring JSON shape');
+    scoringDiagnoses = parsed.map((row) => mergeInconsistentIssueForField(normalizedTextMap, row));
+  } catch (err) {
+    console.warn('[inputQualityDiagnosisService] Batch scoring failed, using heuristics:', err.message);
+    scoringDiagnoses = scoreAllSectionsHeuristically(normalizedTextMap);
+  }
+
+  return scoringDiagnoses;
+}
+
+/**
+ * @param {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[], follow_up_questions?: string[] }} diagnosis
+ * @param {Record<string, string>} normalizedTextMap
+ * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object }} options
+ */
+async function attachFollowUpQuestionsViaLlm(diagnosis, normalizedTextMap, options = {}) {
+  const provider = options.llmProvider || openaiProvider;
+  const providerOpts = { temperature: 0.15, ...(options.providerOpts || {}) };
+  const text = normalizedTextMap[diagnosis.field] ?? '';
+  const otherFields = { ...normalizedTextMap };
+  delete otherFields[diagnosis.field];
+
+  /** @type {string[]} */
+  let follow_up_questions = [];
+  try {
+    const raw = await provider(
+      buildFollowUpOnlyMessages({
+        field: diagnosis.field,
+        text,
+        issues: diagnosis.issues,
+        quality_score: diagnosis.quality_score,
+        dimension_scores: diagnosis.dimension_scores,
+        otherFields
+      }),
+      providerOpts
+    );
+    follow_up_questions = parseFollowUpQuestionsJson(raw, diagnosis.field);
+  } catch (err) {
+    console.warn(
+      `[inputQualityDiagnosisService] Follow-up LLM failed for ${diagnosis.field}:`,
+      err.message
+    );
+  }
+
+  if (follow_up_questions.length !== 3) {
+    follow_up_questions = defaultQuestionsForIssues(
+      fieldLabelForDefaultQuestions(diagnosis.field),
+      diagnosis.issues,
+      diagnosis.quality_score
+    );
+  }
+
+  return { ...diagnosis, follow_up_questions };
+}
+
+/**
+ * @param {Record<string, string>} normalizedTextMap
+ * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object }} options
+ */
+async function evaluateProfileReviewFollowUpsWithLlm(normalizedTextMap, options = {}) {
+  const scoringDiagnoses = scoreAllSectionsHeuristically(normalizedTextMap);
+  const worstThree = sortDiagnosesByQuality(scoringDiagnoses).slice(0, 3);
+  return Promise.all(
+    worstThree.map((d) => attachFollowUpQuestionsViaLlm(d, normalizedTextMap, options))
+  );
+}
+
+/**
  * Score only the seven review sections, then return the three lowest-quality categories with one follow-up each.
  *
  * @param {{ userIdentity?: object, structuredUserInfo?: object }} snapshot
- * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object, translateFn?: typeof translateText }} [options]
- * @returns {Promise<{ followUps: { field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[], follow_up_question: string }[] }>}
+ * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object, translateFn?: typeof translateText, userId?: string, force?: boolean }} [options]
+ * @returns {Promise<{ followUps: { field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[], follow_up_question: string }[], cached?: boolean }>}
  */
 async function evaluateProfileReviewFollowUps(snapshot = {}, options = {}) {
-  const textMap = buildStep3ReviewTextMap(snapshot);
   const language = String(options?.lang || 'en').toLowerCase().split('-')[0] || 'en';
+  const userId = options?.userId;
+
+  if (!options?.force) {
+    const cached = getCachedProfileReviewDiagnosis(userId, snapshot, language);
+    if (cached) return { followUps: cached.followUps, cached: true };
+  }
+
+  const textMap = buildStep3ReviewTextMap(snapshot);
   const translateFn = typeof options?.translateFn === 'function' ? options.translateFn : translateText;
+  const normalizedTextMap = await normalizeTextMapForProcessing(textMap, language);
 
-  const diagnoses = await Promise.all(
-    REVIEW_STEP3_QUALITY_FIELD_ORDER.map((field) => {
-      const text = textMap[field] ?? '';
-      const otherFields = { ...textMap };
-      delete otherFields[field];
-      return evaluateInputFieldQuality({ field, text, otherFields, lang: language }, options);
-    })
-  );
+  const apiKey = process.env.OPENAI_API_KEY;
+  const worstThree =
+    apiKey && String(apiKey).trim()
+      ? await evaluateProfileReviewFollowUpsWithLlm(normalizedTextMap, options)
+      : sortDiagnosesByQuality(scoreAllSectionsHeuristically(normalizedTextMap)).slice(0, 3);
 
-  const sorted = [...diagnoses].sort((a, b) => {
-    if (a.quality_score !== b.quality_score) return a.quality_score - b.quality_score;
-    return String(a.field).localeCompare(String(b.field));
-  });
-
-  const worstThree = sorted.slice(0, 3);
   const followUps = await Promise.all(
     worstThree.map(async (d) => ({
       field: d.field,
@@ -542,7 +723,9 @@ async function evaluateProfileReviewFollowUps(snapshot = {}, options = {}) {
     }))
   );
 
-  return { followUps };
+  const result = { followUps, cached: false };
+  setCachedProfileReviewDiagnosis(userId, snapshot, language, result);
+  return result;
 }
 
 module.exports = {
@@ -550,5 +733,9 @@ module.exports = {
   evaluateInputFieldQuality,
   buildDeterministicDiagnosis,
   evaluateProfileReviewFollowUps,
-  buildStep3ReviewTextMap
+  buildStep3ReviewTextMap,
+  parseBatchScoringJson,
+  parseFollowUpQuestionsJson,
+  sortDiagnosesByQuality,
+  REVIEW_STEP3_QUALITY_FIELD_ORDER
 };

@@ -18,26 +18,78 @@ const YEARS_OPTIONS = Array.from({ length: 51 }, (_, i) => ({ value: i, label: i
 
 const MOST_SENIOR_ALLOWED = MOST_SENIOR_OPTIONS.map((o) => o.value);
 
+/** Rank for picking peak role across multiple job titles (higher = more senior). */
+const MOST_SENIOR_RANK = {
+  intern: 0,
+  entry_level: 1,
+  mid_level: 2,
+  senior: 3,
+  lead: 4,
+  manager: 5,
+  director: 6,
+  vp: 7,
+  c_suite: 8,
+};
+
+const IC_MANAGER_TITLE =
+  /\b(product|project|account|brand|marketing|program|portfolio|customer|community|content|social media|key account|case|regional|area|store|office)\s+manager\b/;
+
 /** Map job title / free text to a most-senior dropdown slug (aligned with server document extraction). */
 function inferMostSeniorRoleFromText(raw) {
   const existing = String(raw || '').trim();
   if (existing && MOST_SENIOR_ALLOWED.includes(existing)) return existing;
   const t = String(raw || '').toLowerCase().trim();
   if (!t) return '';
-  if (/\bchief\b|\bcxo\b|\bceo\b|\bcto\b|\bcfo\b/.test(t)) return 'c_suite';
+
+  if (/\bchief\b|\bcxo\b|\bceo\b|\bcto\b|\bcfo\b|\bcoo\b/.test(t)) return 'c_suite';
   if (/\bvp\b|vice president/.test(t)) return 'vp';
-  if (/\bdirector\b/.test(t)) return 'director';
-  if (/\bmanager\b|head of/.test(t)) return 'manager';
-  if (/\blead\b|principal/.test(t)) return 'lead';
-  if (/\bsenior\b|sr\b/.test(t)) return 'senior';
-  if (/\bjunior\b|jr\b|entry/.test(t)) return 'entry_level';
-  if (/\bintern\b|internship/.test(t)) return 'intern';
+  if (/\b(managing director|geschäftsführer|geschaeftsfuehrer|vorstand)\b/.test(t)) return 'director';
+  if (/\b(executive director|director of|direktor)\b/.test(t)) return 'director';
+  if (/\bdirector\b/.test(t) && !/\b(associate|assistant|deputy)\s+director\b/.test(t)) return 'director';
+
+  if (/\bhead of\b/.test(t)) return 'manager';
+  if (/\b(people|engineering|technical|talent|hr|finance|operations|sales)\s+manager\b/.test(t)) {
+    return 'manager';
+  }
+  if (/\bgeneral manager\b|\bgroup manager\b|\bteam manager\b|\bführungskraft\b|\bfuehrungskraft\b/.test(t)) {
+    return 'manager';
+  }
+  if (IC_MANAGER_TITLE.test(t)) return 'mid_level';
+  if (/\bmanager\b/.test(t)) return 'manager';
+
+  if (/\b(staff|principal|distinguished)\s+(engineer|developer|architect|scientist)\b/.test(t)) {
+    return 'senior';
+  }
+  if (/\bprincipal\b/.test(t)) return 'senior';
+  if (/\btech(nical)? lead\b|\bteam lead\b/.test(t)) return 'lead';
+  if (/\blead\b/.test(t)) return 'lead';
+  if (/\bsenior\b|sr\.?\b/.test(t)) return 'senior';
+  if (/\bjunior\b|jr\.?\b|\bentry[\s-]?level\b/.test(t)) return 'entry_level';
+  if (/\bintern\b|internship\b|praktikum\b|trainee\b/.test(t)) return 'intern';
   return 'mid_level';
+}
+
+/** Highest mapped seniority slug across job titles (for "most senior work experience"). */
+function inferMostSeniorFromJobTitles(titles) {
+  const list = Array.isArray(titles) ? titles : [];
+  let best = '';
+  let bestRank = -1;
+  for (const title of list) {
+    const slug = inferMostSeniorRoleFromText(title);
+    const rank = MOST_SENIOR_RANK[slug];
+    if (slug && rank !== undefined && rank > bestRank) {
+      best = slug;
+      bestRank = rank;
+    }
+  }
+  return best;
 }
 
 module.exports = {
   MOST_SENIOR_OPTIONS,
   MOST_SENIOR_ALLOWED,
+  MOST_SENIOR_RANK,
   YEARS_OPTIONS,
   inferMostSeniorRoleFromText,
+  inferMostSeniorFromJobTitles,
 };

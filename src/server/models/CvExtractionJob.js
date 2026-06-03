@@ -75,6 +75,14 @@ const cvExtractionJobSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    /** Per-layer async status for fan-out pipeline (heuristics | identity | structured | narrative). */
+    extractionLayers: {
+      heuristics: { type: String, default: null },
+      identity: { type: String, default: null },
+      structured: { type: String, default: null },
+      narrative: { type: String, default: null },
+    },
+    heuristicsCompletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

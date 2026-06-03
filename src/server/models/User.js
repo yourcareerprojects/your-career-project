@@ -161,12 +161,22 @@ const userSchema = new mongoose.Schema({
       /** Async CV extraction pipeline (see CvExtractionJob). */
       extractionStatus: { type: String, default: null },
       extractedProfileData: { type: mongoose.Schema.Types.Mixed, default: null },
+      /** Pre-generated dimension + who_are_you narratives for review-save (see extractionNarrativeEnrichmentService). */
+      narrativeEnrichment: { type: mongoose.Schema.Types.Mixed, default: null },
       cvExtractLocalization: { type: mongoose.Schema.Types.Mixed, default: null },
       extractionMessage: { type: String, default: '' },
       extractionMessageKey: { type: String, default: null },
       localizationStatus: { type: String, default: null },
       semanticInterpretation: { type: mongoose.Schema.Types.Mixed, default: null },
       semanticInterpretationLanguage: { type: String, default: null },
+      /** pending | complete | skipped — five-field identity LLM enrichment. */
+      identityEnrichmentStatus: { type: String, default: null },
+      /** True when Step 2 identity review may open (baseline on document). */
+      reviewReady: { type: Boolean, default: false },
+      /** pending | complete | skipped — structured semantic LLM enrichment after identity-first extract. */
+      semanticEnrichmentStatus: { type: String, default: null },
+      /** pending | complete | skipped — dimension/identity narrative cache for review-save. */
+      narrativeEnrichmentStatus: { type: String, default: null },
       /** success | partial | failed — outcome of CV extraction (distinct from extractionStatus pipeline). */
       extractionOutcomeStatus: { type: String, default: null },
     }],

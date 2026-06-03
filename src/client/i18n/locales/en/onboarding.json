@@ -474,6 +474,7 @@
       "semanticInterpretationNone": "No profile signals could be interpreted from the document.",
       "noDocumentText": "No readable text could be extracted from this document, even with OCR. Export it again as a PDF with selectable text, upload a DOCX file, or use a clearer JPG/PNG image.",
       "aiTimeout": "AI extraction timed out. Basic fields from your CV are still shown — please review them.",
+      "heuristicFallback": "AI extraction was unavailable. Basic fields from your CV are still shown — please review them.",
       "localizationPartial": "Some bilingual formatting could not be completed automatically; your extracted text is unchanged."
     },
     "common": {
@@ -563,6 +564,10 @@
       "ocr": "Reading your CV...",
       "extraction": "Analyzing your skills and experience...",
       "localization": "Preparing your personalized profile...",
+      "enriching": "CV extracted — finishing enhancements in the background...",
+      "enrichingStructured": "Interpreting strengths and experience from your CV...",
+      "enrichingLocalization": "Applying bilingual profile formatting...",
+      "enrichingNarrative": "Preparing profile summaries for review...",
       "completed": "Your CV has been processed successfully.",
       "failed": "We could not fully process your CV. Please try another file.",
       "timedOut": "Your CV is still processing. You can check the status later in your documents.",
@@ -585,17 +590,22 @@
       }
     },
     "review": {
+      "step1Title": "Upload your CV",
+      "step1Intro": "Upload your CV here. We will extract your profile data — this usually takes a minute.",
+      "step1Advancing": "Preparing your profile for review…",
       "step2Title": "Who are you?",
       "step3Title": "What are you good at?",
-      "step4Title": "How experienced are you?",
-      "step5Title": "More context questions",
+      "step4Title": "More context questions",
+      "step5Title": "How experienced are you?",
       "progress": {
         "ariaLabel": "Profile setup step {{current}} of {{total}}"
       },
       "step2Intro": "Review and refine your answers to these identity questions. They help us understand what matters to you at work.",
+      "structuredLoading": "Processing your profile insights…",
       "step3Intro": "Review skills, domains, and strengths extracted from your CV. Keep the items you want on your profile and edit or add as needed.",
-      "step4Intro": "Confirm your experience level and background so we can tailor simulations to your seniority.",
-      "step5Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then save your profile to finish.",
+      "step4Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then continue.",
+      "step4NoFollowUps": "No additional questions are needed. Continue to confirm your experience level.",
+      "step5Intro": "Confirm your experience level and background so we can tailor simulations to your seniority. Then save your profile.",
       "step3QualityErrorPrefix": "Could not load quality suggestions:",
       "followUpPlaceholder": "Your answer",
       "strengthsTitle": "Strengths and focus areas",

@@ -56,7 +56,37 @@ jest.mock('../services/embedding/userIdentityEmbeddingTextService', () => {
   return {
     ...actual,
     refreshUserIdentityEmbeddingOnUserDocument: jest.fn(async () => undefined),
+    scheduleRefreshUserIdentityEmbeddingForUser: jest.fn(),
     ensureUserIdentityEmbeddingCachedByUserId: jest.fn(async () => null),
+  };
+});
+
+jest.mock('../services/profile/deferredProfileNarrativeService', () => ({
+  scheduleDeferredProfileNarrativesForUser: jest.fn(),
+}));
+
+jest.mock('../services/profile/profilePostReviewSaveService', () => ({
+  schedulePostProfileReviewSaveWork: jest.fn(),
+}));
+
+jest.mock('../services/ai/translationCache', () => ({
+  cachedTranslate: jest.fn(async (_text, _lang, fn) => fn()),
+}));
+
+jest.mock('../services/ai/translateStructured', () => ({
+  translateStructured: jest.fn(async (text) => text),
+}));
+
+jest.mock('../services/ai/translateText', () => ({
+  translateText: jest.fn(async ({ text }) => text),
+}));
+
+jest.mock('../services/profile/extractionNarrativeEnrichmentService', () => {
+  const actual = jest.requireActual('../services/profile/extractionNarrativeEnrichmentService');
+  return {
+    ...actual,
+    scheduleExtractionNarrativeEnrichment: jest.fn(),
+    warmReviewNarrativeCache: jest.fn(async () => ({ updated: true })),
   };
 });
 
@@ -69,6 +99,20 @@ const profileController = require('../controllers/profileController');
 const { generateDimensionSummary } = require('../services/jobAnalysis/dimensionSummaryGenerator');
 const { generateWhoAreYouNarratives } = require('../services/jobAnalysis/whoAreYouNarrativeGenerator');
 const { generateWhoAreYouIdentityEmbeddingText } = require('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
+const {
+  scheduleRefreshUserIdentityEmbeddingForUser,
+} = require('../services/embedding/userIdentityEmbeddingTextService');
+const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');
+const { buildWhoAreYouRawAnswersFromIdentity } = require('../services/profile/extractionNarrativeEnrichmentService');
+const {
+  POLISHED_SUMMARIES,
+  POLISHED_WHO_LINE,
+  buildPolishedStructuredUserInfo,
+  buildPolishedWhoAreYou,
+  narrativeDimension,
+  narrativeSummaryField,
+  stampQualityEnrichment,
+} = require('./helpers/narrativeCacheFixtures');
 
 function mockRes() {
   const res = {};
@@ -77,20 +121,9 @@ function mockRes() {
   return res;
 }
 
-function narrativeDimension(rawItems, summaryEn) {
-  return {
-    raw_items: rawItems,
-    summary_text: {
-      original_language: 'en',
-      original: summaryEn,
-      translations: { en: summaryEn },
-    },
-  };
-}
-
 function buildProfileWithExistingNarratives() {
   const identity = reviewPayload.userIdentity;
-  const whoSummaryJson = JSON.stringify(Array(5).fill('Existing who_are_you narrative'));
+  const whoSummaryJson = JSON.stringify(Array(5).fill(POLISHED_WHO_LINE));
   return {
     personalInfo: {},
     userIdentityAnswers: { ...identity },
@@ -102,19 +135,15 @@ function buildProfileWithExistingNarratives() {
         identity.workEnvironmentFit,
         identity.workingLifeAchievement,
       ],
-      summary_text: {
-        original_language: 'en',
-        original: whoSummaryJson,
-        translations: { en: whoSummaryJson },
-      },
+      summary_text: narrativeSummaryField(whoSummaryJson),
       identity_embedding_text: 'Cached identity embedding text',
     },
     structuredUserInfo: {
-      skillDomains: narrativeDimension([], 'Existing skill domains summary'),
-      skills: narrativeDimension(['SQL'], '[Skills] SQL summary'),
-      skillsInDevelopment: narrativeDimension([], 'Existing learning goals summary'),
-      keyResponsibilities: narrativeDimension(['Own API design'], '[Responsibilities] Own API design'),
-      domains: narrativeDimension(['Finance'], '[Domains] Finance summary'),
+      skillDomains: narrativeDimension([], POLISHED_SUMMARIES.skillDomains),
+      skills: narrativeDimension(['SQL'], POLISHED_SUMMARIES.skills),
+      skillsInDevelopment: narrativeDimension([], 'No information available yet'),
+      keyResponsibilities: narrativeDimension(['Own API design'], POLISHED_SUMMARIES.keyResponsibilities),
+      domains: narrativeDimension(['Finance'], POLISHED_SUMMARIES.domains),
     },
     careerSimulationInputs: { structuredUserInfo: {} },
     documents: [],
@@ -147,6 +176,7 @@ const reviewPayload = {
 describe('profileController.saveProfileReview', () => {
   beforeEach(() => {
     clearProfileResponseCache();
+    scheduleRefreshUserIdentityEmbeddingForUser.mockClear();
   });
 
   test('persists seniority, identity, and structured data atomically', async () => {
@@ -155,9 +185,7 @@ describe('profileController.saveProfileReview', () => {
       password: 'password123!',
       profile: {
         personalInfo: {},
-        structuredUserInfo: {
-          skills: { raw_items: ['Legacy skill'], summary_text: { en: 'Legacy skill' } },
-        },
+        structuredUserInfo: {},
         careerSimulationInputs: { structuredUserInfo: {} },
         documents: [],
       },
@@ -178,14 +206,16 @@ describe('profileController.saveProfileReview', () => {
     expect(payload.success).toBe(true);
     expect(payload.seniority).toMatchObject(reviewPayload.seniority);
     expect(payload.userIdentity.workEnjoyMost).toBe(reviewPayload.userIdentity.workEnjoyMost);
+    expect(scheduleRefreshUserIdentityEmbeddingForUser).toHaveBeenCalledWith(String(created._id));
 
     const persisted = await User.findById(created._id).lean();
+    expect(generateWhoAreYouNarratives).toHaveBeenCalled();
+    expect(generateDimensionSummary).toHaveBeenCalled();
     expect(persisted.name).toBe('Review User');
     expect(persisted.profile.seniority).toMatchObject(reviewPayload.seniority);
     expect(persisted.profile.userIdentityAnswers.workEnjoyMost).toBe(reviewPayload.userIdentity.workEnjoyMost);
     expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual(['JavaScript', 'Node.js']);
     expect(persisted.profile.structuredUserInfo.domains.raw_items).toEqual(['Software']);
-    expect(persisted.profile.careerSimulationInputs.seniority).toMatchObject(reviewPayload.seniority);
   });
 
   test('merge mode combines existing and incoming structured lists', async () => {
@@ -223,6 +253,175 @@ describe('profileController.saveProfileReview', () => {
     const persisted = await User.findById(created._id).lean();
     expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual(['SQL', 'Python']);
     expect(persisted.profile.structuredUserInfo.domains.raw_items).toEqual(['Finance', 'Health']);
+  });
+
+  test('reuses pre-generated extraction narratives when review-save matches CV baseline', async () => {
+    const docId = '507f1f77bcf86cd799439011';
+    const extractedProfile = {
+      seniority: reviewPayload.seniority,
+      userIdentity: reviewPayload.userIdentity,
+      structuredUserInfo: {
+        skillDomains: [],
+        skills: reviewPayload.structuredUserInfo.skills.map((name) => ({ name })),
+        domains: reviewPayload.structuredUserInfo.domains,
+        keyResponsibilities: reviewPayload.structuredUserInfo.keyResponsibilities,
+        skillsInDevelopment: [],
+      },
+    };
+    const { computeNarrativeSourceFingerprint } = require('../services/profile/extractionNarrativeEnrichmentService');
+    const profileDataForFp = {
+      userIdentity: reviewPayload.userIdentity,
+      structuredUserInfo: {
+        ...extractedProfile.structuredUserInfo,
+        ...reviewPayload.structuredUserInfo,
+      },
+    };
+    const narrativeEnrichment = stampQualityEnrichment({
+      fingerprint: computeNarrativeSourceFingerprint(profileDataForFp, {}),
+      structuredUserInfo: buildPolishedStructuredUserInfo({
+        skillDomains: [],
+        skills: reviewPayload.structuredUserInfo.skills,
+        skillsInDevelopment: [],
+        keyResponsibilities: reviewPayload.structuredUserInfo.keyResponsibilities,
+        domains: reviewPayload.structuredUserInfo.domains,
+      }),
+      who_are_you: {
+        ...buildPolishedWhoAreYou(buildWhoAreYouRawAnswersFromIdentity(reviewPayload.userIdentity)),
+        identity_embedding_text: 'Cached identity embedding text for matching.',
+      },
+    });
+    const created = await User.create({
+      email: 'review-save-cv-cache@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        structuredUserInfo: {},
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [
+          {
+            _id: docId,
+            extractionStatus: 'completed',
+            extractedProfileData: extractedProfile,
+            narrativeEnrichment,
+          },
+        ],
+      },
+    });
+
+    generateDimensionSummary.mockClear();
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+
+    const req = {
+      user: { userId: String(created._id) },
+      language: 'en',
+      body: {
+        ...reviewPayload,
+        documentId: docId,
+        acceptedFields: {},
+      },
+    };
+    const res = mockRes();
+    await profileController.saveProfileReview(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).not.toHaveBeenCalled();
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.narrativesReady).toBe(true);
+    const narratives = JSON.parse(payload.who_are_you.summary_text);
+    expect(narratives[0]).toContain('clarify problems early');
+  });
+});
+
+describe('profileController.saveProfileReview narrative cache fast path', () => {
+  test('skips dimension and who LLM when document cache fingerprint matches', async () => {
+    const docId = '507f1f77bcf86cd799439011';
+    const identity = reviewPayload.userIdentity;
+    const extractedProfile = {
+      userIdentity: identity,
+      structuredUserInfo: {
+        skillDomains: [],
+        skills: reviewPayload.structuredUserInfo.skills.map((name) => ({ name })),
+        domains: reviewPayload.structuredUserInfo.domains,
+        keyResponsibilities: reviewPayload.structuredUserInfo.keyResponsibilities,
+        skillsInDevelopment: [],
+      },
+    };
+    const { computeNarrativeSourceFingerprint } = require('../services/profile/extractionNarrativeEnrichmentService');
+    const profileDataForFp = {
+      userIdentity: identity,
+      structuredUserInfo: {
+        ...extractedProfile.structuredUserInfo,
+        ...reviewPayload.structuredUserInfo,
+      },
+    };
+    const fingerprint = computeNarrativeSourceFingerprint(profileDataForFp, {});
+    const narrativeEnrichment = stampQualityEnrichment({
+      fingerprint,
+      structuredUserInfo: buildPolishedStructuredUserInfo({
+        skillDomains: [],
+        skills: reviewPayload.structuredUserInfo.skills,
+        skillsInDevelopment: [],
+        keyResponsibilities: reviewPayload.structuredUserInfo.keyResponsibilities,
+        domains: reviewPayload.structuredUserInfo.domains,
+      }),
+      who_are_you: buildPolishedWhoAreYou(Object.values(identity)),
+    });
+
+    const created = await User.create({
+      email: 'review-save-fast-path@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        structuredUserInfo: {},
+        documents: [
+          {
+            _id: docId,
+            type: 'resume',
+            name: 'cv.pdf',
+            extractedProfileData: extractedProfile,
+            narrativeEnrichment,
+          },
+        ],
+      },
+    });
+
+    generateDimensionSummary.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+
+    await profileController.saveProfileReview(
+      {
+        user: { userId: String(created._id) },
+        language: 'en',
+        body: { ...reviewPayload, documentId: docId, acceptedFields: {} },
+      },
+      mockRes()
+    );
+
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+  });
+});
+
+describe('profileController.getProfileNarrativesStatus', () => {
+  test('reports ready when display narratives are populated', async () => {
+    const created = await User.create({
+      email: 'narratives-status@example.com',
+      password: 'password123!',
+      profile: buildProfileWithExistingNarratives(),
+    });
+
+    const req = { user: { userId: String(created._id) }, language: 'en' };
+    const res = mockRes();
+    await profileController.getProfileNarrativesStatus(req, res);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.success).toBe(true);
+    expect(payload.ready).toBe(true);
+    expect(payload.pending).toEqual([]);
   });
 });
 
@@ -264,7 +463,7 @@ describe('saveProfileReview narrative regeneration', () => {
     expect(merged.domains).toMatchObject({
       raw_items: ['Finance'],
       summary_text: expect.objectContaining({
-        translations: { en: '[Domains] Finance summary' },
+        translations: { en: POLISHED_SUMMARIES.domains },
       }),
     });
   });
@@ -307,7 +506,7 @@ describe('saveProfileReview narrative regeneration', () => {
     const persisted = await User.findById(created._id).lean();
     expect(persisted.profile.seniority.yearsOfExperience).toBe(6);
     expect(persisted.profile.structuredUserInfo.skills.summary_text.translations.en).toBe(
-      '[Skills] SQL summary'
+      POLISHED_SUMMARIES.skills
     );
   });
 

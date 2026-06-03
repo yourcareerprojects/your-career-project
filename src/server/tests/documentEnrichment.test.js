@@ -1,4 +1,9 @@
-const { extractFromTextHeuristics, mapExtractedToSimulationInputs } = require('../services/documents/documentProfileEnrichment');
+const {
+  extractFromTextHeuristics,
+  mapExtractedToSimulationInputs,
+  extractEducationInstitutionsFromText,
+  extractWorkExperienceDescriptionLinesFromText,
+} = require('../services/documents/documentProfileEnrichment');
 
 describe('documentProfileEnrichment', () => {
   test('extracts skills, certifications, and experience from text', () => {
@@ -50,6 +55,77 @@ Portfolio Website - Built with React and Node
     expect(merged.structuredUserInfo.skillsInDevelopment).toEqual(expect.any(Array));
     expect(merged.structuredUserInfo.keyResponsibilities).toEqual(expect.any(Array));
     expect(merged.structuredUserInfo.domains).toEqual(expect.any(Array));
+  });
+
+  test('does not treat every CV line as a skill when no Skills section exists', () => {
+    const text = `
+John Smith
+Product Manager
+john@example.com
+
+Summary
+Experienced product manager with strong leadership skills.
+
+Work Experience
+Senior PM at Acme Corp
+2019 - Present
+Led cross-functional teams
+
+Education
+MBA, Harvard Business School
+`;
+    const res = extractFromTextHeuristics(text);
+    expect(res.extracted.skills).toEqual([]);
+  });
+
+  test('does not treat "soft skills" in prose as a Skills section header', () => {
+    const text = `
+John Smith
+Summary
+Experienced leader with soft skills in negotiation and communication.
+
+Work Experience
+Senior PM at Acme Corp
+`;
+    const res = extractFromTextHeuristics(text);
+    expect(res.extracted.skills).toEqual([]);
+  });
+
+  test('extractEducationInstitutionsFromText returns unique institutions', () => {
+    const text = `
+Education
+MBA, Harvard Business School
+BSc, MIT University
+Experience
+Developer
+`;
+    const entries = extractEducationInstitutionsFromText(text, { maxEntries: 5, maxSectionLen: 500 });
+    expect(entries.length).toBeGreaterThanOrEqual(1);
+    expect(entries[0]).toHaveProperty('institution');
+  });
+
+  test('extractWorkExperienceDescriptionLinesFromText captures long lines without title pattern', () => {
+    const text = `
+Experience
+Led platform modernization across three product teams over eighteen months
+Managed vendor relationships and budget planning for engineering org
+Education
+State University
+`;
+    const lines = extractWorkExperienceDescriptionLinesFromText(text, { maxLines: 4, maxSectionLen: 1000 });
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    expect(lines[0]).toMatch(/platform modernization/i);
+  });
+
+  test('extracts skills only from an explicit Skills section header', () => {
+    const text = `
+John Smith
+Skills: JavaScript, React, Node.js
+Experience
+Software Engineer at ExampleCorp
+`;
+    const res = extractFromTextHeuristics(text);
+    expect(res.extracted.skills).toEqual(expect.arrayContaining(['JavaScript', 'React', 'Node.js']));
   });
 });
 

@@ -27,7 +27,7 @@ const { EMBEDDING_DIMS } = require('../services/embedding/embeddingService');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
 const {
   ensureUserIdentityEmbeddingCachedByUserId,
-  refreshUserIdentityEmbeddingOnUserDocument,
+  scheduleRefreshUserIdentityEmbeddingForUser,
   normalizeUserIdentityAnswers,
   USER_IDENTITY_ANSWER_KEYS,
   topicsStringToInterestTokens,
@@ -67,7 +67,24 @@ const {
   applySeniorityToUser,
   readSeniorityFromProfile,
   verifySeniorityPersisted,
+  loadExtractionBaselineFromDocument,
+  resolveReuseExtractionNarrativeKeys,
+  resolveDimensionKeysNeedingLlmRegeneration,
+  userIdentityMatchesExtraction,
 } = require('../services/profile/profileReviewSaveService');
+const { getNarrativeEnrichmentFromDocument } = require('../services/profile/extractionNarrativeEnrichmentService');
+const {
+  getProfileDisplayNarrativesReadiness,
+  isWhoAreYouNarrativeReady,
+} = require('../services/profile/profileNarrativeReadinessService');
+const { meetsWhoAreYouNarrativesQuality } = require('../services/profile/narrativeQualityGate');
+const { schedulePostProfileReviewSaveWork } = require('../services/profile/profilePostReviewSaveService');
+const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
+const {
+  applyReviewSaveNarrativesFromDocument,
+  applyReviewSaveNarrativesWithRetry,
+  schedulePersistNarrativeEnrichmentFromApply,
+} = require('../services/profile/profileReviewNarrativeApplyService');
 const FIXED_MAX_SAVED_SIMULATIONS = 20;
 
 function logControllerError(context, err, extra = undefined) {
@@ -85,22 +102,13 @@ function normalizeStringArray(arr = []) {
     : [];
 }
 
-function normalizeDisplayStringArray(arr = []) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .map((item) => {
-      if (typeof item === 'string') return item.trim();
-      if (!item || typeof item !== 'object') return '';
-      const candidate =
-        item.label ??
-        item.title ??
-        item.name ??
-        item.preferredLabel ??
-        item.value ??
-        item.key;
-      return typeof candidate === 'string' ? candidate.trim() : '';
-    })
-    .filter(Boolean);
+const {
+  normalizeStructuredListItemLabel,
+  normalizeStructuredListItemLabels,
+} = require('../../constants/structuredListItemLabel');
+
+function normalizeDisplayStringArray(arr = [], language = 'en') {
+  return normalizeStructuredListItemLabels(arr, language);
 }
 
 function toPositiveIntEnv(value, fallback) {
@@ -564,11 +572,19 @@ function readDimensionRawItems(value) {
 }
 
 function readDimensionSummaryText(value, language = 'en') {
-  if (value && typeof value === 'object') {
-    const summary = localizedContentService.get(value.summary_text, normalizeLangCode(language, 'en'));
-    if (typeof summary === 'string') return summary.trim();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const lang = normalizeLangCode(language, 'en');
+  if (typeof value.summary_text === 'string') {
+    return String(value.summary_text).trim();
   }
+  const summary = localizedContentService.get(value.summary_text, lang);
+  if (typeof summary === 'string') return summary.trim();
   return '';
+}
+
+function isPlaceholderDimensionSummary(summaryText) {
+  const s = String(summaryText || '').trim();
+  return !s || s === EMPTY_PLACEHOLDER;
 }
 
 function hasNarrativeDimensionShape(value, language = 'en') {
@@ -593,15 +609,38 @@ function structuredUserInfoHasPersistedNarratives(structured = {}, language = 'e
 async function toNarrativeDimension(
   value,
   label,
-  { forceRegenerate = false, language = 'en', sourceLanguage = 'en' } = {}
+  { forceRegenerate = false, deferLlm = false, language = 'en', sourceLanguage = 'en' } = {}
 ) {
   const targetLang = normalizeLangCode(language, 'en');
   const sourceLang = normalizeLangCode(sourceLanguage, 'en');
   const rawItems = readDimensionRawItems(value);
-  const existingSummary = readDimensionSummaryText(value, sourceLang);
+  if (rawItems.length === 0) {
+    return {
+      raw_items: [],
+      summary_text: await ensureBilingualSummaryField(
+        value?.summary_text,
+        EMPTY_PLACEHOLDER,
+        sourceLang,
+        {}
+      ),
+    };
+  }
+  const existingSummaryRaw = readDimensionSummaryText(value, sourceLang);
+  const existingSummary = isPlaceholderDimensionSummary(existingSummaryRaw) ? '' : existingSummaryRaw;
   let summaryText = (!forceRegenerate && existingSummary)
     ? existingSummary
     : '';
+  if (!summaryText && deferLlm) {
+    return {
+      raw_items: rawItems,
+      summary_text: await ensureBilingualSummaryField(
+        value?.summary_text,
+        EMPTY_PLACEHOLDER,
+        sourceLang,
+        {}
+      ),
+    };
+  }
   if (!summaryText) {
     const generated = await generateDimensionSummary(
       { dimension: label, rawItems },
@@ -633,11 +672,12 @@ async function toNarrativeDimension(
 
 async function normalizeStructuredUserInfoForStorage(
   structuredInfo = {},
-  { forceRegenerate = false, language = 'en', sourceLanguage = 'en' } = {}
+  { forceRegenerate = false, deferLlmDimensionKeys = [], language = 'en', sourceLanguage = 'en' } = {}
 ) {
   const targetLang = normalizeLangCode(language, 'en');
   const sourceLang = normalizeLangCode(sourceLanguage, 'en');
   const input = structuredInfo && typeof structuredInfo === 'object' ? structuredInfo : {};
+  const deferLlmSet = new Set(Array.isArray(deferLlmDimensionKeys) ? deferLlmDimensionKeys : []);
   const pairs = await Promise.all(
     STRUCTURED_DIMENSIONS.map(async (dimension) => {
       const originalSource = input[dimension.key];
@@ -659,12 +699,14 @@ async function normalizeStructuredUserInfoForStorage(
       }
       const value = await toNarrativeDimension(source, dimension.label, {
         forceRegenerate,
+        deferLlm: deferLlmSet.has(dimension.key),
         language: targetLang,
         sourceLanguage: sourceLang,
       });
       const dimensionChanged =
         domainSanitized ||
         forceRegenerate ||
+        deferLlmSet.has(dimension.key) ||
         !hasNarrativeDimensionShape(originalSource, sourceLang) ||
         !readDimensionSummaryText(originalSource, sourceLang);
       return { key: dimension.key, value, dimensionChanged };
@@ -707,7 +749,7 @@ function parseWhoAreYouNarratives(summaryText = '') {
 
 async function normalizeWhoAreYouForStorage(
   profile = {},
-  { forceRegenerate = false, language = 'en', sourceLanguage = 'en' } = {}
+  { forceRegenerate = false, deferLlm = false, language = 'en', sourceLanguage = 'en' } = {}
 ) {
   const targetLang = normalizeLangCode(language, 'en');
   const sourceLang = normalizeLangCode(sourceLanguage, 'en');
@@ -734,7 +776,16 @@ async function normalizeWhoAreYouForStorage(
     identityEmbeddingText = WHO_ARE_YOU_IDENTITY_PLACEHOLDER;
   } else {
     const parsed = parseWhoAreYouNarratives(summaryText);
-    const needsGeneration = forceRegenerate || !currentSummary || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER);
+    const currentSummaryIsPlaceholder = !currentSummary || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER);
+    const parsedForQuality = parseWhoAreYouNarratives(summaryText);
+    const narrativesStaleForAnswers =
+      changedRaw
+      || !meetsWhoAreYouNarrativesQuality(parsedForQuality, rawAnswers);
+    const needsGeneration = !deferLlm && (
+      forceRegenerate
+      || currentSummaryIsPlaceholder
+      || narrativesStaleForAnswers
+    );
     if (needsGeneration) {
       const generated = await generateWhoAreYouNarratives(rawAnswers, {
         lang: targetLang,
@@ -755,10 +806,19 @@ async function normalizeWhoAreYouForStorage(
         ])
       );
       changed = true;
+    } else if (
+      deferLlm
+      && (!currentSummary || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER))
+    ) {
+      summaryText = JSON.stringify(Array(5).fill(WHO_ARE_YOU_PLACEHOLDER));
+      changed = true;
     }
-    const needsIdentityGeneration = forceRegenerate || !currentIdentityEmbeddingText;
+    const needsIdentityGeneration = !deferLlm && (forceRegenerate || !currentIdentityEmbeddingText);
     if (needsIdentityGeneration) {
       identityEmbeddingText = await generateWhoAreYouIdentityEmbeddingText(rawAnswers);
+      changed = true;
+    } else if (deferLlm && !currentIdentityEmbeddingText) {
+      identityEmbeddingText = WHO_ARE_YOU_IDENTITY_PLACEHOLDER;
       changed = true;
     }
   }
@@ -1751,14 +1811,10 @@ exports.updateCareerSimulationInputs = async (req, res) => {
       ]
     };
     await user.save();
-    try {
-      await refreshUserIdentityEmbeddingOnUserDocument(user, {
-        forceRegenerate: true,
-        reuseWhoAreYouText: false,
-      });
-    } catch (e) {
-      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
-    }
+    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId, {
+      forceRegenerate: true,
+      reuseWhoAreYouText: false,
+    });
     const profileStructured = user.profile.structuredUserInfo || {};
     const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
       { who_are_you: user.profile.who_are_you || { raw_answers: [], summary_text: '' } },
@@ -1808,14 +1864,10 @@ exports.recalculateCareerSimulationInputs = async (req, res) => {
     };
     
     await user.save();
-    try {
-      await refreshUserIdentityEmbeddingOnUserDocument(user, {
-        forceRegenerate: true,
-        reuseWhoAreYouText: false,
-      });
-    } catch (e) {
-      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
-    }
+    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId, {
+      forceRegenerate: true,
+      reuseWhoAreYouText: false,
+    });
     const profileStructured = user.profile.structuredUserInfo || {};
     res.json({
       success: true,
@@ -2563,10 +2615,14 @@ exports.getProfileCompletion = async (req, res) => {
 exports.diagnoseProfileInputQuality = async (req, res) => {
   try {
     const snapshot = req.body && typeof req.body === 'object' ? req.body : {};
-    const result = await evaluateProfileReviewFollowUps({
-      userIdentity: snapshot.userIdentity,
-      structuredUserInfo: snapshot.structuredUserInfo
-    }, { lang: req.language });
+    const force = Boolean(req.query?.force || req.body?.force);
+    const result = await evaluateProfileReviewFollowUps(
+      {
+        userIdentity: snapshot.userIdentity,
+        structuredUserInfo: snapshot.structuredUserInfo,
+      },
+      { lang: req.language, userId: req.user?.userId, force }
+    );
     res.json({ success: true, ...result });
   } catch (err) {
     logControllerError('diagnoseProfileInputQuality', err);
@@ -2751,11 +2807,7 @@ exports.updateUserIdentity = async (req, res) => {
 
     await user.save();
 
-    try {
-      await refreshUserIdentityEmbeddingOnUserDocument(user);
-    } catch (e) {
-      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
-    }
+    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
 
     const profileStructured = user.profile.structuredUserInfo || {};
     const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
@@ -2998,11 +3050,7 @@ exports.updateStructuredUserInfo = async (req, res) => {
 
     await user.save();
 
-    try {
-      await refreshUserIdentityEmbeddingOnUserDocument(user);
-    } catch (e) {
-      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
-    }
+    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
 
     const profileStructured = user.profile.structuredUserInfo || {};
     const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(profileStructured);
@@ -3092,19 +3140,49 @@ exports.saveProfileReview = async (req, res) => {
       req.language
     );
     const existingStructuredForMerge =
-      user.profile.structuredUserInfo && typeof user.profile.structuredUserInfo.toObject === 'function'
+      user.profile.structuredUserInfo && typeof user.profile.structuredUserInfo.toObject
+        === 'function'
         ? user.profile.structuredUserInfo.toObject()
         : (user.profile.structuredUserInfo || {});
+    const incomingStructured = body.structuredUserInfo || {};
+    const acceptedFields =
+      body.acceptedFields && typeof body.acceptedFields === 'object' ? body.acceptedFields : {};
+    let extractionBaseline = null;
+    const documentId = body.documentId != null ? String(body.documentId).trim() : '';
+    let sourceDoc = null;
+    if (documentId) {
+      sourceDoc = user.profile.documents?.id?.(documentId) || null;
+      extractionBaseline = loadExtractionBaselineFromDocument(sourceDoc, acceptedFields);
+    }
+    const narrativeEnrichment = getNarrativeEnrichmentFromDocument(sourceDoc);
+    const reuseExtractionNarrativeKeys = extractionBaseline
+      ? resolveReuseExtractionNarrativeKeys({
+        existingStructured: existingStructuredForMerge,
+        incomingStructured,
+        extractionBaseline,
+        mode,
+      })
+      : [];
+    const reuseExtractionWhoAreYou = Boolean(
+      extractionBaseline
+      && userIdentityMatchesExtraction(body.userIdentity || {}, extractionBaseline.userIdentity)
+      && isWhoAreYouNarrativeReady(narrativeEnrichment?.who_are_you || {}, req.language)
+    );
     const mergedStructuredBody = buildMergedStructuredPayloadForNormalization(
       existingStructuredForMerge,
-      body.structuredUserInfo || {},
-      mode
+      incomingStructured,
+      mode,
+      {
+        extractionNarrativeCache: narrativeEnrichment,
+        reuseExtractionNarrativeKeys,
+      }
     );
     const mergedIdentityAnswers = buildMergedUserIdentity(
       existingIdentity,
       body.userIdentity || {},
       mode
     );
+    const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
 
     if (body.cvExtractLocalization && typeof body.cvExtractLocalization === 'object') {
       user.profile.cvExtractLocalization = mergeCvExtractLocalizationPatch(
@@ -3120,17 +3198,6 @@ exports.saveProfileReview = async (req, res) => {
       user.name = body.name.trim();
     }
 
-    const { normalized: structuredUserInfo } = await normalizeStructuredUserInfoForStorage(
-      mergedStructuredBody,
-      {
-        forceRegenerate: false,
-        language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
-      }
-    );
-    user.profile.structuredUserInfo = structuredUserInfo;
-    user.markModified('profile.structuredUserInfo');
-
     if (!user.profile.userIdentityAnswers || typeof user.profile.userIdentityAnswers !== 'object') {
       user.profile.userIdentityAnswers = {};
     }
@@ -3143,32 +3210,153 @@ exports.saveProfileReview = async (req, res) => {
       }
     }
 
-    const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
-      user.profile || {},
-      {
-        forceRegenerate: false,
-        language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+    let structuredUserInfo;
+    let normalizedWhoAreYou;
+    let usedNarrativeCacheFastPath = false;
+    let narrativeApplyMode = 'none';
+
+    // Pick up narrative cache written by review-narrative-cache warm during steps 4–5.
+    if (documentId) {
+      const freshUser = await User.findById(req.user.userId);
+      const freshDoc = freshUser?.profile?.documents?.id?.(documentId);
+      if (freshDoc) {
+        sourceDoc = freshDoc;
       }
-    );
+    }
+
+    let cacheApply = sourceDoc
+      ? await applyReviewSaveNarrativesWithRetry(
+        req.user.userId,
+        documentId,
+        sourceDoc,
+        body,
+        acceptedFields,
+        mergedIdentityAnswers,
+        { language: req.language, sourceLanguage: narrativeSourceLanguage }
+      )
+      : { ok: false, reason: 'no_document' };
+
+    if (cacheApply.ok) {
+      const appliedReadiness = getProfileDisplayNarrativesReadiness(
+        {
+          structuredUserInfo: cacheApply.structuredUserInfo,
+          who_are_you: cacheApply.who_are_you,
+        },
+        req.language
+      );
+      if (!appliedReadiness.ready) {
+        console.log(
+          '[saveProfileReview] narrative cache apply incomplete:',
+          appliedReadiness.pending.join(', ')
+        );
+        cacheApply = {
+          ok: false,
+          reason: 'cache_incomplete',
+          pending: appliedReadiness.pending,
+        };
+      }
+    }
+
+    if (cacheApply.ok) {
+      usedNarrativeCacheFastPath = true;
+      narrativeApplyMode = cacheApply.applyMode || 'cache';
+      structuredUserInfo = {
+        ...cacheApply.structuredUserInfo,
+        excludedDerivedInferredIscoCodes: Array.isArray(existingStructuredForMerge.excludedDerivedInferredIscoCodes)
+          ? [...existingStructuredForMerge.excludedDerivedInferredIscoCodes]
+          : [],
+      };
+      normalizedWhoAreYou = cacheApply.who_are_you;
+      console.log(
+        '[saveProfileReview] applied document narrative cache:',
+        cacheApply.applyMode,
+        cacheApply.applyMode === 'incremental_cache'
+          ? `(dims: ${(cacheApply.regenDimensions || []).join(',') || 'none'}, who: ${cacheApply.regenWho})`
+          : ''
+      );
+      if (sourceDoc && documentId) {
+        schedulePersistNarrativeEnrichmentFromApply(
+          req.user.userId,
+          documentId,
+          sourceDoc,
+          body,
+          acceptedFields,
+          structuredUserInfo,
+          normalizedWhoAreYou,
+          req.language,
+          narrativeSourceLanguage
+        );
+      }
+    } else if (cacheApply.reason && cacheApply.reason !== 'no_document') {
+      console.log('[saveProfileReview] narrative cache apply skipped:', cacheApply.reason);
+    }
+
+    if (!usedNarrativeCacheFastPath) {
+      narrativeApplyMode = 'full_normalize';
+      const dimensionsNeedingLlm = resolveDimensionKeysNeedingLlmRegeneration(mergedStructuredBody);
+      if (dimensionsNeedingLlm.length > 0) {
+        console.log(
+          '[saveProfileReview] regenerating dimension narratives:',
+          dimensionsNeedingLlm.join(', ')
+        );
+      }
+
+      const profileSnapshotForNarratives = {
+        ...(typeof user.profile?.toObject === 'function' ? user.profile.toObject() : (user.profile || {})),
+        userIdentityAnswers: mergedIdentityAnswers,
+        who_are_you:
+          typeof user.profile?.who_are_you?.toObject === 'function'
+            ? user.profile.who_are_you.toObject()
+            : (user.profile?.who_are_you || {}),
+      };
+
+      const whoAreYouPromise = reuseExtractionWhoAreYou
+        ? Promise.resolve({
+          normalized: {
+            ...narrativeEnrichment.who_are_you,
+            raw_answers: buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers),
+          },
+        })
+        : normalizeWhoAreYouForStorage(profileSnapshotForNarratives, {
+          forceRegenerate: false,
+          language: req.language,
+          sourceLanguage: narrativeSourceLanguage,
+        });
+
+      const normalized = await Promise.all([
+        normalizeStructuredUserInfoForStorage(mergedStructuredBody, {
+          forceRegenerate: false,
+          language: req.language,
+          sourceLanguage: narrativeSourceLanguage,
+        }),
+        whoAreYouPromise,
+      ]);
+      structuredUserInfo = normalized[0].normalized;
+      normalizedWhoAreYou = normalized[1].normalized;
+    }
+
+    if (!user.profile.structuredUserInfo || typeof user.profile.structuredUserInfo !== 'object') {
+      user.profile.structuredUserInfo = {};
+    }
+    for (const { key } of STRUCTURED_DIMENSIONS) {
+      user.profile.structuredUserInfo[key] = structuredUserInfo[key];
+      user.markModified(`profile.structuredUserInfo.${key}`);
+    }
+    if (Array.isArray(structuredUserInfo.excludedDerivedInferredIscoCodes)) {
+      user.profile.structuredUserInfo.excludedDerivedInferredIscoCodes =
+        structuredUserInfo.excludedDerivedInferredIscoCodes;
+    }
+    user.markModified('profile.structuredUserInfo');
     user.profile.who_are_you = normalizedWhoAreYou;
     user.markModified('profile.who_are_you');
 
-    try {
-      await recalculateCareerSimulationInputsOnUser(user, req.user.userId, {
-        recalculatedFromProfileReview: true,
-      });
-    } catch (calcErr) {
-      console.warn('Career simulation inputs recalculation failed (non-fatal):', calcErr.message);
-    }
-
     await user.save();
 
-    try {
-      await refreshUserIdentityEmbeddingOnUserDocument(user);
-    } catch (e) {
-      console.warn('refreshUserIdentityEmbeddingOnUserDocument failed (non-fatal):', e.message);
-    }
+    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    schedulePostProfileReviewSaveWork(req.user.userId, {
+      editorId: req.user.userId,
+      changes: { recalculatedFromProfileReview: true },
+    });
 
     if (!verifySeniorityPersisted(user.profile.seniority, normalizedSeniority)) {
       return res.status(500).json({
@@ -3177,17 +3365,43 @@ exports.saveProfileReview = async (req, res) => {
       });
     }
 
+    const narrativeReadiness = getProfileDisplayNarrativesReadiness(
+      { structuredUserInfo, who_are_you: normalizedWhoAreYou },
+      req.language
+    );
+    const narrativesReadyForClient = usedNarrativeCacheFastPath
+      ? true
+      : narrativeReadiness.ready;
     const responseSeniority = readSeniorityFromProfile(user.profile);
     const profileStructured = user.profile.structuredUserInfo || {};
-    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(profileStructured);
-    const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
-      { who_are_you: user.profile.who_are_you || { raw_answers: [], summary_text: '' } },
+    const profileDerivedInferredIsco = Array.isArray(profileStructured.derivedInferredIsco)
+      ? profileStructured.derivedInferredIsco
+      : [];
+    const normalizedForResponse = normalizeLocalizedProfileFieldsForResponse(
+      {
+        structuredUserInfo: profileStructured,
+        who_are_you: user.profile.who_are_you || { raw_answers: [], summary_text: '' },
+      },
       req.language
-    ).who_are_you;
+    );
+    const responseWhoAreYou = normalizedForResponse.who_are_you;
+    const responseStructuredUserInfo = {
+      ...(normalizedForResponse.structuredUserInfo || profileStructured),
+      derivedInferredIsco: profileDerivedInferredIsco,
+    };
+    const responseDocuments = Array.isArray(user.profile?.documents)
+      ? user.profile.documents.map((doc) => serializeEmbeddedDocumentForClient(doc, { uiLanguage: req.language }))
+      : [];
 
     res.json({
       success: true,
+      narrativesReady: narrativesReadyForClient,
+      narrativePending: narrativesReadyForClient ? [] : narrativeReadiness.pending,
+      usedNarrativeCacheFastPath,
+      narrativeApplyMode,
       name: user.name || '',
+      email: user.email || '',
+      documents: responseDocuments,
       seniority: responseSeniority,
       userIdentity: overlayIdentityAnswersWithCvLocalization(
         normalizeUserIdentityAnswers(user.profile.userIdentityAnswers || {}),
@@ -3195,23 +3409,69 @@ exports.saveProfileReview = async (req, res) => {
         req.language
       ),
       who_are_you: responseWhoAreYou,
-      structuredUserInfo: {
-        ...profileStructured,
-        derivedInferredIsco: profileDerivedInferredIsco,
-      },
-      careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
-        user.profile.careerSimulationInputs,
-        profileStructured,
-        {
-          reuseProfileDerivedInferredIsco: profileDerivedInferredIsco,
-          language: req.language,
-        }
-      ),
+      structuredUserInfo: responseStructuredUserInfo,
     });
   } catch (err) {
     logControllerError('Save profile review error', err);
     res.status(500).json({
       message: err.message || 'Failed to save profile review',
+      error: err.message,
+    });
+  }
+};
+
+/** Poll until display-critical narratives are ready on the saved profile. */
+exports.getProfileNarrativesStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const readiness = getProfileDisplayNarrativesReadiness(user.profile, req.language);
+    res.json({ success: true, ...readiness });
+  } catch (err) {
+    logControllerError('Get profile narratives status error', err);
+    res.status(500).json({
+      message: err.message || 'Failed to read profile narratives status',
+      error: err.message,
+    });
+  }
+};
+
+/** Pre-generate narratives for the current CV review wizard snapshot (step transitions). */
+exports.warmReviewNarrativeCache = async (req, res) => {
+  try {
+    const documentId = req.body?.documentId != null ? String(req.body.documentId).trim() : '';
+    if (!documentId) {
+      return res.status(400).json({ message: 'documentId is required' });
+    }
+
+    const acceptedFields =
+      req.body?.acceptedFields && typeof req.body.acceptedFields === 'object'
+        ? req.body.acceptedFields
+        : {};
+
+    const { warmReviewNarrativeCache } = require('../services/profile/extractionNarrativeEnrichmentService');
+    const awaitReady = req.body?.awaitReady === true;
+    const result = await warmReviewNarrativeCache(
+      req.user.userId,
+      documentId,
+      {
+        userIdentity: req.body?.userIdentity,
+        structuredUserInfo: req.body?.structuredUserInfo,
+      },
+      {
+        language: req.language,
+        acceptedFields,
+        background: !awaitReady,
+      }
+    );
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('Warm review narrative cache error', err);
+    res.status(500).json({
+      message: err.message || 'Failed to warm review narrative cache',
       error: err.message,
     });
   }

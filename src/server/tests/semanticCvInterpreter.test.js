@@ -1,5 +1,5 @@
 const { normalizeInterpretationShape } = require('../services/documents/semanticCvInterpreter');
-const { __testables: cvExtractionTestables } = require('../services/cv/cvExtractionProcessor');
+const { mapSemanticExtractionToProfile } = require('../services/cv/cvSemanticMap');
 
 describe('semanticCvInterpreter.normalizeInterpretationShape', () => {
   test('normalizes malformed and partial values safely', () => {
@@ -46,7 +46,7 @@ describe('semanticCvInterpreter.normalizeInterpretationShape', () => {
   });
 });
 
-describe('cvExtractionProcessor semantic mapping', () => {
+describe('cvSemanticMap semantic mapping', () => {
   test('maps semantic schema into profile payload shape', () => {
     const semantic = normalizeInterpretationShape({
       userIdentity: {
@@ -71,7 +71,7 @@ describe('cvExtractionProcessor semantic mapping', () => {
       }
     });
 
-    const mapped = cvExtractionTestables.mapSemanticExtractionToProfile(semantic);
+    const mapped = mapSemanticExtractionToProfile(semantic);
     expect(mapped.status).toBe('success');
     expect(mapped.profile.userIdentity.workEnjoyMost).toBe('Solving customer problems');
     expect(mapped.profile.userIdentity.topicsIndustriesInterest).toBe('SaaS Healthcare');
@@ -85,6 +85,19 @@ describe('cvExtractionProcessor semantic mapping', () => {
     expect(mapped.profile.seniority.yearsOfExperience).toBe(8);
     expect(mapped.profile.seniority.highestDegree).toBe('masters');
     expect(mapped.profile.seniority.mostSeniorWorkExperience).toBe('director');
+  });
+
+  test('preserves canonical degree slugs and downgrades IC manager titles', () => {
+    const mapped = mapSemanticExtractionToProfile({
+      seniority: {
+        currentStatus: { value: 'student', confidence: 0.9, evidence: [] },
+        highestDegree: { value: 'bachelors', confidence: 0.9, evidence: [] },
+        mostSeniorRole: { value: 'Product Manager', confidence: 0.8, evidence: [] },
+      },
+    });
+    expect(mapped.profile.seniority.currentStatus).toBe('student');
+    expect(mapped.profile.seniority.highestDegree).toBe('bachelors');
+    expect(mapped.profile.seniority.mostSeniorWorkExperience).toBe('mid_level');
   });
 });
 

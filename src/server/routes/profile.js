@@ -233,6 +233,16 @@ const reviewSaveValidation = [
   ...reviewSaveSeniorityValidation,
   ...reviewSaveUserIdentityValidation,
   ...reviewSaveStructuredValidation,
+  body('documentId')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 128 })
+    .withMessage('documentId must be a string'),
+  body('acceptedFields')
+    .optional()
+    .isObject()
+    .withMessage('acceptedFields must be an object'),
 ];
 
 // Routes
@@ -276,6 +286,25 @@ router.put('/review-save',
   auth,
   reviewSaveValidation,
   profileController.saveProfileReview
+);
+
+router.put('/review-narrative-cache',
+  auth,
+  body('documentId')
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('documentId is required'),
+  body('acceptedFields')
+    .optional()
+    .isObject()
+    .withMessage('acceptedFields must be an object'),
+  profileController.warmReviewNarrativeCache
+);
+
+router.get('/narratives-status',
+  auth,
+  profileController.getProfileNarrativesStatus
 );
 
 router.put('/profile-picture',
