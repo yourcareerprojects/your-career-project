@@ -115,6 +115,46 @@ describe('saveExtractedProfileReview', () => {
     );
   });
 
+  test('proceeds to review-save when narrative cache warm times out', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, ready: false, reason: 'warming' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          seniority: validSeniority,
+          narrativesReady: true,
+          usedNarrativeCacheFastPath: false,
+          who_are_you: { raw_answers: [], summary_text: '' },
+          structuredUserInfo: {},
+          documents: [],
+        }),
+      });
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await saveExtractedProfileReview({
+      profileData: buildProfilePayload({ documentId: 'doc-1' }),
+      refreshUser: async () => ({ success: true }),
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      langQuery: 'lang=en',
+      documentCacheWarmTimeoutMs: 0,
+    });
+
+    expect(result.reviewSaveData.success).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][0]).toContain('/review-narrative-cache');
+    expect(fetchImpl.mock.calls[1][0]).toContain('/review-save');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('document narrative cache not ready before save')
+    );
+    warnSpy.mockRestore();
+  });
+
   test('rejects on seniority validation failure without calling API', async () => {
     const fetchImpl = mockFetchOk();
 

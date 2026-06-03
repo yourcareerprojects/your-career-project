@@ -468,6 +468,42 @@ async function runExtractionNarrativesOnce(userId, documentId, options = {}) {
   return promise;
 }
 
+/**
+ * Full review-wizard narrative regen (deduped per user+document; shared with extraction narratives).
+ *
+ * @param {string} userId
+ * @param {string} documentId
+ * @param {object} profileData
+ * @param {{ language?: string, sourceLanguage?: string, acceptedFields?: Record<string, boolean> }} [options]
+ */
+async function runReviewNarrativeFullRegenOnce(userId, documentId, profileData, options = {}) {
+  const key = narrativeFlightKey(userId, documentId);
+  const existing = narrativeInFlight.get(key);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      await setDocumentNarrativeEnrichmentStatus(userId, documentId, 'pending');
+      const fullEnrichment = await generateNarrativeEnrichmentFromProfileData(profileData, {
+        language: options.language,
+        sourceLanguage: options.sourceLanguage,
+        acceptedFields: options.acceptedFields || {},
+        userId,
+        documentId,
+      });
+      return persistNarrativeEnrichmentOnDocument(userId, documentId, fullEnrichment);
+    } catch (err) {
+      await setDocumentNarrativeEnrichmentStatus(userId, documentId, 'skipped').catch(() => {});
+      console.warn('[warmReviewNarrativeCache] full regen failed:', err?.message || err);
+      return { updated: false, reason: 'failed' };
+    }
+  })().finally(() => {
+    if (narrativeInFlight.get(key) === promise) narrativeInFlight.delete(key);
+  });
+  narrativeInFlight.set(key, promise);
+  return promise;
+}
+
 function scheduleExtractionNarrativeEnrichment(userId, documentId, options = {}) {
   if (!userId || !documentId) return;
   void runExtractionNarrativesOnce(userId, documentId, options)
@@ -630,22 +666,11 @@ async function warmReviewNarrativeCache(userId, documentId, reviewSnapshot = {},
     ) {
       return { updated: false, reason: 'unchanged', fingerprint, ready: true };
     }
-    void (async () => {
-      try {
-        await setDocumentNarrativeEnrichmentStatus(userId, documentId, 'pending');
-        const fullEnrichment = await generateNarrativeEnrichmentFromProfileData(profileData, {
-          language,
-          sourceLanguage,
-          acceptedFields,
-          userId,
-          documentId,
-        });
-        await persistNarrativeEnrichmentOnDocument(userId, documentId, fullEnrichment);
-      } catch (err) {
-        await setDocumentNarrativeEnrichmentStatus(userId, documentId, 'skipped').catch(() => {});
-        console.warn('[warmReviewNarrativeCache] background full regen failed:', err?.message || err);
-      }
-    })();
+    void runReviewNarrativeFullRegenOnce(userId, documentId, profileData, {
+      language,
+      sourceLanguage,
+      acceptedFields,
+    });
     return { updated: false, reason: 'warming', fingerprint };
   }
 
@@ -742,6 +767,29 @@ async function warmReviewNarrativeCache(userId, documentId, reviewSnapshot = {},
       who_are_you,
       generatedAt: new Date().toISOString(),
     });
+  } else if (needsFullRegen) {
+    await runReviewNarrativeFullRegenOnce(userId, documentId, profileData, {
+      language,
+      sourceLanguage,
+      acceptedFields,
+    });
+    user = await User.findById(uid);
+    doc = user?.profile?.documents?.id(did);
+    enrichment = doc?.narrativeEnrichment;
+    const fullRegenResult = enrichment
+      ? { updated: true }
+      : { updated: false, reason: 'failed' };
+    return {
+      ...fullRegenResult,
+      fingerprint,
+      ready: getDocumentNarrativeCacheReadiness(
+        { narrativeEnrichment: enrichment },
+        language
+      ).ready,
+      incremental: false,
+      regenDimensions: STRUCTURED_DIMENSION_KEYS,
+      regenWho: true,
+    };
   } else {
     enrichment = await generateNarrativeEnrichmentFromProfileData(profileData, {
       language,
@@ -777,6 +825,7 @@ module.exports = {
   generateNarrativeEnrichmentLegacy,
   generateAndPersistExtractionNarratives,
   runExtractionNarrativesOnce,
+  runReviewNarrativeFullRegenOnce,
   isExtractionNarrativeInFlight,
   awaitDocumentNarrativeWorkIfInFlight,
   scheduleExtractionNarrativeEnrichment,

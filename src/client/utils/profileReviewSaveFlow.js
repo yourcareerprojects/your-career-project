@@ -238,6 +238,7 @@ async function saveExtractedProfileReview({
   prefetchProfile = false,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
+  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_WARM_TIMEOUT_MS,
   fetchFullProfileImpl,
   queryClientImpl,
 }) {
@@ -308,6 +309,7 @@ async function saveExtractedProfileReview({
         fetchImpl,
         getAuthToken,
         translate,
+        documentCacheWarmTimeoutMs,
       });
     }
 
@@ -409,6 +411,7 @@ async function ensureReviewNarrativeCacheBeforeSave({
   fetchImpl = fetch,
   getAuthToken = () => localStorage.getItem('token'),
   translate = (key) => key,
+  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_WARM_TIMEOUT_MS,
 }) {
   const docId = documentId != null ? String(documentId).trim() : '';
   if (!docId) return;
@@ -424,7 +427,7 @@ async function ensureReviewNarrativeCacheBeforeSave({
     translate,
   };
 
-  const ready = await pollReviewNarrativeCacheReady(pollParams);
+  const ready = await pollReviewNarrativeCacheReady({ ...pollParams, deadlineMs: documentCacheWarmTimeoutMs });
   if (ready) return ready;
 
   const warmRes = await fetchImpl(`/api/profile/review-narrative-cache?${langQuery}`, {
@@ -445,12 +448,15 @@ async function ensureReviewNarrativeCacheBeforeSave({
   });
   await throwIfSaveNotOk(warmRes, translate);
 
-  const warmed = await pollReviewNarrativeCacheReady(pollParams);
+  const warmed = await pollReviewNarrativeCacheReady({ ...pollParams, deadlineMs: documentCacheWarmTimeoutMs });
   if (warmed) return warmed;
 
-  throw new ProfileReviewSaveError('Document narrative cache timed out', {
-    userMessage: 'Profile text is still being prepared. Please try again in a moment.',
-  });
+  // Cache warm did not finish in time — proceed to review-save anyway. The server can apply
+  // the cache incrementally or run full narrative normalization on the save request.
+  console.warn(
+    '[saveExtractedProfileReview] document narrative cache not ready before save; continuing to review-save'
+  );
+  return null;
 }
 
 /**
