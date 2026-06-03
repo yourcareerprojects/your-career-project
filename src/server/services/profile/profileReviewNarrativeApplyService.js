@@ -235,6 +235,34 @@ async function applyReviewSaveNarrativesWithRetry(
     return cacheApply;
   }
 
+  const { warmReviewNarrativeCache } = require('./extractionNarrativeEnrichmentService');
+  try {
+    await warmReviewNarrativeCache(
+      userId,
+      documentId,
+      {
+        userIdentity: body.userIdentity,
+        structuredUserInfo: body.structuredUserInfo,
+      },
+      {
+        language: options.language || 'en',
+        sourceLanguage: options.sourceLanguage || options.language || 'en',
+        acceptedFields,
+        background: false,
+      }
+    );
+  } catch (err) {
+    console.warn('[applyReviewSaveNarrativesWithRetry] sync warm failed:', err?.message || err);
+  }
+
+  currentDoc = (await reloadDoc()) || currentDoc;
+  cacheApply = await applyReviewSaveNarrativesFromDocument(
+    currentDoc,
+    body,
+    acceptedFields,
+    mergedIdentityAnswers,
+    options
+  );
   return cacheApply;
 }
 

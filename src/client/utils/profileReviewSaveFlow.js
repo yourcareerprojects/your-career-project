@@ -18,7 +18,8 @@ const USER_IDENTITY_KEYS = [
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const DEFAULT_POLL_MAX_ATTEMPTS = 24;
 const DOCUMENT_CACHE_POLL_MAX_ATTEMPTS = 240;
-const DOCUMENT_CACHE_WARM_TIMEOUT_MS = 120000;
+/** Brief pre-save poll only — wizard warm + review-save handle generation. */
+const DOCUMENT_CACHE_PRE_SAVE_POLL_MS = 15000;
 
 /** True when all five identity prompts have non-empty trimmed answers (review save + step 2 gate). */
 function isReviewUserIdentityComplete(userIdentity = {}) {
@@ -238,7 +239,7 @@ async function saveExtractedProfileReview({
   prefetchProfile = false,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
-  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_WARM_TIMEOUT_MS,
+  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_PRE_SAVE_POLL_MS,
   fetchFullProfileImpl,
   queryClientImpl,
 }) {
@@ -377,7 +378,7 @@ async function pollReviewNarrativeCacheReady({
   fetchImpl,
   getAuthToken,
   translate,
-  deadlineMs = DOCUMENT_CACHE_WARM_TIMEOUT_MS,
+  deadlineMs = DOCUMENT_CACHE_PRE_SAVE_POLL_MS,
 }) {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
@@ -400,7 +401,8 @@ async function pollReviewNarrativeCacheReady({
 }
 
 /**
- * Run review-narrative-cache PUT only when needed; wait until generation completes.
+ * Brief poll for a ready document narrative cache (wizard may have warmed it).
+ * Does not block on sync warm — review-save performs one server-side warm if needed.
  */
 async function ensureReviewNarrativeCacheBeforeSave({
   documentId,
@@ -411,7 +413,7 @@ async function ensureReviewNarrativeCacheBeforeSave({
   fetchImpl = fetch,
   getAuthToken = () => localStorage.getItem('token'),
   translate = (key) => key,
-  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_WARM_TIMEOUT_MS,
+  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_PRE_SAVE_POLL_MS,
 }) {
   const docId = documentId != null ? String(documentId).trim() : '';
   if (!docId) return;
@@ -427,34 +429,14 @@ async function ensureReviewNarrativeCacheBeforeSave({
     translate,
   };
 
-  const ready = await pollReviewNarrativeCacheReady({ ...pollParams, deadlineMs: documentCacheWarmTimeoutMs });
+  const ready = await pollReviewNarrativeCacheReady({
+    ...pollParams,
+    deadlineMs: documentCacheWarmTimeoutMs,
+  });
   if (ready) return ready;
 
-  const warmRes = await fetchImpl(`/api/profile/review-narrative-cache?${langQuery}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getAuthToken()}`,
-    },
-    body: JSON.stringify(
-      buildReviewNarrativeCacheRequestBody({
-        documentId: docId,
-        userIdentity,
-        structuredUserInfo,
-        acceptedFields,
-        awaitReady: true,
-      })
-    ),
-  });
-  await throwIfSaveNotOk(warmRes, translate);
-
-  const warmed = await pollReviewNarrativeCacheReady({ ...pollParams, deadlineMs: documentCacheWarmTimeoutMs });
-  if (warmed) return warmed;
-
-  // Cache warm did not finish in time — proceed to review-save anyway. The server can apply
-  // the cache incrementally or run full narrative normalization on the save request.
   console.warn(
-    '[saveExtractedProfileReview] document narrative cache not ready before save; continuing to review-save'
+    '[saveExtractedProfileReview] document narrative cache not ready after brief poll; continuing to review-save'
   );
   return null;
 }

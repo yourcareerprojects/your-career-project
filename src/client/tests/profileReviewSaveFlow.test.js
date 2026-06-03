@@ -115,24 +115,27 @@ describe('saveExtractedProfileReview', () => {
     );
   });
 
-  test('proceeds to review-save when narrative cache warm times out', async () => {
-    const fetchImpl = jest.fn()
-      .mockResolvedValueOnce({
+  test('proceeds to review-save when narrative cache is not ready after brief poll', async () => {
+    const fetchImpl = jest.fn((url) => {
+      if (String(url).includes('/review-save')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            seniority: validSeniority,
+            narrativesReady: true,
+            usedNarrativeCacheFastPath: false,
+            who_are_you: { raw_answers: [], summary_text: '' },
+            structuredUserInfo: {},
+            documents: [],
+          }),
+        });
+      }
+      return Promise.resolve({
         ok: true,
-        json: async () => ({ success: true, ready: false, reason: 'warming' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          seniority: validSeniority,
-          narrativesReady: true,
-          usedNarrativeCacheFastPath: false,
-          who_are_you: { raw_answers: [], summary_text: '' },
-          structuredUserInfo: {},
-          documents: [],
-        }),
+        json: async () => ({ success: true, ready: false, fingerprintMatches: false }),
       });
+    });
 
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -146,11 +149,10 @@ describe('saveExtractedProfileReview', () => {
     });
 
     expect(result.reviewSaveData.success).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0][0]).toContain('/review-narrative-cache');
-    expect(fetchImpl.mock.calls[1][0]).toContain('/review-save');
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('document narrative cache not ready before save')
+      expect.stringContaining('document narrative cache not ready after brief poll')
     );
     warnSpy.mockRestore();
   });
