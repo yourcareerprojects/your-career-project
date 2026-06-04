@@ -207,21 +207,35 @@ async function augmentLabelMapForEscoUris(labelMap, flatSkills, lang, preloadedU
   }
 }
 
+/**
+ * CareerPath rows use `domain`; localized API rows use top-level `label` (string or i18n).
+ * @param {unknown} row
+ * @returns {{ en: string, de: string | null } | null}
+ */
+function coerceSkillDomainRowToI18n(row) {
+  if (!row || typeof row !== 'object') return null;
+  return (
+    coerceSkillDomainLabelToI18n(row.domain)
+    ?? coerceSkillDomainLabelToI18n(row.label)
+  );
+}
+
 function toSkillDomainObjects(payload = {}) {
   const modern = Array.isArray(payload.skillDomains) ? payload.skillDomains : null;
   if (modern) {
     return modern.map((domain) => {
-      const domainI18n = coerceSkillDomainLabelToI18n(domain?.domain);
+      const domainI18n = coerceSkillDomainRowToI18n(domain);
       if (!domainI18n) {
         throw new Error('[careerPathSkillService] skillDomains[].domain could not be coerced to embedded i18n');
       }
       const labelEn = getEnglishDomainName(domainI18n);
       const key = normalizeSkillKey(domain?.key || labelEn || '');
+      const itemSource = domain?.items ?? domain?.mapped_items;
       return {
         key: key || '',
         label: labelEn,
         domainI18n,
-        items: normalizeSkillArray(domain?.items, 'skillDomains.items'),
+        items: normalizeSkillArray(itemSource, 'skillDomains.items'),
       };
     }).filter((d) => d.label || d.key || d.items.length > 0);
   }
@@ -532,6 +546,8 @@ async function attachSkillsToCareerPaths(careerPaths = [], lang = FALLBACK_LANGU
 
 module.exports = {
   normalizeSkillKey,
+  coerceSkillDomainRowToI18n,
+  toSkillDomainObjects,
   getSkillLabel,
   buildLocalizedSkillsResponse,
   mergeLocalizedCareerPathStep,
