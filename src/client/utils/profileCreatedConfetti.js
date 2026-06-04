@@ -1,14 +1,19 @@
 import confettiImport from 'canvas-confetti';
 
 /** Webpack production may expose the library as `.default` or harmony `.A`. */
-function resolveConfettiFn(mod) {
+function resolveConfettiExport(mod) {
   if (typeof mod === 'function') return mod;
   if (mod && typeof mod.default === 'function') return mod.default;
   if (mod && typeof mod.A === 'function') return mod.A;
   return null;
 }
 
-const confetti = resolveConfettiFn(confettiImport);
+const confettiExport = resolveConfettiExport(confettiImport);
+/** Main-thread only — avoids blob: workers blocked by Helmet CSP on staging/production. */
+const confetti =
+  confettiExport?.create != null
+    ? confettiExport.create(null, { useWorker: false, resize: true })
+    : confettiExport;
 
 const CONFETTI_Z_INDEX = 9999;
 /** Side-stream confetti duration (ms); initial burst is separate. */

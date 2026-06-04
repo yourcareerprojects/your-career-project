@@ -79,7 +79,16 @@ function sendSpaIndex(res) {
 }
 
 // Middleware (order: security headers → compression → CORS → parsers)
-app.use(helmet());
+const cspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
+// canvas-confetti defaults to a blob: Web Worker; without worker-src, browsers fall back to script-src 'self'.
+cspDirectives['worker-src'] = ["'self'", 'blob:'];
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: cspDirectives,
+    },
+  })
+);
 app.use(
   compression({
     filter: (req, res) => {
