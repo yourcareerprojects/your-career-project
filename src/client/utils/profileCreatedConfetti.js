@@ -1,6 +1,14 @@
 import confettiImport from 'canvas-confetti';
 
-const confetti = typeof confettiImport === 'function' ? confettiImport : confettiImport?.default;
+/** Webpack production may expose the library as `.default` or harmony `.A`. */
+function resolveConfettiFn(mod) {
+  if (typeof mod === 'function') return mod;
+  if (mod && typeof mod.default === 'function') return mod.default;
+  if (mod && typeof mod.A === 'function') return mod.A;
+  return null;
+}
+
+const confetti = resolveConfettiFn(confettiImport);
 
 const CONFETTI_Z_INDEX = 9999;
 /** Side-stream confetti duration (ms); initial burst is separate. */
@@ -15,7 +23,7 @@ function prefersReducedMotion() {
  * Full-viewport confetti burst when the user completes profile creation or a full profile update.
  */
 export function fireProfileCreatedConfetti() {
-  if (typeof confetti !== 'function') return;
+  if (!confetti) return;
   if (prefersReducedMotion()) return;
 
   const end = Date.now() + CELEBRATION_DURATION_MS;

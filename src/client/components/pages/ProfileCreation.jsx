@@ -8,6 +8,7 @@ import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
+import { markProfileSaveCelebration } from '../../utils/profileSaveCelebration';
 
 const ProfileCreation = () => {
   const { t } = useTranslation('onboarding');
@@ -91,6 +92,7 @@ const ProfileCreation = () => {
 
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setProfileExists(true);
+      markProfileSaveCelebration();
       navigate('/profile', {
         replace: true,
         state: { celebrateProfileSaved: true },

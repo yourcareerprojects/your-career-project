@@ -70,6 +70,7 @@ import {
 import { CURRENT_EMPLOYMENT_STATUS_OPTIONS } from '../../../constants/currentEmploymentStatus';
 import { HIGHEST_DEGREE_OPTIONS, highestDegreeLabel } from '../../../constants/highestDegree';
 import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
+import { shouldCelebrateProfileSave } from '../../utils/profileSaveCelebration';
 import { MOST_SENIOR_OPTIONS } from '../../../constants/senioritySelectOptions';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 
@@ -265,13 +266,13 @@ const Profile = ({
     }
   }, [showLoginSecuritySection, currentLang, i18n.language]);
 
-  /** Confetti once after profile creation or full update (state from ProfileCreation navigate). */
+  /** Confetti once after profile creation or full update (ProfileCreation navigate + session fallback). */
   useEffect(() => {
-    const shouldCelebrate =
-      location.state?.celebrateProfileSaved || location.state?.celebrateProfileCreated;
-    if (!shouldCelebrate) return;
+    if (!shouldCelebrateProfileSave(location.state)) return;
 
-    fireProfileCreatedConfetti();
+    const frame = requestAnimationFrame(() => {
+      fireProfileCreatedConfetti();
+    });
 
     const prev = location.state || {};
     const {
@@ -283,14 +284,9 @@ const Profile = ({
       { pathname: location.pathname, search: location.search, hash: location.hash },
       { replace: true, state: Object.keys(rest).length ? rest : undefined }
     );
-  }, [
-    location.state?.celebrateProfileSaved,
-    location.state?.celebrateProfileCreated,
-    location.pathname,
-    location.search,
-    location.hash,
-    navigate,
-  ]);
+
+    return () => cancelAnimationFrame(frame);
+  }, [location.key, location.pathname, location.search, location.hash, navigate, location.state]);
 
   useEffect(() => {
     if (loginSecurity?.data?.email && loginSecurity.data.email !== user?.email) {
