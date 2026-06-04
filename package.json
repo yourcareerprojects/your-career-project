@@ -85,6 +85,7 @@
     "axios": "^1.6.5",
     "bcryptjs": "^3.0.2",
     "canvas": "^3.2.3",
+    "canvas-confetti": "^1.9.4",
     "compression": "^1.7.4",
     "connect-mongo": "^5.1.0",
     "cors": "^2.8.5",

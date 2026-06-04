@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -68,6 +69,7 @@ import {
 } from '../../hooks/useProfileQueries';
 import { CURRENT_EMPLOYMENT_STATUS_OPTIONS } from '../../../constants/currentEmploymentStatus';
 import { HIGHEST_DEGREE_OPTIONS, highestDegreeLabel } from '../../../constants/highestDegree';
+import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
 import { MOST_SENIOR_OPTIONS } from '../../../constants/senioritySelectOptions';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 
@@ -151,6 +153,8 @@ const Profile = ({
   showLoginSecuritySection = true,
 }) => {
   const { t, i18n } = useTranslation('onboarding');
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentLang = baseUILanguage();
   const profileFullKey = useMemo(() => getProfileFullQueryKeyFull(currentLang), [currentLang]);
   const { user, updateUser } = useAuth();
@@ -260,6 +264,33 @@ const Profile = ({
       fetchLoginSecurity();
     }
   }, [showLoginSecuritySection, currentLang, i18n.language]);
+
+  /** Confetti once after profile creation or full update (state from ProfileCreation navigate). */
+  useEffect(() => {
+    const shouldCelebrate =
+      location.state?.celebrateProfileSaved || location.state?.celebrateProfileCreated;
+    if (!shouldCelebrate) return;
+
+    fireProfileCreatedConfetti();
+
+    const prev = location.state || {};
+    const {
+      celebrateProfileSaved: _dropSaved,
+      celebrateProfileCreated: _dropCreated,
+      ...rest
+    } = prev;
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: Object.keys(rest).length ? rest : undefined }
+    );
+  }, [
+    location.state?.celebrateProfileSaved,
+    location.state?.celebrateProfileCreated,
+    location.pathname,
+    location.search,
+    location.hash,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (loginSecurity?.data?.email && loginSecurity.data.email !== user?.email) {

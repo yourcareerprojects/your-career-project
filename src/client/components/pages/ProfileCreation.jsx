@@ -91,7 +91,10 @@ const ProfileCreation = () => {
 
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setProfileExists(true);
-      navigate('/profile');
+      navigate('/profile', {
+        replace: true,
+        state: { celebrateProfileSaved: true },
+      });
     } catch (err) {
       setError(buildReviewSaveUserMessage(err, t));
       throw err;
