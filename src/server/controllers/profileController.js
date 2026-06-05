@@ -79,6 +79,7 @@ const {
 } = require('../services/profile/profileNarrativeReadinessService');
 const { meetsWhoAreYouNarrativesQuality } = require('../services/profile/narrativeQualityGate');
 const { schedulePostProfileReviewSaveWork } = require('../services/profile/profilePostReviewSaveService');
+const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
 const {
   applyReviewSaveNarrativesFromDocument,
@@ -706,7 +707,6 @@ async function normalizeStructuredUserInfoForStorage(
       const dimensionChanged =
         domainSanitized ||
         forceRegenerate ||
-        deferLlmSet.has(dimension.key) ||
         !hasNarrativeDimensionShape(originalSource, sourceLang) ||
         !readDimensionSummaryText(originalSource, sourceLang);
       return { key: dimension.key, value, dimensionChanged };
@@ -1708,7 +1708,7 @@ exports.getLastSimulationResult = async (req, res) => {
   try {
     const userId = req.user && req.user.userId;
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('lastSimulationResult').lean();
     if (!user || !user.lastSimulationResult || !user.lastSimulationResult.results) {
       return res.json({ success: true, results: null });
     }
@@ -2467,54 +2467,25 @@ exports.getProfile = async (req, res) => {
     const cached = getCachedProfileResponse(user._id, user.updatedAt, req.language);
     if (cached) {
       logPhase('cacheHit');
-      return res.json(cached);
+      const responseBody = cached.completion != null
+        ? cached
+        : { ...cached, completion: computeProfileCompletion(cached.profile) };
+      return res.json(responseBody);
     }
     logPhase('cacheMiss');
 
-    let profileNeedsSave = false;
-    const profileStructuredSource = user.profile?.structuredUserInfo || {};
-    const { normalized: normalizedProfileStructured, changed: profileStructuredChanged } =
-      await normalizeStructuredUserInfoForStorage(profileStructuredSource, {
-        forceRegenerate: false,
+    const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
+    const narrativeReadiness = getProfileDisplayNarrativesReadiness(user.profile || {}, req.language);
+    if (!narrativeReadiness.ready) {
+      const dimensionKeys = narrativeReadiness.pending
+        .filter((field) => field.startsWith('structuredUserInfo.'))
+        .map((field) => field.slice('structuredUserInfo.'.length));
+      scheduleDeferredProfileNarrativesForUser(String(user._id), {
+        dimensionKeys,
+        deferWhoAreYou: narrativeReadiness.pending.includes('who_are_you'),
         language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+        sourceLanguage: narrativeSourceLanguage,
       });
-    if (profileStructuredChanged) {
-      user.profile.structuredUserInfo = normalizedProfileStructured;
-      user.markModified('profile.structuredUserInfo');
-      profileNeedsSave = true;
-    }
-
-    const csiStructuredSource = user.profile?.careerSimulationInputs?.structuredUserInfo || {};
-    const { normalized: normalizedCsiStructured, changed: csiStructuredChanged } =
-      await normalizeStructuredUserInfoForStorage(csiStructuredSource, {
-        forceRegenerate: false,
-        language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
-      });
-    if (csiStructuredChanged) {
-      if (!user.profile.careerSimulationInputs || typeof user.profile.careerSimulationInputs !== 'object') {
-        user.profile.careerSimulationInputs = {};
-      }
-      user.profile.careerSimulationInputs.structuredUserInfo = normalizedCsiStructured;
-      user.markModified('profile.careerSimulationInputs.structuredUserInfo');
-      profileNeedsSave = true;
-    }
-
-    const { normalized: normalizedWhoAreYou, changed: whoAreYouChanged } =
-      await normalizeWhoAreYouForStorage(user.profile || {}, {
-        forceRegenerate: false,
-        language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
-      });
-    if (whoAreYouChanged) {
-      user.profile.who_are_you = normalizedWhoAreYou;
-      user.markModified('profile.who_are_you');
-      profileNeedsSave = true;
-    }
-
-    if (profileNeedsSave) {
-      await user.save();
     }
 
     const profilePayload = user.profile?.toObject ? user.profile.toObject() : { ...(user.profile || {}) };
@@ -2543,6 +2514,7 @@ exports.getProfile = async (req, res) => {
     profilePayload.who_are_you = (
       await normalizeWhoAreYouForStorage(profilePayload, {
         forceRegenerate: false,
+        deferLlm: true,
         language: req.language,
         sourceLanguage: resolveNarrativeSourceLanguage(profilePayload || {}, 'en'),
       })
@@ -2568,6 +2540,11 @@ exports.getProfile = async (req, res) => {
         }
       );
     }
+    if (Array.isArray(profilePayload.documents)) {
+      profilePayload.documents = profilePayload.documents
+        .map((doc) => serializeEmbeddedDocumentForClient(doc, { uiLanguage: req.language }))
+        .filter(Boolean);
+    }
     const localizedProfilePayload = normalizeLocalizedProfileFieldsForResponse(
       profilePayload,
       req.language
@@ -2576,6 +2553,7 @@ exports.getProfile = async (req, res) => {
     const responseBody = {
       success: true,
       profile: localizedProfilePayload,
+      completion: computeProfileCompletion(localizedProfilePayload),
       name: user.name || '',
       email: user.email,
     };

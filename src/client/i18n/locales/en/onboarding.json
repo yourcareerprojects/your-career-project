@@ -256,7 +256,10 @@
       "loadFailed": "Failed to load login security details"
     },
     "documents": {
-      "title": "Documents"
+      "title": "Documents",
+      "empty": "No documents uploaded yet.",
+      "reviewCta": "Review CV",
+      "continueExtractionCta": "Continue processing"
     },
     "photo": {
       "edit": "Edit photo",
@@ -606,6 +609,8 @@
       "step4Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then continue.",
       "step4NoFollowUps": "No additional questions are needed. Continue to confirm your experience level.",
       "step5Intro": "Confirm your experience level and background so we can tailor simulations to your seniority. Then save your profile.",
+      "step5PreparingProfile": "Preparing your profile… You can fill in the fields below. Save will be available in a moment.",
+      "step5PrepareSlow": "Profile preparation is taking longer than expected. You can save now — it may take a bit longer.",
       "step3QualityErrorPrefix": "Could not load quality suggestions:",
       "followUpPlaceholder": "Your answer",
       "strengthsTitle": "Strengths and focus areas",

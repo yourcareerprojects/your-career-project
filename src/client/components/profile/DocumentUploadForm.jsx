@@ -42,6 +42,8 @@ import {
   ProfileReviewSaveError,
   translateReviewFieldErrors,
   warmReviewNarrativeCacheForStep,
+  fetchDocumentNarrativeCacheStatus,
+  computeNarrativeWarmProgressEstimate,
 } from '../../utils/profileReviewSaveFlow';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import {
@@ -416,6 +418,10 @@ const DocumentUploadForm = ({
   reviewSaveMode = 'merge',
   showUploadControls = true,
   parentSavingReview = false,
+  hideDocumentList = false,
+  openReviewForDocumentId = null,
+  restrictAutoResumeToDocumentId = null,
+  onReviewSessionEnd = null,
 }) => {
   const { user } = useAuth();
   const reviewUserId = String(user?.id || user?._id || '').trim() || null;
@@ -493,6 +499,9 @@ const DocumentUploadForm = ({
   const inputQualityDiagnosisInflightFingerprintRef = useRef('');
   const inputQualityDiagnosisInflightPromiseRef = useRef(null);
   const inputQualityDiagnosisAppliedFingerprintRef = useRef('');
+  /** idle | warming | ready | failed — gates Save on step 5 until warm completes or times out. */
+  const [step5NarrativeWarmStatus, setStep5NarrativeWarmStatus] = useState('idle');
+  const [step5NarrativeWarmProgress, setStep5NarrativeWarmProgress] = useState(0);
   const [acceptedFields, setAcceptedFields] = useState({});
   const [savingReview, setSavingReview] = useState(false);
   const savingReviewActive = savingReview || parentSavingReview;
@@ -515,9 +524,16 @@ const DocumentUploadForm = ({
   const [reviewFieldErrors, setReviewFieldErrors] = useState({});
 
   const documentsRef = useRef(documents);
+  const openReviewBootstrappedRef = useRef(null);
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  const notifyReviewSessionEnd = useCallback(() => {
+    if (typeof onReviewSessionEnd === 'function') {
+      onReviewSessionEnd();
+    }
+  }, [onReviewSessionEnd]);
 
   useEffect(() => {
     if (reviewDialogOpen) {
@@ -615,7 +631,7 @@ const DocumentUploadForm = ({
 
   /** Restore in-progress review draft after refresh / long session (sessionStorage, 24h TTL). */
   useEffect(() => {
-    if (!reviewUserId || reviewDraftRestoredRef.current) return undefined;
+    if (!enableExtractionReview || !reviewUserId || reviewDraftRestoredRef.current) return undefined;
     const draft = loadCvReviewDraft(reviewUserId);
     if (!draft?.pendingUploadedDocId) return undefined;
     reviewDraftRestoredRef.current = true;
@@ -634,11 +650,11 @@ const DocumentUploadForm = ({
       inputQualityDiagnosisAppliedFingerprintRef,
     });
     return undefined;
-  }, [reviewUserId]);
+  }, [enableExtractionReview, reviewUserId]);
 
   /** Persist review answers while the dialog is open (survives tab refresh / long editing). */
   useEffect(() => {
-    if (!reviewUserId || !pendingUploadedDocId) return undefined;
+    if (!enableExtractionReview || !reviewUserId || !pendingUploadedDocId) return undefined;
     if (!reviewDialogOpen && !extractedProfileData) return undefined;
     const timer = setTimeout(() => {
       saveCvReviewDraft(reviewUserId, {
@@ -656,6 +672,7 @@ const DocumentUploadForm = ({
     }, 400);
     return () => clearTimeout(timer);
   }, [
+    enableExtractionReview,
     reviewUserId,
     pendingUploadedDocId,
     reviewProfile,
@@ -1485,6 +1502,50 @@ const DocumentUploadForm = ({
     t,
   ]);
 
+  /** Open review (or resume extraction polling) for a specific document — profile page overlay. */
+  useEffect(() => {
+    if (!enableExtractionReview || !openReviewForDocumentId) return undefined;
+    const docId = String(openReviewForDocumentId);
+    if (openReviewBootstrappedRef.current === docId) return undefined;
+    const doc = (documents || []).find((d) => String(d.id || d._id) === docId);
+    if (!doc) return undefined;
+    openReviewBootstrappedRef.current = docId;
+    cvWizardUserCanceledRef.current = false;
+    setPendingUploadedDocId(docId);
+
+    if (isActiveCvExtractionDocument(doc)) {
+      setUploadSucceeded(true);
+      setExtractionError('');
+      setCvPipelinePhase(doc.extractionStatus === 'processing' ? 'ocr' : 'queued');
+      setCvPollTarget({ documentId: docId, jobId: null });
+      setReviewDialogOpen(true);
+      setReviewStep(1);
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await hydrateFromDocument(docId);
+      } catch {
+        if (!cancelled) {
+          setUploadError(t('documentUpload.errors.refreshAfterExtractionFailed'));
+          notifyReviewSessionEnd();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    enableExtractionReview,
+    openReviewForDocumentId,
+    documents,
+    hydrateFromDocument,
+    t,
+    notifyReviewSessionEnd,
+  ]);
+
   /** Resume in-flight extraction inside the wizard after navigation or refresh. */
   useEffect(() => {
     if (!enableExtractionReview || reviewDialogOpen) return undefined;
@@ -1744,6 +1805,12 @@ const DocumentUploadForm = ({
     const activeDoc = (documents || []).find((d) => {
       const id = String(d.id || d._id || '');
       if (!id || isWizardCvDocDismissed(id)) return false;
+      if (
+        restrictAutoResumeToDocumentId
+        && id !== String(restrictAutoResumeToDocumentId)
+      ) {
+        return false;
+      }
       return isActiveCvExtractionDocument(d);
     });
     if (!activeDoc) return;
@@ -1769,6 +1836,7 @@ const DocumentUploadForm = ({
     cvPollFailedDocId,
     cvPipelinePhase,
     isWizardCvDocDismissed,
+    restrictAutoResumeToDocumentId,
   ]);
 
   useEffect(() => {
@@ -1868,12 +1936,13 @@ const DocumentUploadForm = ({
       await onExtractedProfileReview(payload);
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setReviewDialogOpen(false);
+      notifyReviewSessionEnd();
       setExtractedProfileData(null);
       setCvExtractLocalization(null);
       setReviewProfile({});
       setAcceptedFields({});
       setStep3FollowUps([]);
-      setStep3FollowUpAnswers({});
+      setStep3FollowUpAnswers([]);
       setInputQualityDiagnosisError(null);
       setInputQualityDiagnosisLoading(false);
       inputQualityDiagnosisAbortRef.current?.abort();
@@ -2071,6 +2140,19 @@ const DocumentUploadForm = ({
     t,
   ]);
 
+  const STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS = 60000;
+
+  const step5NarrativeBlocksSave = reviewStep === 5
+    && pendingUploadedDocId
+    && step5NarrativeWarmStatus === 'warming';
+
+  useEffect(() => {
+    if (reviewStep !== 5) {
+      setStep5NarrativeWarmStatus('idle');
+      setStep5NarrativeWarmProgress(0);
+    }
+  }, [reviewStep]);
+
   const seniorityNarrativeWarmKey = useMemo(() => {
     if (reviewStep !== 5) return '';
     const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
@@ -2088,23 +2170,79 @@ const DocumentUploadForm = ({
     if (!reviewDialogOpen || reviewStep !== 5 || !pendingUploadedDocId || !seniorityNarrativeWarmKey) {
       return undefined;
     }
-    const timer = setTimeout(() => {
-      const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
-        reviewProfile,
-        step3FollowUps,
-        step3FollowUpAnswers
-      );
-      void warmReviewNarrativeCacheForStep({
-        documentId: pendingUploadedDocId,
-        reviewProfile: profileForWarm,
-        acceptedFields,
-        step: 4,
-        langQuery: getProfileApiLangQuery(),
-        translate: t,
-        awaitReady: false,
-      });
-    }, 200);
-    return () => clearTimeout(timer);
+
+    let cancelled = false;
+    let fallbackTimer;
+    const warmStartedAt = Date.now();
+
+    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+      reviewProfile,
+      step3FollowUps,
+      step3FollowUpAnswers
+    );
+    const structuredUserInfo = buildStructuredGoodAtFromReview(profileForWarm, acceptedFields);
+    const langQuery = getProfileApiLangQuery();
+    const cacheStatusParams = {
+      documentId: pendingUploadedDocId,
+      userIdentity: profileForWarm.userIdentity || {},
+      structuredUserInfo,
+      acceptedFields,
+      langQuery,
+      translate: t,
+    };
+
+    setStep5NarrativeWarmStatus('warming');
+    setStep5NarrativeWarmProgress(8);
+
+    fallbackTimer = setTimeout(() => {
+      if (!cancelled) {
+        setStep5NarrativeWarmStatus((prev) => (prev === 'warming' ? 'failed' : prev));
+      }
+    }, STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS);
+
+    void warmReviewNarrativeCacheForStep({
+      documentId: pendingUploadedDocId,
+      reviewProfile: profileForWarm,
+      acceptedFields,
+      step: 4,
+      langQuery,
+      translate: t,
+      awaitReady: true,
+    });
+
+    const pollUntilReady = async () => {
+      const deadline = Date.now() + STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS;
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const status = await fetchDocumentNarrativeCacheStatus(cacheStatusParams);
+          if (!cancelled) {
+            const elapsedMs = Date.now() - warmStartedAt;
+            const nextProgress = computeNarrativeWarmProgressEstimate(status, elapsedMs);
+            setStep5NarrativeWarmProgress((prev) => Math.max(prev, nextProgress));
+          }
+          if (status?.ready === true && status?.fingerprintMatches === true) {
+            if (!cancelled) {
+              setStep5NarrativeWarmProgress(100);
+              setStep5NarrativeWarmStatus('ready');
+            }
+            return;
+          }
+        } catch {
+          // Keep polling; warm work may still complete server-side.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      if (!cancelled) {
+        setStep5NarrativeWarmStatus((prev) => (prev === 'warming' ? 'failed' : prev));
+      }
+    };
+
+    void pollUntilReady();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+    };
   }, [
     reviewDialogOpen,
     reviewStep,
@@ -2164,24 +2302,21 @@ const DocumentUploadForm = ({
       }
     }
 
-    setReviewStep(5);
-
     const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
       reviewProfile,
       step3FollowUps,
       step3FollowUpAnswers
     );
-    if (pendingUploadedDocId) {
-      void warmReviewNarrativeCacheForStep({
-        documentId: pendingUploadedDocId,
-        reviewProfile: profileForWarm,
-        acceptedFields,
-        step: 4,
-        langQuery: getProfileApiLangQuery(),
-        translate: t,
-        awaitReady: false,
-      });
-    }
+    void warmReviewNarrativeCacheForStep({
+      documentId: pendingUploadedDocId,
+      reviewProfile: profileForWarm,
+      acceptedFields,
+      step: 4,
+      langQuery: getProfileApiLangQuery(),
+      translate: t,
+      awaitReady: true,
+    });
+    setReviewStep(5);
   };
 
   const handleReviewBack = () => {
@@ -2319,6 +2454,7 @@ const DocumentUploadForm = ({
     setPendingUploadedDocId(null);
     setSelectedFile(null);
     setExtractionError('');
+    notifyReviewSessionEnd();
   };
 
   // Handler for editing extracted skills list items.
@@ -2451,6 +2587,7 @@ const DocumentUploadForm = ({
       )}
 
       {/* Document list */}
+      {!hideDocumentList && (
       <List>
         {documents.map((doc) => (
           <ListItem
@@ -2558,8 +2695,10 @@ const DocumentUploadForm = ({
           </ListItem>
         ))}
       </List>
+      )}
 
       {/* Delete Confirmation Dialog */}
+      {!hideDocumentList && (
       <Dialog 
         open={deleteDialogOpen} 
         onClose={() => setDeleteDialogOpen(false)}
@@ -2616,6 +2755,7 @@ const DocumentUploadForm = ({
           </Button>
         </DialogActions>
       </Dialog>
+      )}
 
       {showUploadControls && !enableExtractionReview && (
         <Dialog open={uploadDialog} onClose={() => { setUploadDialog(false); setAutoStartUpload(false); }}>
@@ -3218,6 +3358,30 @@ const DocumentUploadForm = ({
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {t('documentUpload.review.step5Intro')}
                   </Typography>
+                  {step5NarrativeWarmStatus === 'warming' && (
+                    <Box sx={{ mb: 2 }}>
+                      <Alert severity="info">
+                        {t('documentUpload.review.step5PreparingProfile')}
+                      </Alert>
+                      <LinearProgress
+                        variant="determinate"
+                        value={step5NarrativeWarmProgress}
+                        sx={{
+                          mt: 1.5,
+                          height: 4,
+                          borderRadius: 1,
+                          '& .MuiLinearProgress-bar': {
+                            transition: 'transform 0.35s linear',
+                          },
+                        }}
+                      />
+                    </Box>
+                  )}
+                  {step5NarrativeWarmStatus === 'failed' && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {t('documentUpload.review.step5PrepareSlow')}
+                    </Alert>
+                  )}
                   <Divider sx={{ mb: 2 }} />
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <Box sx={REVIEW.rowLabeledField} {...reviewFieldAnchorProps('seniority.currentStatus')}>
@@ -3417,7 +3581,7 @@ const DocumentUploadForm = ({
             <Button
               onClick={handleReviewSave}
               variant="contained"
-              disabled={savingReviewActive || !step3SeniorityComplete}
+              disabled={savingReviewActive || !step3SeniorityComplete || step5NarrativeBlocksSave}
               startIcon={savingReviewActive ? <CircularProgress size={16} /> : null}
             >
               {savingReviewActive ? t('documentUpload.review.saving') : t('documentUpload.review.saveToProfileCta')}

@@ -256,7 +256,10 @@
       "loadFailed": "Details zu Login und Sicherheit konnten nicht geladen werden"
     },
     "documents": {
-      "title": "Dokumente"
+      "title": "Dokumente",
+      "empty": "Noch keine Dokumente hochgeladen.",
+      "reviewCta": "Lebenslauf prüfen",
+      "continueExtractionCta": "Verarbeitung fortsetzen"
     },
     "photo": {
       "edit": "Foto bearbeiten",
@@ -606,6 +609,8 @@
       "step4Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und fahre dann fort.",
       "step4NoFollowUps": "Es sind keine weiteren Fragen nötig. Fahre fort, um dein Erfahrungsniveau zu bestätigen.",
       "step5Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können. Speichere anschließend dein Profil.",
+      "step5PreparingProfile": "Dein Profil wird vorbereitet… Du kannst die Felder unten ausfüllen. Speichern ist gleich verfügbar.",
+      "step5PrepareSlow": "Die Profilvorbereitung dauert länger als erwartet. Du kannst jetzt speichern — es kann etwas länger dauern.",
       "step3QualityErrorPrefix": "Qualitätsvorschläge konnten nicht geladen werden:",
       "followUpPlaceholder": "Deine Antwort",
       "strengthsTitle": "Stärken und Fokusbereiche",

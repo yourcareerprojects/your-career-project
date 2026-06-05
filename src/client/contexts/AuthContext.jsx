@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { clearAppQueryCache } from '../hooks/useProfileQueries';
+import { clearAllCvReviewDrafts } from '../utils/cvReviewDraftStorage';
 import { clearSimulationSessionForAuthChange } from '../utils/simulationPersistence';
 
 const AuthContext = createContext(null);
@@ -22,6 +23,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     clearAppQueryCache();
+    clearAllCvReviewDrafts();
     clearSimulationSessionForAuthChange();
     setUser(null);
     setIsAuthenticated(false);

@@ -51,13 +51,62 @@ export function getProfileFullQueryKeyFull(lang) {
   return [...profileFullQueryKey, resolved];
 }
 
+/**
+ * Cached full profile payload when present and not invalidated (e.g. review-save seed).
+ * @returns {object|null}
+ */
+export function readFullProfileCacheEntry(lang, queryClientImpl = queryClient) {
+  const key = getProfileFullQueryKeyFull(lang);
+  const cached = queryClientImpl.getQueryData(key);
+  if (!cached || typeof cached !== 'object') return null;
+  if (queryClientImpl.getQueryState(key)?.isInvalidated) return null;
+  return cached;
+}
+
+/** Local Profile page state for first paint — avoids a loading flash when cache is seeded. */
+export function getProfilePageStateFromCache(lang, queryClientImpl = queryClient) {
+  const cachedProfile = readFullProfileCacheEntry(lang, queryClientImpl);
+  if (!cachedProfile) {
+    return { profile: null, completion: null, loading: true };
+  }
+  const completionFromCaches = getProfileCompletionFromCaches(queryClientImpl);
+  const completion = cachedProfile.completion || completionFromCaches?.completion || null;
+  return { profile: cachedProfile, completion, loading: false };
+}
+
+/** Completion embedded in GET /api/profile — reuse before hitting GET /api/profile/completion. */
+export function getProfileCompletionFromCaches(queryClientImpl = queryClient) {
+  const completionData = queryClientImpl.getQueryData(profileCompletionQueryKey);
+  const completionState = queryClientImpl.getQueryState(profileCompletionQueryKey);
+  if (completionData?.completion && !completionState?.isInvalidated) {
+    return completionData;
+  }
+
+  for (const lang of SUPPORTED_PROFILE_CACHE_LANGS) {
+    const fullKey = getProfileFullQueryKeyFull(lang);
+    const profile = queryClientImpl.getQueryData(fullKey);
+    const profileState = queryClientImpl.getQueryState(fullKey);
+    if (profile?.completion && !profileState?.isInvalidated) {
+      return { success: true, completion: profile.completion };
+    }
+  }
+
+  return null;
+}
+
+const SUPPORTED_PROFILE_CACHE_LANGS = ['en', 'de'];
+
 /** Full profile document (GET /api/profile). Heavy on the server — keep behind React Query + staleTime. */
 export async function fetchFullProfile(lang) {
   const resolvedLang = lang != null && String(lang).trim() !== ''
     ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
     : baseUILanguage();
   const res = await axios.get(`/api/profile?lang=${encodeURIComponent(resolvedLang)}`);
-  return res.data;
+  const data = res.data;
+  if (data?.completion) {
+    seedProfileCompletionQueryData({ success: true, completion: data.completion });
+  }
+  return data;
 }
 
 /**
@@ -68,6 +117,56 @@ export async function refetchFullProfileIntoCache(lang, queryClientImpl = queryC
   const profileData = await fetchFullProfile(lang);
   queryClientImpl.setQueryData(getProfileFullQueryKeyFull(lang), profileData);
   return profileData;
+}
+
+/** @type {Map<string, Promise<object>>} */
+const seededFullProfileRefetchInflight = new Map();
+
+export function isReviewSaveProfileSeed(profileData) {
+  return Boolean(profileData && typeof profileData === 'object' && profileData._seededFromReviewSave);
+}
+
+/**
+ * One background GET /api/profile after review-save seeding — deduped per locale.
+ * Replaces the partial seed in React Query with the full profile document.
+ *
+ * @param {string} [lang]
+ * @param {{ queryClientImpl?: import('react-query').QueryClient, onUpdated?: (data: object) => void }} [options]
+ */
+export function refreshSeededFullProfileInBackground(lang, options = {}) {
+  const queryClientImpl = options.queryClientImpl || queryClient;
+  const resolvedLang = lang != null && String(lang).trim() !== ''
+    ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
+    : baseUILanguage();
+  const cacheKey = JSON.stringify(getProfileFullQueryKeyFull(resolvedLang));
+  const cached = readFullProfileCacheEntry(resolvedLang, queryClientImpl);
+  if (!isReviewSaveProfileSeed(cached)) {
+    return Promise.resolve(cached);
+  }
+
+  const inflight = seededFullProfileRefetchInflight.get(cacheKey);
+  if (inflight) {
+    if (typeof options.onUpdated === 'function') {
+      inflight.then(options.onUpdated).catch(() => {});
+    }
+    return inflight;
+  }
+
+  const promise = refetchFullProfileIntoCache(resolvedLang, queryClientImpl)
+    .then((profileData) => {
+      if (typeof options.onUpdated === 'function') {
+        options.onUpdated(profileData);
+      }
+      return profileData;
+    })
+    .finally(() => {
+      if (seededFullProfileRefetchInflight.get(cacheKey) === promise) {
+        seededFullProfileRefetchInflight.delete(cacheKey);
+      }
+    });
+
+  seededFullProfileRefetchInflight.set(cacheKey, promise);
+  return promise;
 }
 
 export function useFullProfileQuery(options = {}) {
@@ -88,6 +187,30 @@ export async function fetchProfileCompletion() {
   if (!token) {
     throw new Error('Not authenticated');
   }
+
+  const cachedCompletion = getProfileCompletionFromCaches();
+  if (cachedCompletion) {
+    return cachedCompletion;
+  }
+
+  const lang = baseUILanguage();
+  const fullKey = getProfileFullQueryKeyFull(lang);
+  const profileState = queryClient.getQueryState(fullKey);
+  if (profileState?.fetchStatus === 'fetching') {
+    try {
+      await queryClient.fetchQuery(fullKey, () => fetchFullProfile(lang), {
+        staleTime: PROFILE_QUERY_STALE_TIME_MS,
+        cacheTime: PROFILE_QUERY_CACHE_TIME_MS,
+      });
+      const completionAfterProfile = getProfileCompletionFromCaches();
+      if (completionAfterProfile) {
+        return completionAfterProfile;
+      }
+    } catch {
+      // Fall through to the lightweight completion endpoint.
+    }
+  }
+
   const response = await fetch('/api/profile/completion', {
     headers: { Authorization: `Bearer ${token}` }
   });

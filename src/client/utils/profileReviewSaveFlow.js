@@ -18,8 +18,88 @@ const USER_IDENTITY_KEYS = [
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const DEFAULT_POLL_MAX_ATTEMPTS = 24;
 const DOCUMENT_CACHE_POLL_MAX_ATTEMPTS = 240;
-/** Brief pre-save poll only — wizard warm + review-save handle generation. */
-const DOCUMENT_CACHE_PRE_SAVE_POLL_MS = 15000;
+/** Brief pre-save poll when nothing is in flight on the server. */
+const DOCUMENT_CACHE_PRE_SAVE_POLL_MS = 1500;
+/** Wait for step-5 / server in-flight narrative work before starting a duplicate warm. */
+const DOCUMENT_CACHE_INFLIGHT_POLL_MS = 45000;
+
+/** @type {Map<string, Promise<unknown>>} */
+const narrativeWarmInflightByKey = new Map();
+
+function buildNarrativeWarmRegistryKey(documentId, userIdentity, structuredUserInfo, acceptedFields) {
+  return JSON.stringify({
+    documentId: String(documentId || '').trim(),
+    userIdentity: userIdentity && typeof userIdentity === 'object' ? userIdentity : {},
+    structuredUserInfo:
+      structuredUserInfo && typeof structuredUserInfo === 'object' ? structuredUserInfo : {},
+    acceptedFields: acceptedFields && typeof acceptedFields === 'object' ? acceptedFields : {},
+  });
+}
+
+function getOrCreateNarrativeWarmWork(registryKey, workFactory) {
+  const existing = narrativeWarmInflightByKey.get(registryKey);
+  if (existing) return existing;
+  const promise = Promise.resolve()
+    .then(workFactory)
+    .finally(() => {
+      if (narrativeWarmInflightByKey.get(registryKey) === promise) {
+        narrativeWarmInflightByKey.delete(registryKey);
+      }
+    });
+  narrativeWarmInflightByKey.set(registryKey, promise);
+  return promise;
+}
+
+async function awaitRegisteredNarrativeWarm(registryKey) {
+  const inflight = narrativeWarmInflightByKey.get(registryKey);
+  if (!inflight) return;
+  try {
+    await inflight;
+  } catch {
+    // Wizard warm failures are non-fatal; save will poll or warm once.
+  }
+}
+
+function isNarrativeCacheStatusReady(status) {
+  return status?.ready === true && status?.fingerprintMatches === true;
+}
+
+/** Narrative sections we can detect as complete via narrative-cache-status `pending`. */
+const NARRATIVE_WARM_TRACKABLE_COUNT = 6;
+/** Typical full-regen duration used for linear fallback progress on step 5. */
+const NARRATIVE_WARM_EXPECTED_MS = 30000;
+
+/**
+ * Estimate warm progress (0–100) for step-5 UI.
+ * Server `pending` lists incomplete dimensions only after partial cache is persisted.
+ * Full regen runs as one LLM job and writes atomically, so there is no % until then.
+ */
+function computeNarrativeWarmProgressEstimate(status, elapsedMs = 0) {
+  if (isNarrativeCacheStatusReady(status)) {
+    return 100;
+  }
+
+  const pending = Array.isArray(status?.pending) ? status.pending : [];
+  const trackablePending = pending.filter(
+    (item) => item.startsWith('structuredUserInfo.') || item === 'who_are_you'
+  );
+
+  let serverProgress = null;
+  if (trackablePending.length > 0) {
+    const completed = NARRATIVE_WARM_TRACKABLE_COUNT - trackablePending.length;
+    serverProgress = Math.round((completed / NARRATIVE_WARM_TRACKABLE_COUNT) * 92);
+  }
+
+  const timeProgress = Math.min(
+    90,
+    Math.round(8 + (Math.max(0, elapsedMs) / NARRATIVE_WARM_EXPECTED_MS) * 82)
+  );
+
+  if (serverProgress != null) {
+    return Math.max(serverProgress, timeProgress);
+  }
+  return timeProgress;
+}
 
 /** True when all five identity prompts have non-empty trimmed answers (review save + step 2 gate). */
 function isReviewUserIdentityComplete(userIdentity = {}) {
@@ -309,11 +389,13 @@ async function saveExtractedProfileReview({
   }
   const normalizedSeniority = seniorityCheck.value;
 
-  const authRefresh = await refreshUser();
-  if (!authRefresh.success && !authRefresh.skipped) {
-    throw new ProfileReviewSaveError('Session expired', {
-      userMessage: translate('profileCreation.errors.sessionExpired'),
-    });
+  if (typeof refreshUser === 'function') {
+    const authRefresh = await refreshUser();
+    if (!authRefresh.success && !authRefresh.skipped) {
+      throw new ProfileReviewSaveError('Session expired', {
+        userMessage: translate('profileCreation.errors.sessionExpired'),
+      });
+    }
   }
 
   const identityCheck = validateReviewIdentityStep({ userIdentity });
@@ -444,30 +526,67 @@ async function pollReviewNarrativeCacheReady({
     if (polled?.ready === true && polled?.fingerprintMatches === true) {
       return polled;
     }
+    // Cache exists but does not match save payload — polling cannot fix fingerprint drift.
+    if (polled?.ready === true && polled?.fingerprintMatches === false) {
+      return null;
+    }
     await delay(500);
   }
   return null;
 }
 
 /**
- * Brief poll for a ready document narrative cache (wizard may have warmed it).
- * Does not block on sync warm — review-save performs one server-side warm if needed.
+ * Blocking warm: PUT review-narrative-cache with awaitReady so LLM runs here, not inside review-save.
  */
-async function ensureReviewNarrativeCacheBeforeSave({
+async function requestReviewNarrativeCacheAwaitReady({
+  documentId,
+  userIdentity = {},
+  structuredUserInfo = {},
+  acceptedFields = {},
+  langQuery,
+  fetchImpl = fetch,
+  getAuthToken = () => localStorage.getItem('token'),
+  translate = (key) => key,
+}) {
+  const docId = documentId != null ? String(documentId).trim() : '';
+  if (!docId) return null;
+
+  const warmRes = await fetchImpl(`/api/profile/review-narrative-cache?${langQuery}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: JSON.stringify(
+      buildReviewNarrativeCacheRequestBody({
+        documentId: docId,
+        userIdentity,
+        structuredUserInfo,
+        acceptedFields,
+        awaitReady: true,
+      })
+    ),
+  });
+  await throwIfSaveNotOk(warmRes, translate);
+  return warmRes.json().catch(() => ({}));
+}
+
+async function runEnsureReviewNarrativeCacheBeforeSave({
   documentId,
   userIdentity,
   structuredUserInfo,
   acceptedFields,
   langQuery,
-  fetchImpl = fetch,
-  getAuthToken = () => localStorage.getItem('token'),
-  translate = (key) => key,
-  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_PRE_SAVE_POLL_MS,
+  fetchImpl,
+  getAuthToken,
+  translate,
+  documentCacheWarmTimeoutMs,
+  skipBriefPoll,
 }) {
   const docId = documentId != null ? String(documentId).trim() : '';
   if (!docId) return;
 
-  const pollParams = {
+  const cacheParams = {
     documentId: docId,
     userIdentity,
     structuredUserInfo,
@@ -478,16 +597,111 @@ async function ensureReviewNarrativeCacheBeforeSave({
     translate,
   };
 
-  const ready = await pollReviewNarrativeCacheReady({
-    ...pollParams,
-    deadlineMs: documentCacheWarmTimeoutMs,
-  });
-  if (ready) return ready;
+  const registryKey = buildNarrativeWarmRegistryKey(
+    docId,
+    userIdentity,
+    structuredUserInfo,
+    acceptedFields
+  );
+
+  if (skipBriefPoll) {
+    try {
+      const warmResult = await requestReviewNarrativeCacheAwaitReady(cacheParams);
+      if (warmResult?.ready === true) {
+        return { ...warmResult, fingerprintMatches: true };
+      }
+      const verified = await fetchDocumentNarrativeCacheStatus(cacheParams);
+      if (isNarrativeCacheStatusReady(verified)) {
+        return verified;
+      }
+    } catch (err) {
+      if (err instanceof ProfileReviewSaveError) throw err;
+      console.warn(
+        '[saveExtractedProfileReview] awaitReady narrative cache warm failed:',
+        err?.message || err
+      );
+    }
+    console.warn(
+      '[saveExtractedProfileReview] document narrative cache not ready after awaitReady warm; continuing to review-save'
+    );
+    return null;
+  }
+
+  // Save joins step-5 wizard warm before polling or starting duplicate work.
+  await awaitRegisteredNarrativeWarm(registryKey);
+
+  let status = await fetchDocumentNarrativeCacheStatus(cacheParams);
+  if (isNarrativeCacheStatusReady(status)) return status;
+
+  if (status?.ready === true && status?.fingerprintMatches === false) {
+    // Mismatch — polling cannot help; go straight to sync warm below.
+  } else {
+    const pollDeadlineMs = status?.inFlight
+      ? DOCUMENT_CACHE_INFLIGHT_POLL_MS
+      : documentCacheWarmTimeoutMs;
+    const polled = await pollReviewNarrativeCacheReady({
+      ...cacheParams,
+      deadlineMs: pollDeadlineMs,
+    });
+    if (polled) return polled;
+
+    status = await fetchDocumentNarrativeCacheStatus(cacheParams);
+    if (isNarrativeCacheStatusReady(status)) return status;
+
+    if (status?.inFlight) {
+      const inflightPolled = await pollReviewNarrativeCacheReady({
+        ...cacheParams,
+        deadlineMs: DOCUMENT_CACHE_INFLIGHT_POLL_MS,
+      });
+      if (inflightPolled) return inflightPolled;
+    }
+  }
+
+  try {
+    const warmResult = await requestReviewNarrativeCacheAwaitReady(cacheParams);
+    if (warmResult?.ready === true) {
+      return { ...warmResult, fingerprintMatches: true };
+    }
+
+    const verified = await fetchDocumentNarrativeCacheStatus(cacheParams);
+    if (isNarrativeCacheStatusReady(verified)) {
+      return verified;
+    }
+  } catch (err) {
+    if (err instanceof ProfileReviewSaveError) throw err;
+    console.warn(
+      '[saveExtractedProfileReview] awaitReady narrative cache warm failed:',
+      err?.message || err
+    );
+  }
 
   console.warn(
-    '[saveExtractedProfileReview] document narrative cache not ready after brief poll; continuing to review-save'
+    '[saveExtractedProfileReview] document narrative cache not ready after awaitReady warm; continuing to review-save'
   );
   return null;
+}
+
+/**
+ * Join step-5 wizard warm, poll while server work is in flight, then one awaitReady warm if needed.
+ */
+async function ensureReviewNarrativeCacheBeforeSave(options = {}) {
+  const docId = options.documentId != null ? String(options.documentId).trim() : '';
+  if (!docId) return;
+
+  const registryKey = buildNarrativeWarmRegistryKey(
+    docId,
+    options.userIdentity,
+    options.structuredUserInfo,
+    options.acceptedFields
+  );
+
+  if (options.skipBriefPoll) {
+    return getOrCreateNarrativeWarmWork(registryKey, () =>
+      runEnsureReviewNarrativeCacheBeforeSave(options)
+    );
+  }
+
+  return runEnsureReviewNarrativeCacheBeforeSave(options);
 }
 
 /**
@@ -529,8 +743,9 @@ async function fetchDocumentNarrativeCacheStatus({
 }
 
 /**
- * Pre-generate narratives while the user advances the review wizard (fire-and-forget).
- * Save uses ensureReviewNarrativeCacheBeforeSave (poll + single awaitReady warm) then fast review-save.
+ * Pre-generate narratives while the user advances the review wizard.
+ * Steps 3–4: fire-and-forget PUT. Step 5: awaitReady warm in the background while seniority is filled.
+ * Save: ensureReviewNarrativeCacheBeforeSave (brief poll + single awaitReady warm) then fast review-save.
  */
 async function warmReviewNarrativeCacheForStep({
   documentId,
@@ -541,7 +756,7 @@ async function warmReviewNarrativeCacheForStep({
   getAuthToken = () => localStorage.getItem('token'),
   langQuery = '',
   translate = (key) => key,
-  /** When true, block until cache is ready (save path only). Wizard uses fire-and-forget PUT. */
+  /** When true, blocking warm (wizard step 5 background + save fallback). */
   awaitReady = false,
 }) {
   const docId = documentId != null ? String(documentId).trim() : '';
@@ -565,21 +780,28 @@ async function warmReviewNarrativeCacheForStep({
     awaitReady,
   });
 
-  try {
-    if (step >= 4 && body.structuredUserInfo && awaitReady) {
-      await ensureReviewNarrativeCacheBeforeSave({
-        documentId: docId,
-        userIdentity: body.userIdentity || {},
-        structuredUserInfo: body.structuredUserInfo,
-        acceptedFields: body.acceptedFields,
-        langQuery,
-        fetchImpl,
-        getAuthToken,
-        translate,
-      });
-      return;
-    }
-    await fetchImpl(`/api/profile/review-narrative-cache?${langQuery}`, {
+  const registryKey = buildNarrativeWarmRegistryKey(
+    docId,
+    body.userIdentity,
+    body.structuredUserInfo,
+    body.acceptedFields
+  );
+  const cacheParams = {
+    documentId: docId,
+    userIdentity: body.userIdentity || {},
+    structuredUserInfo: body.structuredUserInfo || {},
+    acceptedFields: body.acceptedFields,
+    langQuery,
+    fetchImpl,
+    getAuthToken,
+    translate,
+  };
+
+  const runBackgroundNarrativeWarm = async () => {
+    let status = await fetchDocumentNarrativeCacheStatus(cacheParams);
+    if (isNarrativeCacheStatusReady(status)) return status;
+
+    const warmRes = await fetchImpl(`/api/profile/review-narrative-cache?${langQuery}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -587,10 +809,83 @@ async function warmReviewNarrativeCacheForStep({
       },
       body: JSON.stringify(cachePayload),
     });
+    await throwIfSaveNotOk(warmRes, translate);
+    const warmData = await warmRes.json().catch(() => ({}));
+    if (warmData?.ready === true) {
+      return { ...warmData, fingerprintMatches: true };
+    }
+
+    status = await fetchDocumentNarrativeCacheStatus(cacheParams);
+    if (isNarrativeCacheStatusReady(status)) return status;
+
+    const polled = await pollReviewNarrativeCacheReady({
+      ...cacheParams,
+      deadlineMs: DOCUMENT_CACHE_INFLIGHT_POLL_MS,
+    });
+    return polled;
+  };
+
+  const pollNarrativeCacheUntilReady = async (initialStatus) => {
+    let status = initialStatus;
+    if (isNarrativeCacheStatusReady(status)) return status;
+
+    if (status?.ready !== true || status?.fingerprintMatches !== false) {
+      const pollDeadlineMs = status?.inFlight
+        ? DOCUMENT_CACHE_INFLIGHT_POLL_MS
+        : DOCUMENT_CACHE_PRE_SAVE_POLL_MS;
+      const polled = await pollReviewNarrativeCacheReady({
+        ...cacheParams,
+        deadlineMs: pollDeadlineMs,
+      });
+      if (polled) return polled;
+
+      status = await fetchDocumentNarrativeCacheStatus(cacheParams);
+      if (isNarrativeCacheStatusReady(status)) return status;
+
+      if (status?.inFlight) {
+        const inflightPolled = await pollReviewNarrativeCacheReady({
+          ...cacheParams,
+          deadlineMs: DOCUMENT_CACHE_INFLIGHT_POLL_MS,
+        });
+        if (inflightPolled) return inflightPolled;
+      }
+    }
+    return null;
+  };
+
+  try {
+    if (awaitReady) {
+      await getOrCreateNarrativeWarmWork(registryKey, async () => {
+        const initialStatus = await fetchDocumentNarrativeCacheStatus(cacheParams);
+        const polledReady = await pollNarrativeCacheUntilReady(initialStatus);
+        if (polledReady) return polledReady;
+
+        return runEnsureReviewNarrativeCacheBeforeSave({
+          ...cacheParams,
+          skipBriefPoll: true,
+        });
+      });
+      return;
+    }
+    void getOrCreateNarrativeWarmWork(registryKey, async () => {
+      try {
+        return await runBackgroundNarrativeWarm();
+      } catch (err) {
+        if (err instanceof ProfileReviewSaveError) throw err;
+        return null;
+      }
+    });
   } catch (err) {
     if (err instanceof ProfileReviewSaveError) throw err;
     // Non-fatal for mid-wizard warm (including step 4 context → seniority).
   }
+}
+
+/** Test-only: await and clear in-flight narrative warm registry entries. */
+async function flushNarrativeWarmRegistryForTests() {
+  const pending = [...narrativeWarmInflightByKey.values()];
+  narrativeWarmInflightByKey.clear();
+  await Promise.allSettled(pending);
 }
 
 module.exports = {
@@ -601,7 +896,10 @@ module.exports = {
   saveExtractedProfileReview,
   warmReviewNarrativeCacheForStep,
   ensureReviewNarrativeCacheBeforeSave,
+  requestReviewNarrativeCacheAwaitReady,
   fetchDocumentNarrativeCacheStatus,
+  flushNarrativeWarmRegistryForTests,
+  computeNarrativeWarmProgressEstimate,
   mergeStructuredUserInfoForProfileSeed,
   waitForDocumentNarrativeCache,
   waitForProfileNarrativesReady,

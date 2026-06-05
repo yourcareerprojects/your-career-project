@@ -71,6 +71,7 @@ jest.mock('../services/embedding/userOccupationInference', () => ({
 
 const { clearProfileResponseCache } = require('../services/profileGetResponseCache');
 const profileController = require('../controllers/profileController');
+const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');
 const { generateDimensionSummary } = require('../services/jobAnalysis/dimensionSummaryGenerator');
 const { generateWhoAreYouNarratives } = require('../services/jobAnalysis/whoAreYouNarrativeGenerator');
 const { generateWhoAreYouIdentityEmbeddingText } = require('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
@@ -87,7 +88,10 @@ describe('profileController narrative layer', () => {
     clearProfileResponseCache();
   });
 
-  test('getProfile lazy-backfills missing summary_text for narrative dimensions', async () => {
+  test('getProfile defers LLM narrative generation and schedules background backfill', async () => {
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateDimensionSummary.mockClear();
+
     const created = await User.create({
       email: 'narrative-backfill@example.com',
       password: 'password123!',
@@ -115,31 +119,35 @@ describe('profileController narrative layer', () => {
     expect(res.status).not.toHaveBeenCalledWith(500);
     const payload = res.json.mock.calls[0][0];
     expect(payload.success).toBe(true);
+    expect(payload.completion).toEqual(
+      expect.objectContaining({
+        overall: expect.any(Number),
+        seniority: expect.any(Number),
+        structuredUserInfo: expect.any(Number),
+        userIdentity: expect.any(Number),
+        documents: expect.any(Number),
+      })
+    );
 
     const profileStructured = JSON.parse(JSON.stringify(payload.profile.structuredUserInfo));
     const csiStructured = JSON.parse(
       JSON.stringify(payload.profile.careerSimulationInputs.structuredUserInfo)
     );
     expect(profileStructured.skills.raw_items).toEqual(['SQL', 'Data modeling']);
-    expect(typeof profileStructured.skills.summary_text).toBe('string');
-    expect(profileStructured.skills.summary_text.length).toBeGreaterThan(0);
     expect(profileStructured.keyResponsibilities.raw_items).toEqual(['Built reporting pipelines']);
-    expect(typeof profileStructured.keyResponsibilities.summary_text).toBe('string');
-    expect(profileStructured.keyResponsibilities.summary_text.length).toBeGreaterThan(0);
     expect(csiStructured.skills.raw_items).toEqual(['Python']);
-    expect(typeof csiStructured.skills.summary_text).toBe('string');
-    expect(csiStructured.skills.summary_text.length).toBeGreaterThan(0);
-    expect(generateDimensionSummary).toHaveBeenCalled();
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({
+        dimensionKeys: expect.arrayContaining(['skills', 'keyResponsibilities', 'domains']),
+        language: 'de',
+      })
+    );
 
     const persisted = await User.findById(created._id).lean();
-    expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual(['SQL', 'Data modeling']);
-    expect(typeof persisted.profile.structuredUserInfo.skills.summary_text).toBe('object');
-    expect(typeof persisted.profile.structuredUserInfo.skills.summary_text.original_language).toBe('string');
-    expect(typeof persisted.profile.structuredUserInfo.skills.summary_text.translations).toBe('object');
-    expect(
-      typeof persisted.profile.structuredUserInfo.skills.summary_text.translations.en === 'string' ||
-      typeof persisted.profile.structuredUserInfo.skills.summary_text.translations.de === 'string'
-    ).toBe(true);
+    expect(persisted.profile.structuredUserInfo.skills.summary_text).toEqual({ en: '', de: null });
+    expect(persisted.profile.structuredUserInfo.keyResponsibilities.summary_text).toEqual({ en: '', de: null });
   });
 
   test('updateStructuredUserInfo regenerates narrative summaries from raw arrays', async () => {
@@ -264,6 +272,54 @@ describe('profileController narrative layer', () => {
       persistedSummary.original
     );
     expect(generateWhoAreYouIdentityEmbeddingText).toHaveBeenCalled();
+  });
+
+  test('getProfile serializes embedded documents and omits internal narrativeEnrichment blob', async () => {
+    const created = await User.create({
+      email: 'profile-docs-serialize@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        structuredUserInfo: {},
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [{
+          type: 'resume',
+          name: 'cv.pdf',
+          path: '/uploads/cv.pdf',
+          uploadDate: new Date('2024-01-15T00:00:00.000Z'),
+          description: 'My CV',
+          status: 'complete',
+          extractionStatus: 'complete',
+          extractedProfileData: { userIdentity: { q1: 'answer' }, structuredUserInfo: {} },
+          narrativeEnrichment: {
+            dimensions: { skills: { summary_text: 'internal-only narrative cache' } },
+            who_are_you: { summary_text: 'should not leak' },
+          },
+          narrativeEnrichmentStatus: 'complete',
+          identityEnrichmentStatus: 'complete',
+        }],
+      },
+    });
+
+    const req = { user: { userId: String(created._id) }, language: 'en' };
+    const res = mockRes();
+    await profileController.getProfile(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.success).toBe(true);
+    expect(payload.profile.documents).toHaveLength(1);
+
+    const doc = payload.profile.documents[0];
+    expect(doc.id).toBeDefined();
+    expect(doc.name).toBe('cv.pdf');
+    expect(doc.description).toBe('My CV');
+    expect(doc.extractionStatus).toBe('complete');
+    expect(doc.extractedProfileData).toEqual({ userIdentity: { q1: 'answer' } });
+    expect(doc.narrativeEnrichmentStatus).toBe('complete');
+    expect(doc.narrativeEnrichment).toBeUndefined();
+    expect(doc.identityEnrichmentStatus).toBeUndefined();
+    expect(doc._id).toBeUndefined();
   });
 });
 

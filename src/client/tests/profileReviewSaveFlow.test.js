@@ -16,10 +16,17 @@ const { queryClient } = require('../queryClient');
 const { invalidateFullProfileQuery } = require('../hooks/useProfileQueries');
 const {
   saveExtractedProfileReview,
+  warmReviewNarrativeCacheForStep,
   buildReviewSaveUserMessage,
   isReviewUserIdentityComplete,
   ProfileReviewSaveError,
+  flushNarrativeWarmRegistryForTests,
+  computeNarrativeWarmProgressEstimate,
 } = require('../utils/profileReviewSaveFlow');
+
+afterEach(async () => {
+  await flushNarrativeWarmRegistryForTests();
+});
 
 const validSeniority = {
   currentStatus: 'employed',
@@ -115,7 +122,112 @@ describe('saveExtractedProfileReview', () => {
     );
   });
 
-  test('proceeds to review-save when narrative cache is not ready after brief poll', async () => {
+  test('save joins completed wizard warm and skips duplicate warm PUT', async () => {
+    let warmPutCount = 0;
+    let statusChecks = 0;
+    const fetchImpl = jest.fn((url) => {
+      if (String(url).includes('/review-narrative-cache')) {
+        warmPutCount += 1;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, ready: true, updated: true }),
+        });
+      }
+      if (String(url).includes('/review-save')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            seniority: validSeniority,
+            usedNarrativeCacheFastPath: true,
+            who_are_you: { raw_answers: [], summary_text: '' },
+            structuredUserInfo: {},
+            documents: [],
+          }),
+        });
+      }
+      statusChecks += 1;
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          success: true,
+          ready: warmPutCount > 0,
+          fingerprintMatches: warmPutCount > 0,
+        }),
+      });
+    });
+
+    const payload = buildProfilePayload({ documentId: 'doc-1' });
+    await warmReviewNarrativeCacheForStep({
+      documentId: 'doc-1',
+      reviewProfile: {
+        userIdentity: payload.userIdentity,
+        structuredUserInfo: payload.structuredUserInfo,
+      },
+      acceptedFields: {},
+      step: 4,
+      langQuery: 'lang=en',
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      awaitReady: true,
+    });
+    expect(warmPutCount).toBe(1);
+
+    await saveExtractedProfileReview({
+      profileData: payload,
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      langQuery: 'lang=en',
+      documentCacheWarmTimeoutMs: 0,
+    });
+    expect(warmPutCount).toBe(1);
+  });
+
+  test('runs awaitReady warm when brief poll misses, then review-save', async () => {
+    const fetchImpl = jest.fn((url, options = {}) => {
+      if (String(url).includes('/review-save')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            seniority: validSeniority,
+            narrativesReady: true,
+            usedNarrativeCacheFastPath: true,
+            who_are_you: { raw_answers: [], summary_text: '' },
+            structuredUserInfo: {},
+            documents: [],
+          }),
+        });
+      }
+      if (String(url).includes('/review-narrative-cache')) {
+        expect(options.method).toBe('PUT');
+        expect(JSON.parse(options.body).awaitReady).toBe(true);
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, ready: true, updated: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, ready: false, fingerprintMatches: false }),
+      });
+    });
+
+    const result = await saveExtractedProfileReview({
+      profileData: buildProfilePayload({ documentId: 'doc-1' }),
+      refreshUser: async () => ({ success: true }),
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      langQuery: 'lang=en',
+      documentCacheWarmTimeoutMs: 0,
+    });
+
+    expect(result.reviewSaveData.success).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
+  });
+
+  test('proceeds to review-save when awaitReady warm also misses cache', async () => {
     const fetchImpl = jest.fn((url) => {
       if (String(url).includes('/review-save')) {
         return Promise.resolve({
@@ -129,6 +241,12 @@ describe('saveExtractedProfileReview', () => {
             structuredUserInfo: {},
             documents: [],
           }),
+        });
+      }
+      if (String(url).includes('/review-narrative-cache')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, ready: false, updated: false }),
         });
       }
       return Promise.resolve({
@@ -149,12 +267,52 @@ describe('saveExtractedProfileReview', () => {
     });
 
     expect(result.reviewSaveData.success).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
     expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('document narrative cache not ready after brief poll')
+      expect.stringContaining('document narrative cache not ready after awaitReady warm')
     );
     warnSpy.mockRestore();
+  });
+
+  test('skips poll wait when cache is ready but fingerprint mismatches', async () => {
+    const fetchImpl = jest.fn((url, options = {}) => {
+      if (String(url).includes('/review-save')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            seniority: validSeniority,
+            who_are_you: { raw_answers: [], summary_text: '' },
+            structuredUserInfo: {},
+            documents: [],
+          }),
+        });
+      }
+      if (String(url).includes('/review-narrative-cache')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, ready: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, ready: true, fingerprintMatches: false }),
+      });
+    });
+
+    await saveExtractedProfileReview({
+      profileData: buildProfilePayload({ documentId: 'doc-1' }),
+      refreshUser: async () => ({ success: true }),
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      langQuery: 'lang=en',
+      documentCacheWarmTimeoutMs: 15000,
+    });
+
+    const statusCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/narrative-cache-status'));
+    expect(statusCalls.length).toBe(1);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
   });
 
   test('seeds structured lists from review snapshot when server response omits raw_items', async () => {
@@ -370,6 +528,118 @@ describe('saveExtractedProfileReview', () => {
         langQuery: 'lang=en',
       })
     ).rejects.toThrow('Seniority fields were not persisted correctly');
+  });
+});
+
+describe('computeNarrativeWarmProgressEstimate', () => {
+  test('returns 100 when cache is ready and fingerprint matches', () => {
+    expect(
+      computeNarrativeWarmProgressEstimate({
+        ready: true,
+        fingerprintMatches: true,
+      })
+    ).toBe(100);
+  });
+
+  test('uses pending dimensions for server-side progress when partial cache exists', () => {
+    expect(
+      computeNarrativeWarmProgressEstimate({
+        ready: false,
+        pending: ['structuredUserInfo.skills', 'who_are_you'],
+      })
+    ).toBe(61);
+  });
+
+  test('ramps linearly over expected warm duration when only coarse pending is available', () => {
+    expect(
+      computeNarrativeWarmProgressEstimate(
+        { ready: false, pending: ['narrativeEnrichment'], inFlight: true },
+        0
+      )
+    ).toBe(8);
+    expect(
+      computeNarrativeWarmProgressEstimate(
+        { ready: false, pending: ['narrativeEnrichment'], inFlight: true },
+        15000
+      )
+    ).toBe(49);
+  });
+});
+
+describe('warmReviewNarrativeCacheForStep', () => {
+  test('awaitReady returns immediately when cache status is already ready', async () => {
+    const fetchImpl = jest.fn((url) => {
+      if (String(url).includes('/narrative-cache-status')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, ready: true, fingerprintMatches: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, ready: true }),
+      });
+    });
+
+    await warmReviewNarrativeCacheForStep({
+      documentId: 'doc-1',
+      reviewProfile: {
+        userIdentity: validIdentity,
+        structuredUserInfo: { skills: ['JavaScript'] },
+      },
+      acceptedFields: {},
+      step: 4,
+      langQuery: 'lang=en',
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      awaitReady: true,
+    });
+
+    const warmCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/review-narrative-cache'));
+    expect(warmCalls.length).toBe(0);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/narrative-cache-status'))).toBe(true);
+  });
+
+  test('background warm PUTs and completes when cache becomes ready', async () => {
+    let statusChecks = 0;
+    const fetchImpl = jest.fn((url) => {
+      if (String(url).includes('/narrative-cache-status')) {
+        statusChecks += 1;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            ready: statusChecks >= 2,
+            fingerprintMatches: statusChecks >= 2,
+          }),
+        });
+      }
+      if (String(url).includes('/review-narrative-cache')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, reason: 'warming' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    await warmReviewNarrativeCacheForStep({
+      documentId: 'doc-1',
+      reviewProfile: {
+        userIdentity: validIdentity,
+        structuredUserInfo: { skills: ['JavaScript'] },
+      },
+      acceptedFields: {},
+      step: 4,
+      langQuery: 'lang=en',
+      fetchImpl,
+      getAuthToken: () => 'token-1',
+      awaitReady: false,
+    });
+    await flushNarrativeWarmRegistryForTests();
+
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
+    expect(statusChecks).toBeGreaterThanOrEqual(2);
   });
 });
 

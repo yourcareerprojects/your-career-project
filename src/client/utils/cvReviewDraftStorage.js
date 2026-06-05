@@ -57,8 +57,26 @@ function clearCvReviewDraft(userId) {
   }
 }
 
+/** Remove every persisted CV review draft (e.g. on logout so flows do not resume unexpectedly). */
+function clearAllCvReviewDrafts() {
+  if (typeof window === 'undefined' || !window.sessionStorage) return;
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    /* ignore */
+  }
+}
+
 module.exports = {
   saveCvReviewDraft,
   loadCvReviewDraft,
   clearCvReviewDraft,
+  clearAllCvReviewDrafts,
 };

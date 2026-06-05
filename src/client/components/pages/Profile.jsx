@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -43,8 +43,12 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { Save as SaveIcon, Cancel as CancelIcon } from '@mui/icons-material';
 import UserIdentityTextForm from '../profile/UserIdentityTextForm';
 import SeniorityForm from '../profile/SeniorityForm';
-import DocumentUploadForm from '../profile/DocumentUploadForm';
 import ProfilePictureEditor from '../profile/ProfilePictureEditor';
+import ProfileDocumentList from '../profile/ProfileDocumentList';
+import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
+import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
+
+const DocumentUploadForm = lazy(() => import('../profile/DocumentUploadForm'));
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveIscoDisplayEntry } from '../../utils/iscoLabels';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
@@ -58,8 +62,11 @@ import {
   profileCompletionQueryKey,
   fetchProfileCompletion,
   getProfileFullQueryKeyFull,
+  readFullProfileCacheEntry,
+  getProfilePageStateFromCache,
+  isReviewSaveProfileSeed,
   fetchFullProfile,
-  refetchFullProfileIntoCache,
+  refreshSeededFullProfileInBackground,
   baseUILanguage,
   PROFILE_QUERY_STALE_TIME_MS,
   PROFILE_QUERY_CACHE_TIME_MS,
@@ -159,9 +166,13 @@ const Profile = ({
   const currentLang = baseUILanguage();
   const profileFullKey = useMemo(() => getProfileFullQueryKeyFull(currentLang), [currentLang]);
   const { user, updateUser } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [completion, setCompletion] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialPageStateRef = useRef(null);
+  if (initialPageStateRef.current == null) {
+    initialPageStateRef.current = getProfilePageStateFromCache(baseUILanguage());
+  }
+  const [profile, setProfile] = useState(initialPageStateRef.current.profile);
+  const [completion, setCompletion] = useState(initialPageStateRef.current.completion);
+  const [loading, setLoading] = useState(initialPageStateRef.current.loading);
   const [error, setError] = useState(null);
   const [editSection, setEditSection] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -192,6 +203,9 @@ const Profile = ({
   const [profileNameDraft, setProfileNameDraft] = useState('');
   const [profileNameLoading, setProfileNameLoading] = useState(false);
   const [profileNameError, setProfileNameError] = useState(null);
+  const [documentReviewDocId, setDocumentReviewDocId] = useState(null);
+  const [savingCvReview, setSavingCvReview] = useState(false);
+  const [cvReviewError, setCvReviewError] = useState(null);
   const prevProfileUiLangRef = useRef(null);
   const hasSimulationSession = hasActiveCareerSimulationSession();
   const lastSimulationQuery = useLastSimulationQuery({
@@ -294,6 +308,15 @@ const Profile = ({
     }
   }, [loginSecurity?.data?.email, user?.email, updateUser]);
 
+  const applyFullProfileToPage = (profileData) => {
+    if (!profileData || typeof profileData !== 'object') return;
+    setProfile(profileData);
+    if (profileData.completion) {
+      setCompletion(profileData.completion);
+      seedProfileCompletionQueryData({ success: true, completion: profileData.completion });
+    }
+  };
+
   /**
    * Loads profile + completion. Uses React Query cache so repeat visits avoid a second
    * full GET /api/profile round-trip (that endpoint is expensive on the server).
@@ -305,19 +328,23 @@ const Profile = ({
       setError(null);
 
       if (!force) {
-        const cachedProfile = queryClient.getQueryData(profileFullKey);
-        const profileQueryInvalidated = queryClient.getQueryState(profileFullKey)?.isInvalidated;
+        const cachedProfile = readFullProfileCacheEntry(currentLang);
         // Do not reuse cache after mutations: invalidateQueries does not refetch inactive queries
         // (this page uses fetchQuery manually, so there is often no active observer).
-        if (cachedProfile && !profileQueryInvalidated) {
+        if (cachedProfile) {
           setProfile(cachedProfile);
           const cachedCompletionData = queryClient.getQueryData(profileCompletionQueryKey);
-          if (cachedCompletionData?.completion) {
-            setCompletion(cachedCompletionData.completion);
+          const embeddedCompletion = cachedProfile?.completion || cachedCompletionData?.completion;
+          if (embeddedCompletion) {
+            setCompletion(embeddedCompletion);
+            if (cachedProfile?.completion) {
+              seedProfileCompletionQueryData({ success: true, completion: embeddedCompletion });
+            }
           }
           setLoading(false);
 
           const refreshCompletionInBackground = () => {
+            if (cachedProfile?.completion) return;
             queryClient
               .prefetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
                 staleTime: PROFILE_QUERY_STALE_TIME_MS,
@@ -335,14 +362,12 @@ const Profile = ({
               });
           };
 
-          if (cachedProfile._seededFromReviewSave) {
-            refetchFullProfileIntoCache(currentLang)
-              .then((profileData) => {
-                setProfile(profileData);
-              })
-              .catch((profileErr) => {
-                console.error('Profile background refresh after review-save failed:', profileErr);
-              });
+          if (isReviewSaveProfileSeed(cachedProfile)) {
+            void refreshSeededFullProfileInBackground(currentLang, {
+              onUpdated: applyFullProfileToPage,
+            }).catch((profileErr) => {
+              console.error('Profile background refresh after review-save failed:', profileErr);
+            });
             refreshCompletionInBackground();
             return;
           }
@@ -356,19 +381,22 @@ const Profile = ({
       }
 
       setLoading(true);
-      const [profileData, completionData] = await Promise.all([
-        queryClient.fetchQuery(profileFullKey, () => fetchFullProfile(currentLang), {
-          staleTime: PROFILE_QUERY_STALE_TIME_MS,
-          cacheTime: PROFILE_QUERY_CACHE_TIME_MS
-        }),
-        queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
-          staleTime: PROFILE_QUERY_STALE_TIME_MS,
-          cacheTime: PROFILE_QUERY_CACHE_TIME_MS
-        })
-      ]);
+      const profileData = await queryClient.fetchQuery(profileFullKey, () => fetchFullProfile(currentLang), {
+        staleTime: PROFILE_QUERY_STALE_TIME_MS,
+        cacheTime: PROFILE_QUERY_CACHE_TIME_MS
+      });
       setProfile(profileData);
-      setCompletion(completionData.completion);
-      seedProfileCompletionQueryData(completionData);
+      if (profileData?.completion) {
+        setCompletion(profileData.completion);
+        seedProfileCompletionQueryData({ success: true, completion: profileData.completion });
+      } else {
+        const completionData = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
+          staleTime: PROFILE_QUERY_STALE_TIME_MS,
+          cacheTime: PROFILE_QUERY_CACHE_TIME_MS
+        });
+        setCompletion(completionData.completion);
+        seedProfileCompletionQueryData(completionData);
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('profilePage.errors.fetchProfileFailed'));
       console.error('Profile fetch error:', err);
@@ -404,6 +432,43 @@ const Profile = ({
    * This page manages `completion` locally instead of subscribing with `useProfileCompletionQuery()`.
    * After manual saves, invalidating the query alone leaves the local percentage stale until reload.
    */
+  const handleDocumentsUpdate = async (updatedDocs) => {
+    setProfile((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        documents: updatedDocs,
+      },
+    }));
+    invalidateProfileCachesAfterMutation();
+    await refreshCompletionAfterMutation();
+  };
+
+  const handleExtractedProfileReview = async (profileData) => {
+    setSavingCvReview(true);
+    setCvReviewError(null);
+    const langQuery = getProfileApiLangQuery();
+    const reviewUserId = String(user?.id || user?._id || '').trim();
+    try {
+      await saveExtractedProfileReview({
+        profileData,
+        fetchImpl: fetch,
+        getAuthToken: () => localStorage.getItem('token'),
+        langQuery,
+        translate: t,
+        prefetchProfile: true,
+      });
+      if (reviewUserId) clearCvReviewDraft(reviewUserId);
+      setDocumentReviewDocId(null);
+      await fetchProfile({ force: true });
+    } catch (err) {
+      setCvReviewError(buildReviewSaveUserMessage(err, t));
+      throw err;
+    } finally {
+      setSavingCvReview(false);
+    }
+  };
+
   const refreshCompletionAfterMutation = async () => {
     try {
       const completionData = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
@@ -2217,24 +2282,38 @@ const Profile = ({
           <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
           {t('profilePage.documents.title')}
         </Typography>
-        <DocumentUploadForm
-          documents={documents ? documents.map(doc => ({ ...doc, id: doc.id || doc._id })) : []}
-          onDocumentsUpdate={async (updatedDocs) => {
-            setProfile(prev => ({
-              ...prev,
-              profile: {
-                ...prev.profile,
-                documents: updatedDocs
-              }
-            }));
-            invalidateProfileCachesAfterMutation();
-            await refreshCompletionAfterMutation();
-          }}
-          loading={loading}
-          showSectionTitle={false}
-          showUploadControls={false}
+        {cvReviewError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCvReviewError(null)}>
+            {cvReviewError}
+          </Alert>
+        )}
+        <ProfileDocumentList
+          documents={documents ? documents.map((doc) => ({ ...doc, id: doc.id || doc._id })) : []}
+          onDocumentsUpdate={handleDocumentsUpdate}
+          disabled={loading || savingCvReview}
+          onOpenReview={(docId) => setDocumentReviewDocId(String(docId))}
         />
       </Paper>
+
+      {documentReviewDocId && (
+        <Suspense fallback={null}>
+          <DocumentUploadForm
+            enableExtractionReview
+            hideDocumentList
+            openReviewForDocumentId={documentReviewDocId}
+            restrictAutoResumeToDocumentId={documentReviewDocId}
+            documents={documents ? documents.map((doc) => ({ ...doc, id: doc.id || doc._id })) : []}
+            onDocumentsUpdate={handleDocumentsUpdate}
+            onExtractedProfileReview={handleExtractedProfileReview}
+            onReviewSessionEnd={() => setDocumentReviewDocId(null)}
+            loading={loading}
+            parentSavingReview={savingCvReview}
+            showSectionTitle={false}
+            showUploadControls={false}
+            reviewSaveMode="merge"
+          />
+        </Suspense>
+      )}
 
       {showLoginSecuritySection && (
         <Dialog

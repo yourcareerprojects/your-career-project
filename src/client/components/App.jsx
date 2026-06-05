@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ThemeModeProvider } from '../contexts/ThemeModeContext';
@@ -7,7 +7,6 @@ import { NavigationGuardProvider, useNavigationGuardContext } from '../contexts/
 import NavigationConfirmationDialog from './common/NavigationConfirmationDialog';
 import Layout from './layout/Layout';
 import Home from './pages/Home';
-import Profile from './pages/Profile';
 import ProfileCreation from './pages/ProfileCreation';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -23,6 +22,13 @@ import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../constants/profileCompletion';
 import { useProfileCompletionQuery } from '../hooks/useProfileQueries';
+
+const Profile = lazy(() => import('./pages/Profile'));
+
+const RouteLoadingFallback = () => {
+  const { t } = useTranslation('common');
+  return <div>{t('app.loading')}</div>;
+};
 
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
@@ -167,7 +173,9 @@ const App = () => {
                 path="/profile"
                 element={
                   <ProtectedRoute>
-                    <Profile showCareerSimulationInputs={false} />
+                    <Suspense fallback={<RouteLoadingFallback />}>
+                      <Profile showCareerSimulationInputs={false} />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />

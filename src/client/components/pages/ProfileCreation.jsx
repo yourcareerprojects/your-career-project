@@ -6,6 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import DocumentUploadForm from '../profile/DocumentUploadForm';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+import {
+  baseUILanguage,
+  refreshSeededFullProfileInBackground,
+} from '../../hooks/useProfileQueries';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 import { markProfileSaveCelebration } from '../../utils/profileSaveCelebration';
@@ -15,7 +19,7 @@ const ProfileCreation = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const fullUpdateMode = new URLSearchParams(location.search).get('mode') === 'full-update';
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const [error, setError] = useState(null);
   const [profileExists, setProfileExists] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -80,19 +84,23 @@ const ProfileCreation = () => {
     const langQuery = getProfileApiLangQuery();
     const reviewUserId = String(user?.id || user?._id || '').trim();
     try {
+      // Seed only (review-save response) — Profile page renders from cache immediately and
+      // refetches GET /api/profile once in the background (_seededFromReviewSave path).
       await saveExtractedProfileReview({
         profileData,
-        refreshUser,
         fetchImpl: fetch,
         getAuthToken: () => localStorage.getItem('token'),
         langQuery,
         translate: t,
-        prefetchProfile: true,
+        prefetchProfile: false,
       });
 
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setProfileExists(true);
       markProfileSaveCelebration();
+      void refreshSeededFullProfileInBackground(baseUILanguage()).catch((profileErr) => {
+        console.error('Profile background refresh after review-save failed:', profileErr);
+      });
       navigate('/profile', {
         replace: true,
         state: { celebrateProfileSaved: true },
