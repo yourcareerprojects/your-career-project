@@ -7,7 +7,7 @@
  * userProfile: { userSkills, userWorkExperience, userEducation, userCareerPreferences,
  *   userInterests, careerGoal (computed for scoring), bio, userIdentityAnswers, dateOfBirth, currentStatus, yearsOfExperience,
  *   highestDegree, mostSeniorWorkExperience }
- * - userCareerPreferences.domains: free-form domains; ISCO inferred via userOccupationInference
+ * - userCareerPreferences.domains: free-form domains embedded for occupation_group matching
  *
  * Seniority is not embedded in structured vectors; matching uses inferUserSeniorityLevel
  * only in roleMatchingScorer for the cosine seniority penalty.
@@ -15,7 +15,7 @@
  * Structured embed / fusion order (same as roles): skill_domains, occupation_group,
  * responsibilities, required_skills, optional_skills.
  *
- * occupation_group: domains + inferred ISCO hybrid → matches role's occupation_group sub-vector.
+ * occupation_group: user domains (embedded) → matches role's occupation_group sub-vector (from ESCO iscoGroup).
  * skill_domains: taken from explicit user domains (CV interpretation or manual entry)
  *   → matches role's structured_vector_skill_domains.
  * responsibilities: key responsibilities from work experience → matches role's key responsibilities vector.
@@ -23,7 +23,7 @@
  *
  * @module services/embedding/userProfileVectorBuilder
  */
-// ENGLISH_ONLY_PIPELINE: User vectors and ISCO inference operate on canonical English processing text.
+// ENGLISH_ONLY_PIPELINE: User vectors operate on canonical English processing text.
 
 const {
   embedTextSafe,
@@ -45,18 +45,21 @@ const {
   WEIGHTS_OUT_OF_THE_BOX,
   canonicalize,
 } = require('./structuredTextBuilder');
-const { resolveIscoToLabels } = require('./iscoMapping');
-const { inferIscoFromDomains, sanitizeDomains, ISCO_CODE_PATTERN } = require('./userOccupationInference');
+const { logMemory } = require('../simulation/simulationMemoryProfiler');
 const CATEGORY_ORDER = ['skill_domains', 'occupation_group', 'responsibilities', 'required_skills', 'optional_skills'];
+
+function sanitizeDomains(domains) {
+  const arr = Array.isArray(domains) ? domains : [];
+  return arr
+    .map((d) => String(d || '').trim())
+    .filter(Boolean);
+}
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 
-const OCCUPATION_GROUP_ISCO_WEIGHT = 0.6;
-const OCCUPATION_GROUP_DOMAIN_WEIGHT = 0.4;
 const OCCUPATION_GROUP_VECTOR_PROMISE = Symbol('occupationGroupVectorPromise');
-const OCCUPATION_GROUP_DOMAIN_INFERENCE_PROMISE = Symbol('occupationGroupDomainInferencePromise');
 const STRUCTURED_VECTOR_PROMISES = Symbol('structuredVectorPromises');
 const IDENTITY_VECTOR_PROMISE = Symbol('identityVectorPromise');
 const HYBRID_VECTOR_PROMISES = Symbol('hybridVectorPromises');
@@ -78,15 +81,6 @@ function normalizePreferenceObject(userProfile) {
     : {};
 }
 
-function normalizeScoreRows(rows) {
-  const valid = (Array.isArray(rows) ? rows : [])
-    .filter((r) => ISCO_CODE_PATTERN.test(String(r?.code || '').trim()) && Number.isFinite(r?.score) && r.score > 0)
-    .map((r) => ({ code: String(r.code).trim(), score: Number(r.score) }));
-  const sum = valid.reduce((acc, r) => acc + r.score, 0);
-  if (sum <= 0) return [];
-  return valid.map((r) => ({ ...r, score: r.score / sum }));
-}
-
 function splitIscoAndDomainsFromPreferences(prefs) {
   const sanitized = sanitizeDomains(safeArray(prefs.domains));
   const domains = Array.isArray(sanitized) ? sanitized : [];
@@ -101,13 +95,6 @@ function getUserSkillDomains(userProfile, prefs) {
   return Array.isArray(fallbackSanitized) ? fallbackSanitized : [];
 }
 
-function getUserDerivedInferredIsco(userProfile, prefs) {
-  const rows = safeArray(userProfile?.userDerivedInferredIsco).length > 0
-    ? safeArray(userProfile.userDerivedInferredIsco)
-    : safeArray(prefs?.derivedInferredIsco);
-  return normalizeScoreRows(rows);
-}
-
 async function buildOccupationGroupUserVector(userProfile) {
   if (userProfile && typeof userProfile === 'object' && userProfile[OCCUPATION_GROUP_VECTOR_PROMISE]) {
     return userProfile[OCCUPATION_GROUP_VECTOR_PROMISE];
@@ -117,76 +104,42 @@ async function buildOccupationGroupUserVector(userProfile) {
     const prefs = normalizePreferenceObject(userProfile);
     const { domains } = splitIscoAndDomainsFromPreferences(prefs);
 
-    let inferredRows = getUserDerivedInferredIsco(userProfile, prefs);
-    let inferenceMethod = 'none';
-    const language = String(userProfile?.language || 'en').toLowerCase().split('-')[0] || 'en';
-    if (inferredRows.length > 0) {
-      inferenceMethod = 'profile_derived';
-    } else if (domains.length > 0) {
-      if (userProfile && typeof userProfile === 'object') {
-        if (!userProfile[OCCUPATION_GROUP_DOMAIN_INFERENCE_PROMISE]) {
-          userProfile[OCCUPATION_GROUP_DOMAIN_INFERENCE_PROMISE] = inferIscoFromDomains(domains, {
-            method: 'llm_or_rule',
-            lang: language,
-          });
-        }
-        const inference = await userProfile[OCCUPATION_GROUP_DOMAIN_INFERENCE_PROMISE];
-        inferredRows = normalizeScoreRows(Array.isArray(inference?.inferred) ? inference.inferred : []);
-        inferenceMethod = inference?.methodUsed || 'none';
-      } else {
-        const inference = await inferIscoFromDomains(domains, { method: 'llm_or_rule', lang: language });
-        inferredRows = normalizeScoreRows(Array.isArray(inference?.inferred) ? inference.inferred : []);
-        inferenceMethod = inference?.methodUsed || 'none';
-      }
-    }
-
-    const combinedScoreMap = {};
-    for (const row of inferredRows) {
-      const code = String(row?.code || '').trim();
-      const score = Number(row?.score);
-      if (!ISCO_CODE_PATTERN.test(code) || !Number.isFinite(score) || score <= 0) continue;
-      combinedScoreMap[code] = (combinedScoreMap[code] || 0) + score;
-    }
-    const normalizedIsco = normalizeScoreRows(Object.entries(combinedScoreMap).map(([code, score]) => ({ code, score })));
-
-    console.info('[occupation_group_user] inferred ISCO mapping', {
-      domains,
-      method: inferenceMethod,
-      inferred: normalizedIsco.map((r) => ({ code: r.code, score: Number(r.score.toFixed(4)) })),
+    logMemory('before_occupation_group_domain_embed', {
+      domainCount: domains.length,
     });
 
     const domainText = domains.length > 0 ? String(await normalizeForEmbedding(domains) || '').trim() : '';
-    const domainVector = domainText ? await embedTextSafe(domainText) : null;
-    if (domainVector) l2Normalize(domainVector);
+    logMemory('after_occupation_group_domain_normalization', {
+      domainCount: domains.length,
+      domainTextLength: domainText.length,
+    });
 
-    let iscoVector = null;
-    if (normalizedIsco.length > 0) {
-      const iscoTexts = await Promise.all(
-        normalizedIsco.map(async ({ code }) => {
-          const labels = resolveIscoToLabels(code).filter(Boolean);
-          return normalizeForEmbedding(labels);
-        })
-      );
-      const iscoVectors = await embedTextBatchSafe(iscoTexts);
-      for (let i = 0; i < iscoVectors.length; i++) {
-        if (iscoVectors[i]) l2Normalize(iscoVectors[i]);
-      }
-      iscoVector = weightedFusionMulti(
-        iscoVectors,
-        normalizedIsco.map((r) => r.score),
-        EMBEDDING_DIMS
-      );
-    }
-
-    if (iscoVector && domainVector) {
-      return weightedFusion(iscoVector, domainVector, {
-        w1: OCCUPATION_GROUP_ISCO_WEIGHT,
-        w2: OCCUPATION_GROUP_DOMAIN_WEIGHT,
+    if (!domainText) {
+      logMemory('after_buildOccupationGroupUserVector', {
+        domainCount: domains.length,
+        vectorDims: EMBEDDING_DIMS,
+        zeroVector: true,
       });
+      return new Float32Array(EMBEDDING_DIMS);
     }
-    if (iscoVector) return l2Normalize(iscoVector);
-    if (domainVector) return l2Normalize(domainVector);
-    return new Float32Array(EMBEDDING_DIMS);
+
+    const domainVector = await embedTextSafe(domainText);
+    if (!domainVector) {
+      logMemory('after_buildOccupationGroupUserVector', {
+        domainCount: domains.length,
+        vectorDims: EMBEDDING_DIMS,
+        zeroVector: true,
+        embedFailed: true,
+      });
+      return new Float32Array(EMBEDDING_DIMS);
+    }
+    const normalized = l2Normalize(domainVector);
+    logMemory('after_buildOccupationGroupUserVector', {
+      domainCount: domains.length,
+      vectorDims: normalized?.length ?? EMBEDDING_DIMS,
+      zeroVector: false,
+    });
+    return normalized;
   })();
 
   if (userProfile && typeof userProfile === 'object') {
@@ -442,12 +395,37 @@ async function buildUserStructuredVector(userProfile, mode) {
   }
 
   const promise = (async () => {
+    logMemory('before_user_structured_vector_build', { mode });
     const texts = await resolveUserEmbeddingCategoryTexts(userProfile);
+    const categoryTextLengths = {};
+    for (const key of CATEGORY_ORDER) {
+      categoryTextLengths[key] = String(texts[key] || '').length;
+    }
+    logMemory('after_user_embedding_category_texts', {
+      mode,
+      categoryTextLengths,
+    });
+
     const weights = mode === 'OUT_OF_THE_BOX' ? WEIGHTS_OUT_OF_THE_BOX : WEIGHTS_NEXT_ROLE;
     const occupationVec = await buildOccupationGroupUserVector(userProfile);
+    logMemory('after_occupation_group_user_vector_in_structured_build', {
+      mode,
+      occupationVectorDims: occupationVec?.length ?? 0,
+    });
+
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== 'occupation_group');
     const otherTexts = otherKeys.map((key) => texts[key] || ' ');
+    logMemory('before_user_structured_batch_embed', {
+      mode,
+      batchTextCount: otherTexts.length,
+      batchTextCharTotal: otherTexts.reduce((sum, t) => sum + String(t || '').length, 0),
+    });
     const otherVectors = await embedTextBatchSafe(otherTexts);
+    logMemory('after_user_structured_batch_embed', {
+      mode,
+      vectorCount: otherVectors.length,
+      nonNullVectorCount: otherVectors.filter(Boolean).length,
+    });
     for (let i = 0; i < otherVectors.length; i++) {
       if (otherVectors[i]) l2Normalize(otherVectors[i]);
     }
@@ -455,7 +433,13 @@ async function buildUserStructuredVector(userProfile, mode) {
     otherKeys.forEach((key, idx) => { byKey[key] = otherVectors[idx] || new Float32Array(EMBEDDING_DIMS); });
     const vectors = CATEGORY_ORDER.map((key) => byKey[key] || new Float32Array(EMBEDDING_DIMS));
     const weightArr = CATEGORY_ORDER.map((key) => weights[key] || 0);
-    return weightedFusionMulti(vectors, weightArr, EMBEDDING_DIMS);
+    const fused = weightedFusionMulti(vectors, weightArr, EMBEDDING_DIMS);
+    logMemory('after_user_structured_vector_build', {
+      mode,
+      fusedVectorDims: fused?.length ?? 0,
+      structuredCategoryCount: CATEGORY_ORDER.length,
+    });
+    return fused;
   })();
 
   if (cache) {
@@ -477,9 +461,18 @@ async function buildUserIdentityVector(userProfile) {
   }
 
   const promise = (async () => {
+    logMemory('before_user_identity_vector_build', {});
     const text = await resolveIdentityTextOnce(userProfile);
+    logMemory('after_user_identity_text_resolved', {
+      identityTextLength: String(text || '').length,
+    });
     const vec = await embedTextSafe(text);
-    return vec ? l2Normalize(vec) : vec;
+    const normalized = vec ? l2Normalize(vec) : vec;
+    logMemory('after_user_identity_vector_build', {
+      vectorDims: normalized?.length ?? 0,
+      embedFailed: !vec,
+    });
+    return normalized;
   })();
 
   if (userProfile && typeof userProfile === 'object') {
@@ -506,6 +499,7 @@ async function buildUserHybridVector(userProfile, mode) {
   }
 
   const promise = (async () => {
+    logMemory('before_user_hybrid_vector_build', { mode });
     const [structured, identityVec] = await Promise.all([
       buildUserStructuredVector(userProfile, mode),
       buildUserIdentityVector(userProfile),
@@ -519,7 +513,12 @@ async function buildUserHybridVector(userProfile, mode) {
     for (let i = 0; i < dims; i++) {
       out[i] = wStructured * (structured?.[i] ?? 0) + wIdentity * (identityVec?.[i] ?? 0);
     }
-    return l2Normalize(out);
+    const normalized = l2Normalize(out);
+    logMemory('after_user_hybrid_vector_build', {
+      mode,
+      hybridVectorDims: normalized?.length ?? 0,
+    });
+    return normalized;
   })();
 
   if (cache) {

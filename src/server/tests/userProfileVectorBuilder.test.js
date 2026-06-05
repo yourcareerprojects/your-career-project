@@ -68,21 +68,21 @@ const {
   buildUserCategoryTexts,
   buildOccupationGroupUserVector,
 } = require('../services/embedding/userProfileVectorBuilder');
-const { embedTextSafe, embedTextBatchSafe } = require('../services/embedding/embeddingService');
+const { embedTextSafe } = require('../services/embedding/embeddingService');
+const { normalizeForEmbedding } = require('../services/ai/normalizeForEmbedding');
 
 describe('userProfileVectorBuilder field mapping', () => {
   beforeEach(() => {
-    const     embedImpl = async (text) => {
+    normalizeForEmbedding.mockImplementation(async (input) => {
+      const flat = Array.isArray(input) ? input.join('\n') : String(input || '');
+      return flat.trim();
+    });
+    const embedImpl = async (text) => {
       const s = String(text).toLowerCase();
       if (s.includes('finance') && s.includes('healthcare')) return new Float32Array([1, 0, 0]);
       return new Float32Array([0.3, 0.3, 0.3]);
     };
     embedTextSafe.mockImplementation(embedImpl);
-    embedTextBatchSafe.mockImplementation(async (texts = []) => texts.map((_, idx) => {
-      if (idx === 0) return new Float32Array([0, 1, 0]);
-      if (idx === 1) return new Float32Array([0, 0, 1]);
-      return new Float32Array([1, 0, 0]);
-    }));
   });
 
   test('buildUserCategoryTexts uses requested profile field mapping', () => {
@@ -113,35 +113,31 @@ describe('userProfileVectorBuilder field mapping', () => {
     expect(result.optional_skills).toBe('roadmapping\ndata analysis\ncoaching');
   });
 
-  test('buildOccupationGroupUserVector uses profile derived ISCO before inference', async () => {
+  test('buildOccupationGroupUserVector embeds domain text only', async () => {
     const userProfile = {
       userCareerPreferences: {
         domains: ['Finance', 'Healthcare'],
       },
-      userDerivedInferredIsco: [
-        { code: '2619', score: 0.7 },
-        { code: '2512', score: 0.3 },
-      ],
     };
 
     const vec = await buildOccupationGroupUserVector(userProfile);
 
     expect(vec).toBeInstanceOf(Float32Array);
     expect(vec.length).toBe(3);
-    // Domain + ISCO fusion: ISCO sub-vectors always embedded; domain embed runs when prefs.domains normalize to non-empty text.
-    expect(embedTextBatchSafe).toHaveBeenCalled();
+    expect(embedTextSafe).toHaveBeenCalled();
   });
 
-  test('buildOccupationGroupUserVector still resolves when derived ISCO is missing', async () => {
+  test('buildOccupationGroupUserVector returns zero vector when domains are empty', async () => {
     const userProfile = {
       userCareerPreferences: {
-        domains: ['Finance', 'Healthcare'],
+        domains: [],
       },
-      userDerivedInferredIsco: [],
     };
 
     const vec = await buildOccupationGroupUserVector(userProfile);
     expect(vec).toBeInstanceOf(Float32Array);
     expect(vec.length).toBe(3);
+    expect([...vec]).toEqual([0, 0, 0]);
+    expect(embedTextSafe).not.toHaveBeenCalled();
   });
 });

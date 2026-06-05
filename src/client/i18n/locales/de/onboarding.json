@@ -248,8 +248,7 @@
       "fetchProfileFailed": "Fehler beim Laden des Profils",
       "saveChangesFailed": "Fehler beim Speichern der Änderungen",
       "identityQuestionsRequired": "Bitte beantworte alle fünf Identitätsfragen.",
-      "saveStructuredInfoFailed": "Strukturierte Nutzerdaten konnten nicht gespeichert werden",
-      "recalculateFailed": "Eingaben konnten nicht neu berechnet werden"
+      "saveStructuredInfoFailed": "Strukturierte Nutzerdaten konnten nicht gespeichert werden"
     },
     "loginSecurity": {
       "title": "Login & Sicherheit",
@@ -334,7 +333,7 @@
         "title": "Deine Branchen",
         "addCta": "Branche hinzufügen",
         "helper": "Nutze Branchen wie MedTech, Life Sciences, Fertigung.",
-        "empty": "Noch keine Branchen. Weitere Branchen werden daraus abgeleitet."
+        "empty": "Noch keine Branchen (z. B. MedTech, Life Sciences, Fertigung). Nutze Branchen, keine Jobfunktionen wie Marketing."
       },
       "responsibilities": {
         "title": "Deine Aufgaben & Verantwortungen",
@@ -353,12 +352,6 @@
         "addCta": "Lernziel hinzufügen",
         "helper": "Fähigkeiten, die du aktiv aufbaust.",
         "empty": "Keine Lernziele angegeben"
-      },
-      "inferredOccupationGroups": {
-        "title": "Abgeleitete Berufsgruppen",
-        "helper": "Diese werden aus deinen Branchen abgeleitet. Entferne alle, die nicht passen.",
-        "empty": "Noch keine abgeleiteten Branchen zur Prüfung.",
-        "removedForNextSave": "Für nächstes Speichern entfernt"
       }
     },
     "seniority": {
@@ -426,13 +419,11 @@
       "title": "Eingaben für Berufssimulation",
       "description": "Dieser Bereich zeigt die Daten, die für Berufssimulationen verwendet werden. Du kannst diese Eingaben bearbeiten, um genauere Empfehlungen zu erhalten.",
       "tipLabel": "Tipp:",
-      "tipDescription": "Vollständigere Informationen führen zu besseren Berufsvorschlägen. Nutze \"Aus Profil neu berechnen\", um diese Felder automatisch aus deinen Profildaten zu aktualisieren.",
-      "recalculateFromProfile": "Aus Profil neu berechnen",
-      "recalculating": "Wird neu berechnet...",
+      "tipDescription": "Vollständigere Informationen führen zu besseren Berufsvorschlägen.",
       "embeddingIdentityLabel": "Embedding-Identitätstext für Brufssimulation (gecacht)",
       "notAvailableYet": "Noch nicht verfügbar",
       "strengthsLabel": "Deine Stärken (skill_domains — übergeordnete Fähigkeiten)",
-      "occupationGroupLabel": "Berufsgruppen-Eingabe (Bereiche + abgeleitete ISCO)",
+      "occupationGroupLabel": "Branchen (Eingabe für Berufsgruppe)",
       "responsibilitiesLabel": "Verantwortungen-Eingabe (strukturierter Vektor: responsibilities)",
       "requiredSkillsLabel": "Notwendige Fähigkeiten-Eingabe (strukturierter Vektor: required_skills)",
       "skillsInDevelopmentLabel": "Fähigkeiten in Entwicklung",
@@ -455,18 +446,6 @@
         "responsibilities": "Verantwortung eingeben und Enter drücken",
         "skills": "Fähigkeit eingeben und Enter drücken oder auf Hinzufügen klicken",
         "learningGoals": "Fähigkeit in Entwicklung eingeben und Enter drücken"
-      }
-    },
-    "recalculateDialog": {
-      "title": "Eingaben für Berufssimulation neu berechnen?",
-      "description": "Du hast deine Eingaben für die Berufssimulation manuell bearbeitet. Eine Neuberechnung aus deinem Profil überschreibt diese manuellen Änderungen.",
-      "willDoTitle": "Diese Aktion wird:",
-      "keepManualEditsCta": "Meine manuellen Änderungen behalten",
-      "recalculateAndOverwriteCta": "Neu berechnen und überschreiben",
-      "bullets": {
-        "replaceInputs": "Alle manuell bearbeiteten Eingaben durch automatisch berechnete Werte aus deinem Profil ersetzen",
-        "resetManualFlag": "Den Status \"manuell bearbeitet\" zurücksetzen",
-        "updateTimestamp": "Den Zeitstempel \"zuletzt berechnet\" aktualisieren"
       }
     }
   },

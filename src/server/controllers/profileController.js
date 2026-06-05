@@ -39,7 +39,6 @@ const {
   overlayStructuredUserInfoListsWithCvLocalization,
   syncCvExtractUserIdentityFromFlat,
 } = require('../services/documents/cvExtractLocalization');
-const { inferIscoFromDomains, ISCO_CODE_PATTERN } = require('../services/embedding/userOccupationInference');
 const {
   generateDimensionSummary,
   EMPTY_PLACEHOLDER,
@@ -718,14 +717,6 @@ async function normalizeStructuredUserInfoForStorage(
     normalized[key] = value;
     if (dimensionChanged) changed = true;
   }
-  const excludedDerivedInferredIscoCodes = Array.isArray(input.excludedDerivedInferredIscoCodes)
-    ? [...new Set(
-      input.excludedDerivedInferredIscoCodes
-        .map((code) => String(code || '').trim())
-        .filter((code) => ISCO_CODE_PATTERN.test(code))
-    )]
-    : [];
-  normalized.excludedDerivedInferredIscoCodes = excludedDerivedInferredIscoCodes;
   return { normalized, changed };
 }
 
@@ -853,39 +844,6 @@ function resolveDomainsFromStructuredInfo(structuredInfo = {}) {
   return readDimensionRawItems(structuredInfo.domains);
 }
 
-function resolveSkillDomainsFromStructuredInfo(structuredInfo = {}) {
-  return readDimensionRawItems(structuredInfo.skillDomains);
-}
-
-function resolveExcludedDerivedInferredIscoCodes(structuredInfo = {}) {
-  if (!Array.isArray(structuredInfo?.excludedDerivedInferredIscoCodes)) return [];
-  return [...new Set(
-    structuredInfo.excludedDerivedInferredIscoCodes
-      .map((code) => String(code || '').trim())
-      .filter((code) => ISCO_CODE_PATTERN.test(code))
-  )];
-}
-
-async function deriveInferredIscoFromStructuredInfo(structuredInfo = {}, fallbackStructuredInfo = {}) {
-  const primaryDomains = resolveDomainsFromStructuredInfo(structuredInfo);
-  const fallbackDomains = resolveDomainsFromStructuredInfo(fallbackStructuredInfo);
-  const domains = primaryDomains.length > 0 ? primaryDomains : fallbackDomains;
-  if (domains.length === 0) return [];
-  const inferred = await inferIscoFromDomains(domains, { method: 'rule_based' });
-  const excludedCodes = new Set(resolveExcludedDerivedInferredIscoCodes(structuredInfo));
-  return (Array.isArray(inferred?.inferred) ? inferred.inferred : []).filter((row) => {
-    const code = String(row?.code || '').trim();
-    return code && !excludedCodes.has(code);
-  });
-}
-
-function structuredInferredIscoInputsFingerprint(structuredInfo = {}) {
-  return JSON.stringify({
-    d: resolveDomainsFromStructuredInfo(structuredInfo),
-    s: resolveSkillDomainsFromStructuredInfo(structuredInfo),
-  });
-}
-
 async function enrichCareerSimulationInputsForClientResponse(
   careerSimulationInputs,
   profileStructured = {},
@@ -900,16 +858,8 @@ async function enrichCareerSimulationInputsForClientResponse(
       : { ...careerSimulationInputs };
   const csiStructured =
     plain.structuredUserInfo && typeof plain.structuredUserInfo === 'object' ? plain.structuredUserInfo : {};
-  const derivedInferredIsco =
-    options.reuseProfileDerivedInferredIsco !== undefined
-      ? options.reuseProfileDerivedInferredIsco
-      : await deriveInferredIscoFromStructuredInfo(csiStructured, profileStructured);
-  plain.structuredUserInfo = {
-    ...csiStructured,
-    derivedInferredIsco,
-  };
   plain.structuredUserInfo = normalizeLocalizedProfileFieldsForResponse(
-    { structuredUserInfo: plain.structuredUserInfo },
+    { structuredUserInfo: csiStructured },
     options.language || 'en'
   ).structuredUserInfo;
   return plain;
@@ -1834,56 +1784,6 @@ exports.updateCareerSimulationInputs = async (req, res) => {
   }
 };
 
-// Recalculate career simulation inputs from profile data
-exports.recalculateCareerSimulationInputs = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check if user has manual edits
-    const hasManualEdits = user.profile.careerSimulationInputs?.isManuallyEdited || false;
-    
-    // Calculate new inputs from current profile
-    const newInputs = await calculateCareerSimulationInputs(user.profile);
-    
-    // Update the career simulation inputs
-    user.profile.careerSimulationInputs = {
-      ...newInputs,
-      isManuallyEdited: false, // Reset manual edit flag
-      lastCalculated: new Date(),
-      editHistory: [
-        ...(user.profile.careerSimulationInputs?.editHistory || []),
-        {
-          editedAt: new Date(),
-          editor: req.user.userId,
-          changes: { recalculated: true }
-        }
-      ]
-    };
-    
-    await user.save();
-    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId, {
-      forceRegenerate: true,
-      reuseWhoAreYouText: false,
-    });
-    const profileStructured = user.profile.structuredUserInfo || {};
-    res.json({
-      success: true,
-      careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
-        user.profile.careerSimulationInputs,
-        profileStructured,
-        { language: req.language }
-      ),
-      wasRecalculated: true,
-      hadManualEdits: hasManualEdits,
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to recalculate career simulation inputs', details: err.message });
-  }
-};
-
 // Get career simulation inputs for logged-in user
 exports.getCareerSimulationInputs = async (req, res) => {
   try {
@@ -2520,24 +2420,12 @@ exports.getProfile = async (req, res) => {
       })
     ).normalized;
     const profileStructured = profilePayload?.structuredUserInfo || {};
-    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(profileStructured);
-    profilePayload.structuredUserInfo = {
-      ...profileStructured,
-      derivedInferredIsco: profileDerivedInferredIsco,
-    };
 
     if (profilePayload?.careerSimulationInputs && typeof profilePayload.careerSimulationInputs === 'object') {
-      const csiStructured = profilePayload.careerSimulationInputs.structuredUserInfo || {};
-      const reuseIsco =
-        structuredInferredIscoInputsFingerprint(csiStructured)
-        === structuredInferredIscoInputsFingerprint(profileStructured);
       profilePayload.careerSimulationInputs = await enrichCareerSimulationInputsForClientResponse(
         profilePayload.careerSimulationInputs,
         profileStructured,
-        {
-          reuseProfileDerivedInferredIsco: reuseIsco ? profileDerivedInferredIsco : undefined,
-          language: req.language,
-        }
+        { language: req.language }
       );
     }
     if (Array.isArray(profilePayload.documents)) {
@@ -3031,20 +2919,13 @@ exports.updateStructuredUserInfo = async (req, res) => {
     scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
 
     const profileStructured = user.profile.structuredUserInfo || {};
-    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(profileStructured);
     res.json({
       success: true,
-      structuredUserInfo: {
-        ...profileStructured,
-        derivedInferredIsco: profileDerivedInferredIsco,
-      },
+      structuredUserInfo: profileStructured,
       careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
         user.profile.careerSimulationInputs,
         profileStructured,
-        {
-          reuseProfileDerivedInferredIsco: profileDerivedInferredIsco,
-          language: req.language,
-        }
+        { language: req.language }
       ),
     });
   } catch (err) {
@@ -3240,9 +3121,6 @@ exports.saveProfileReview = async (req, res) => {
       narrativeApplyMode = cacheApply.applyMode || 'cache';
       structuredUserInfo = {
         ...cacheApply.structuredUserInfo,
-        excludedDerivedInferredIscoCodes: Array.isArray(existingStructuredForMerge.excludedDerivedInferredIscoCodes)
-          ? [...existingStructuredForMerge.excludedDerivedInferredIscoCodes]
-          : [],
       };
       normalizedWhoAreYou = cacheApply.who_are_you;
       console.log(
@@ -3320,10 +3198,6 @@ exports.saveProfileReview = async (req, res) => {
       user.profile.structuredUserInfo[key] = structuredUserInfo[key];
       user.markModified(`profile.structuredUserInfo.${key}`);
     }
-    if (Array.isArray(structuredUserInfo.excludedDerivedInferredIscoCodes)) {
-      user.profile.structuredUserInfo.excludedDerivedInferredIscoCodes =
-        structuredUserInfo.excludedDerivedInferredIscoCodes;
-    }
     user.markModified('profile.structuredUserInfo');
     user.profile.who_are_you = normalizedWhoAreYou;
     user.markModified('profile.who_are_you');
@@ -3370,11 +3244,6 @@ exports.saveProfileReview = async (req, res) => {
         req.language
       );
     }
-    const profileDerivedInferredIsco = await deriveInferredIscoFromStructuredInfo(responseStructuredUserInfo);
-    responseStructuredUserInfo = {
-      ...responseStructuredUserInfo,
-      derivedInferredIsco: profileDerivedInferredIsco,
-    };
     const responseDocuments = Array.isArray(user.profile?.documents)
       ? user.profile.documents.map((doc) => serializeEmbeddedDocumentForClient(doc, { uiLanguage: req.language }))
       : [];

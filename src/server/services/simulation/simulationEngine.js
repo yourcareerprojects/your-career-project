@@ -25,6 +25,7 @@ const { enrichCareerPathWithHybridScores } = require('../scoring/careerPathScore
 const { buildUserProfileForHybrid } = require('../scoring/hybridUserProfileForMatching');
 const { generatePrioritizedListsPhase2 } = require('./prioritizedListGenerator');
 const { EMBEDDING_DIMS } = require('../embedding/embeddingService');
+const { logMemory } = require('./simulationMemoryProfiler');
 
 function logStructured(component, payload) {
   const line = { ts: new Date().toISOString(), component, ...payload };
@@ -54,6 +55,7 @@ async function executeCareerSimulation(reqLike, resLike, options = {}) {
   const isForkChild = ctx === 'fork-child';
   const deps = resolveDeps(options.deps);
   logStructured('[simulation-engine]', { jobId, event: 'simulation_start', context: ctx });
+  logMemory('simulation_start', { jobId, context: ctx });
   try {
     await runCareerSimulationImpl(reqLike, resLike, deps, {
       isForkChild,
@@ -133,12 +135,17 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     // If inputs are missing/empty (common when profile was edited but inputs not recalculated),
     // compute them on the fly so we can actually match against the user's profile.
+    const csiSkillCount = readDimensionRawItems(careerInputs.structuredUserInfo?.skills).length;
+    const profileSkillCount = readDimensionRawItems(profile.structuredUserInfo?.skills).length;
     const hasAnyCareerInputs =
-      readDimensionRawItems(careerInputs.structuredUserInfo?.skills).length > 0 ||
+      csiSkillCount > 0 ||
       readDimensionRawItems(careerInputs.structuredUserInfo?.keyResponsibilities).length > 0 ||
       resolveDomainsFromStructuredInfo(careerInputs.structuredUserInfo || {}).length > 0;
+    const skillsMissingFromCsi = profileSkillCount > 0 && csiSkillCount === 0;
 
-    const computedInputs = (!careerInputs.isManuallyEdited && !hasAnyCareerInputs)
+    const computedInputs = (
+      !careerInputs.isManuallyEdited && (!hasAnyCareerInputs || skillsMissingFromCsi)
+    )
       ? await calculateCareerSimulationInputs(profile)
       : null;
 
@@ -157,6 +164,11 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       });
       enrichedInputs = enrichmentResult.inputs || activeInputs;
       enrichment = enrichmentResult.enrichment || null;
+      logMemory('after_enrichment', {
+        userId: String(userId),
+        cacheMiss: Boolean(enrichmentResult.cacheMiss),
+        hasEnrichmentPayload: Boolean(enrichment),
+      });
       if (enrichmentResult.cacheMiss) {
         ensureDocumentEnrichmentRefreshJobQueued({ userId, language: reqLike.language || 'en' }).catch((err) => {
           console.warn('Failed to queue document enrichment refresh job:', err?.message || err);
@@ -194,6 +206,12 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     }
     console.timeEnd('STEP_1_load');
     step1Started = false;
+    logMemory('after_profile_load', {
+      userId: String(userId),
+      profileCompletionPct: completionBreakdown.overall,
+      usedComputedInputs: Boolean(computedInputs),
+      hasCareerSimulationInputs: Boolean(careerInputs && Object.keys(careerInputs).length > 0),
+    });
 
     const userSkills = readDimensionRawItems(enrichedInputs.structuredUserInfo?.skills);
     const userSkillsInDevelopment = readDimensionRawItems(enrichedInputs.structuredUserInfo?.skillsInDevelopment);
@@ -206,12 +224,8 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const userEducation = {};
     const userSkillDomains = readDimensionRawItems(enrichedInputs.structuredUserInfo?.skillDomains);
     const rawDomains = readDimensionRawItems(enrichedInputs.structuredUserInfo?.domains);
-    const derivedInferredIsco = Array.isArray(enrichedInputs.structuredUserInfo?.derivedInferredIsco)
-      ? enrichedInputs.structuredUserInfo.derivedInferredIsco
-      : (Array.isArray(profile.structuredUserInfo?.derivedInferredIsco) ? profile.structuredUserInfo.derivedInferredIsco : []);
     const userCareerPreferences = {
       domains: rawDomains,
-      derivedInferredIsco
     };
     const mergedIdentityAnswers = normalizeUserIdentityAnswers({
       ...(profile.userIdentityAnswers && typeof profile.userIdentityAnswers === 'object' ? profile.userIdentityAnswers : {}),
@@ -233,6 +247,13 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     });
     const careerGoal = careerGoalResult.canonical;
     const localizedCareerGoal = careerGoalResult.localized?.[reqLike.language] || '';
+    logMemory('after_career_goal_generation', {
+      userId: String(userId),
+      userSkillCount: userSkills.length,
+      userSkillKeyCount: userSkillNames.length,
+      domainCount: rawDomains.length,
+      skillDomainCount: userSkillDomains.length,
+    });
     const seniorityInputs = enrichedInputs.seniority && typeof enrichedInputs.seniority === 'object' ? enrichedInputs.seniority : {};
     const currentStatus = seniorityInputs.currentStatus ?? profile.seniority?.currentStatus ?? '';
     const yearsOfExperience = seniorityInputs.yearsOfExperience != null ? seniorityInputs.yearsOfExperience : profile.seniority?.yearsOfExperience;
@@ -295,6 +316,13 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         seen.add(id);
         picked.push(cp);
       }
+      logMemory('after_skill_matched_career_paths', {
+        userId: String(userId),
+        skillMatchedCount: skillMatched.length,
+        pickedCount: picked.length,
+        targetedPathLimit: TARGETED_PATH_LIMIT,
+        userSkillKeyCount: userSkillKeys.length,
+      });
     }
 
     // Fallback/coverage: add more occupations so the sim still works for sparse profiles.
@@ -310,7 +338,22 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         picked.push(cp);
         if (picked.length >= FALLBACK_PATH_LIMIT) break;
       }
+      logMemory('after_fallback_career_path_expansion', {
+        userId: String(userId),
+        extraFetchedCount: extra.length,
+        pickedCount: picked.length,
+        fallbackPathLimit: FALLBACK_PATH_LIMIT,
+        minCandidatePool: MIN_CANDIDATE_POOL,
+      });
     }
+
+    logMemory('after_candidate_pool', {
+      userId: String(userId),
+      candidatePoolSize: picked.length,
+      seenIdCount: seen.size,
+      targetedPathLimit: TARGETED_PATH_LIMIT,
+      fallbackPathLimit: FALLBACK_PATH_LIMIT,
+    });
 
     // Fail fast with actionable errors when production data wasn't seeded/migrated.
     // Without stored role vectors, `scoreNextRole` / `scoreOutOfTheBox` return null for every role,
@@ -359,6 +402,14 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         .lean();
     }
     const roleVectorsReadyCount = roleVectorsProbe && hasRequiredRoleVectors(roleVectorsProbe) ? careerPathCount : 0;
+    logMemory('after_role_vectors_probe', {
+      userId: String(userId),
+      careerPathCount,
+      roleIdentityReadyCount,
+      roleVectorsReadyCount,
+      probeSampleSize: picked.length > 0 ? Math.min(picked.length, 96) : 0,
+      hasRoleVectorsProbe: Boolean(roleVectorsProbe),
+    });
 
     if (careerPathCount === 0) {
       return resLike.status(503).json({
@@ -391,7 +442,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const userProfileForScoring = {
       userSkills,
       userSkillDomains,
-      userDerivedInferredIsco: derivedInferredIsco,
       userSkillsInDevelopment,
       userWorkExperience,
       userEducation,
@@ -409,12 +459,22 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       embeddingUserIdentitySourceFingerprint: enrichedInputs.embeddingUserIdentitySourceFingerprint,
       identityEmbeddingText: String(profile?.who_are_you?.identity_embedding_text || '').trim(),
     };
+    logMemory('after_user_profile_for_scoring', {
+      userId: String(userId),
+      userSkillCount: userSkills.length,
+      domainCount: rawDomains.length,
+      workExperienceBlockCount: userWorkExperience.length,
+    });
 
     console.time('STEP_2_enrichment');
     step2Started = true;
     const userProfileForHybrid = buildUserProfileForHybrid(userProfileForScoring);
     console.timeEnd('STEP_2_enrichment');
     step2Started = false;
+    logMemory('after_hybrid_profile_enrichment', {
+      userId: String(userId),
+      candidatePoolSize: picked.length,
+    });
 
     console.time('STEP_3_scoring');
     step3Started = true;
@@ -477,6 +537,15 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const metaById = new Map(picked.map((p) => [String(p._id), p]));
     const pathIds = picked.map((p) => p._id).filter(Boolean);
 
+    logMemory('before_scoring', {
+      userId: String(userId),
+      candidatePoolSize: picked.length,
+      pathIdCount: pathIds.length,
+      scoreChunkSize: SCORE_CHUNK_SIZE,
+      scoreConcurrency: SCORE_CONCURRENCY,
+      isForkChild: Boolean(runtimeOpts.isForkChild),
+    });
+
     async function fetchRoleVectorsMapForIds(rawIds) {
       const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
       const out = new Map();
@@ -530,6 +599,14 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         }
       }
 
+      logMemory('after_role_vectors_fetch', {
+        requestedIdCount: unique.length,
+        cacheHitCount: unique.length - needQuery.length,
+        mongoQueryCount: needQuery.length,
+        vectorRunDedupSize: vectorRunDedup.size,
+        resultMapSize: out.size,
+      });
+
       return out;
     }
 
@@ -538,9 +615,18 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     }
 
     const scoredPaths = [];
+    const totalChunks = Math.ceil(pathIds.length / SCORE_CHUNK_SIZE);
     for (let i = 0; i < pathIds.length; i += SCORE_CHUNK_SIZE) {
       assertNotAborted();
+      const chunkIndex = Math.floor(i / SCORE_CHUNK_SIZE);
       const sliceIds = pathIds.slice(i, i + SCORE_CHUNK_SIZE);
+      logMemory('before_score_chunk', {
+        chunkIndex,
+        totalChunks,
+        sliceIdCount: sliceIds.length,
+        scoredPathsSoFar: scoredPaths.length,
+        vectorRunDedupSize: vectorRunDedup.size,
+      });
       const vMap = await fetchRoleVectorsMapForIds(sliceIds);
 
       const chunkRows = [];
@@ -555,6 +641,12 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
           chunkRows.push({ ...meta, roleVectors: vMap.get(sid) });
         }
       }
+      logMemory('after_score_chunk_rows_built', {
+        chunkIndex,
+        chunkRowCount: chunkRows.length,
+        roleVectorsAttachedCount: chunkRows.filter((row) => row.roleVectors != null).length,
+        vectorRunDedupSize: vectorRunDedup.size,
+      });
 
       assertNotAborted();
       const scoredChunk = [];
@@ -579,16 +671,27 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
         if (sid) vectorRunDedup.delete(sid);
       }
+      logMemory('after_score_chunk', {
+        chunkIndex,
+        totalChunks,
+        scoredPathsCount: scoredPaths.length,
+        vectorRunDedupSize: vectorRunDedup.size,
+      });
     }
 
     assertNotAborted();
+    logMemory('after_all_paths_scored', {
+      userId: String(userId),
+      scoredPathsCount: scoredPaths.length,
+      candidatePoolSize: picked.length,
+      vectorRunDedupSize: vectorRunDedup.size,
+    });
 
     let prioritizedListsRaw;
     try {
       prioritizedListsRaw = await generatePrioritizedListsPhase2(scoredPaths, {
         userSkills,
         userSkillDomains,
-        userDerivedInferredIsco: derivedInferredIsco,
         userSkillsInDevelopment,
         userWorkExperience,
         userEducation,
@@ -616,6 +719,12 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     } finally {
       vectorRunDedup.clear();
     }
+    logMemory('after_scoring_complete', {
+      userId: String(userId),
+      scoredPathsCount: scoredPaths.length,
+      nextCareerRolesCount: prioritizedListsRaw?.nextCareerRoles?.length ?? null,
+      outsideTheBoxRolesCount: prioritizedListsRaw?.outsideTheBoxRoles?.length ?? null,
+    });
     console.timeEnd('STEP_3_scoring');
     step3Started = false;
 

@@ -133,15 +133,6 @@ const structuredUserInfoValidation = [
   ...validateStructuredDimension('skillsInDevelopment', 100, 'Skills in development'),
   ...validateStructuredDimension('keyResponsibilities', 300, 'Key responsibilities'),
   ...validateStructuredDimension('domains', 120, 'Domains'),
-  body('excludedDerivedInferredIscoCodes')
-    .optional()
-    .isArray()
-    .withMessage('Excluded inferred ISCO codes must be an array'),
-  body('excludedDerivedInferredIscoCodes.*')
-    .optional()
-    .trim()
-    .matches(/^\d{1,4}$/)
-    .withMessage('Excluded inferred ISCO code must be 1-4 digits')
 ];
 
 const reviewSaveUserIdentityValidation = [
@@ -337,9 +328,6 @@ router.post('/migrate-career-inputs', profileController.recalculateAllCareerSimu
 
 // New: Update career simulation inputs (manual edit)
 router.put('/career-simulation-inputs', auth, profileController.updateCareerSimulationInputs);
-
-// New: Recalculate career simulation inputs from profile
-router.post('/career-simulation-inputs/recalculate', auth, profileController.recalculateCareerSimulationInputs);
 
 // ===== SIMULATION RESULTS MANAGEMENT ROUTES =====
 

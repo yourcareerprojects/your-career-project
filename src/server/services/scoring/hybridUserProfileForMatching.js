@@ -19,7 +19,6 @@ function buildUserProfileForHybrid(userProfile) {
   const normalizedProfile = {
     userSkills,
     userSkillDomains: safeArray(userProfile.userSkillDomains),
-    userDerivedInferredIsco: safeArray(userProfile.userDerivedInferredIsco),
     userSkillsInDevelopment: userProfile.userSkillsInDevelopment || [],
     userWorkExperience: safeArray(userProfile.userWorkExperience),
     userEducation: userProfile.userEducation && typeof userProfile.userEducation === 'object' ? userProfile.userEducation : {},

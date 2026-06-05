@@ -119,7 +119,6 @@ const userSchema = new mongoose.Schema({
       skillsInDevelopment: { type: narrativeDimensionSchema, default: () => ({}) },
       keyResponsibilities: { type: narrativeDimensionSchema, default: () => ({}) },
       domains: { type: narrativeDimensionSchema, default: () => ({}) },
-      excludedDerivedInferredIscoCodes: { type: [String], default: [] }
     },
     /**
      * Bilingual payloads from CV extraction / review merge (documentLanguage + en/de pairs).
@@ -197,7 +196,6 @@ const userSchema = new mongoose.Schema({
         skillsInDevelopment: { type: narrativeDimensionSchema, default: () => ({}) },
         keyResponsibilities: { type: narrativeDimensionSchema, default: () => ({}) },
         domains: { type: narrativeDimensionSchema, default: () => ({}) },
-        excludedDerivedInferredIscoCodes: { type: [String], default: [] }
       },
       userIdentity: {
         workEnjoyMost: { type: String, default: '' },

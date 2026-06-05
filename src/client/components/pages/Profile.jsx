@@ -50,7 +50,6 @@ import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 
 const DocumentUploadForm = lazy(() => import('../profile/DocumentUploadForm'));
 import { useAuth } from '../../contexts/AuthContext';
-import { resolveIscoDisplayEntry } from '../../utils/iscoLabels';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
 import { normalizeStructuredListItemLabel } from '../../../constants/structuredListItemLabel';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
@@ -144,16 +143,12 @@ const buildStructuredInfoDraft = ({
   keyResponsibilities = [],
   skills = [],
   skillsInDevelopment = [],
-  derivedInferredIsco = [],
-  excludedDerivedInferredIscoCodes = [],
 } = {}) => ({
   skillDomains: [...skillDomains],
   domains: [...domains],
   keyResponsibilities: [...keyResponsibilities],
   skills: [...skills],
   skillsInDevelopment: [...skillsInDevelopment],
-  derivedInferredIsco: [...derivedInferredIsco],
-  excludedDerivedInferredIscoCodes: [...excludedDerivedInferredIscoCodes],
 });
 
 const Profile = ({
@@ -182,9 +177,6 @@ const Profile = ({
   const [careerInputsDraft, setCareerInputsDraft] = useState(null);
   const [careerInputsLoading, setCareerInputsLoading] = useState(false);
   const [careerInputsError, setCareerInputsError] = useState(null);
-  const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
-  const [recalculateLoading, setRecalculateLoading] = useState(false);
-  const [recalculateError, setRecalculateError] = useState(null);
   const [chipInputs, setChipInputs] = useState({});
   const [editingChip, setEditingChip] = useState(null);
   const [profilePictureDialogOpen, setProfilePictureDialogOpen] = useState(false);
@@ -456,11 +448,39 @@ const Profile = ({
         getAuthToken: () => localStorage.getItem('token'),
         langQuery,
         translate: t,
-        prefetchProfile: true,
+        prefetchProfile: false,
       });
       if (reviewUserId) clearCvReviewDraft(reviewUserId);
       setDocumentReviewDocId(null);
-      await fetchProfile({ force: true });
+
+      const seededProfile = readFullProfileCacheEntry(currentLang);
+      if (seededProfile) {
+        applyFullProfileToPage(seededProfile);
+      }
+
+      void refreshSeededFullProfileInBackground(currentLang, {
+        onUpdated: applyFullProfileToPage,
+      }).catch((profileErr) => {
+        console.error('Profile background refresh after review-save failed:', profileErr);
+      });
+
+      if (!seededProfile?.completion) {
+        void queryClient
+          .prefetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
+            staleTime: PROFILE_QUERY_STALE_TIME_MS,
+            cacheTime: PROFILE_QUERY_CACHE_TIME_MS,
+          })
+          .then(() => {
+            const latestCompletionData = queryClient.getQueryData(profileCompletionQueryKey);
+            if (latestCompletionData?.completion) {
+              setCompletion(latestCompletionData.completion);
+              seedProfileCompletionQueryData(latestCompletionData);
+            }
+          })
+          .catch((completionErr) => {
+            console.error('Profile completion refresh after CV review save failed:', completionErr);
+          });
+      }
     } catch (err) {
       setCvReviewError(buildReviewSaveUserMessage(err, t));
       throw err;
@@ -602,7 +622,6 @@ const Profile = ({
   const structuredKeyResponsibilities = getRawItems(structured.keyResponsibilities);
   const structuredDomains = getRawItems(structured.domains);
   const structuredSkillDomains = getRawItems(structured.skillDomains);
-  const inferredIsco = Array.isArray(structured.derivedInferredIsco) ? structured.derivedInferredIsco : [];
   /** Overarching strengths: `structuredUserInfo.skillDomains` only (not industry domains). */
   const strengthSkillDomains = structuredSkillDomains;
 
@@ -614,10 +633,6 @@ const Profile = ({
       keyResponsibilities: structuredKeyResponsibilities,
       skills: structuredSkills,
       skillsInDevelopment: structuredSkillsInDevelopment,
-      derivedInferredIsco: inferredIsco,
-      excludedDerivedInferredIscoCodes: Array.isArray(structured.excludedDerivedInferredIscoCodes)
-        ? structured.excludedDerivedInferredIscoCodes
-        : [],
     }));
     setEditStructuredInfo(true);
   };
@@ -648,7 +663,6 @@ const Profile = ({
         skillsInDevelopment: normalizeList(structuredInfoDraft.skillsInDevelopment),
         keyResponsibilities: normalizeList(structuredInfoDraft.keyResponsibilities),
         domains: normalizeList(structuredInfoDraft.domains),
-        excludedDerivedInferredIscoCodes: normalizeList(structuredInfoDraft.excludedDerivedInferredIscoCodes),
       };
       const res = await axios.put(`/api/profile/structured-user-info?${getProfileApiLangQuery()}`, payload);
       setProfile(prev => {
@@ -695,28 +709,6 @@ const Profile = ({
     setStructuredInfoDraft((prev) => ({
       ...prev,
       [arrayKey]: (prev[arrayKey] || []).filter((_, itemIdx) => itemIdx !== index),
-    }));
-  };
-
-  const handleExcludeDerivedIscoCode = (code) => {
-    const normalized = String(code || '').trim();
-    if (!normalized) return;
-    setStructuredInfoDraft((prev) => {
-      const current = prev.excludedDerivedInferredIscoCodes || [];
-      if (current.includes(normalized)) return prev;
-      return {
-        ...prev,
-        excludedDerivedInferredIscoCodes: [...current, normalized],
-      };
-    });
-  };
-
-  const handleRestoreDerivedIscoCode = (code) => {
-    const normalized = String(code || '').trim();
-    if (!normalized) return;
-    setStructuredInfoDraft((prev) => ({
-      ...prev,
-      excludedDerivedInferredIscoCodes: (prev.excludedDerivedInferredIscoCodes || []).filter((item) => item !== normalized),
     }));
   };
 
@@ -941,41 +933,6 @@ const Profile = ({
     } finally {
       setCareerInputsLoading(false);
     }
-  };
-
-  const handleRecalculateClick = () => {
-    const hasManualEdits = profile?.profile?.careerSimulationInputs?.isManuallyEdited;
-    if (hasManualEdits) {
-      setRecalculateDialogOpen(true);
-    } else {
-      handleRecalculate();
-    }
-  };
-
-  const handleRecalculate = async () => {
-    setRecalculateLoading(true);
-    setRecalculateError(null);
-    try {
-      const res = await axios.post(`/api/profile/career-simulation-inputs/recalculate?${getProfileApiLangQuery()}`);
-      setProfile(prev => ({
-        ...prev,
-        profile: {
-          ...prev.profile,
-          careerSimulationInputs: res.data.careerSimulationInputs
-        }
-      }));
-      invalidateProfileCachesAfterMutation();
-      setRecalculateDialogOpen(false);
-    } catch (err) {
-      setRecalculateError(err.response?.data?.error || t('profilePage.errors.recalculateFailed'));
-    } finally {
-      setRecalculateLoading(false);
-    }
-  };
-
-  const handleCancelRecalculate = () => {
-    setRecalculateDialogOpen(false);
-    setRecalculateError(null);
   };
 
   // Chip management functions
@@ -1595,82 +1552,6 @@ const Profile = ({
                   >
                     {addLabel}
                   </Button>
-                  {key === 'domains' && (
-                    <Box sx={{ mt: 2.5 }}>
-                      <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
-                        {t('profilePage.structuredInfo.inferredOccupationGroups.title')}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        {t('profilePage.structuredInfo.inferredOccupationGroups.helper')}
-                      </Typography>
-                      {(() => {
-                        const excluded = new Set(structuredInfoDraft.excludedDerivedInferredIscoCodes || []);
-                        const active = (structuredInfoDraft.derivedInferredIsco || []).filter((row) => {
-                          const code = String(row?.code || '').trim();
-                          return code && !excluded.has(code);
-                        });
-                        const hidden = (structuredInfoDraft.derivedInferredIsco || []).filter((row) => {
-                          const code = String(row?.code || '').trim();
-                          return code && excluded.has(code);
-                        });
-                        return (
-                          <>
-                            {active.length === 0 ? (
-                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
-                                {t('profilePage.structuredInfo.inferredOccupationGroups.empty')}
-                              </Typography>
-                            ) : (
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 1.5 }}>
-                                {active.map((row, idx) => {
-                                  const code = String(row?.code || '').trim();
-                                  const display = resolveIscoDisplayEntry(code);
-                                  return (
-                                    <Box key={`active-isco-${code}-${idx}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                      <TextField
-                                        fullWidth
-                                        value={display.label}
-                                        InputProps={{ readOnly: true }}
-                                      />
-                                      <IconButton
-                                        aria-label={`Remove inferred occupation group ${idx + 1}`}
-                                        onClick={() => handleExcludeDerivedIscoCode(code)}
-                                        sx={{ mt: 0 }}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                    </Box>
-                                  );
-                                })}
-                              </Box>
-                            )}
-                            {hidden.length > 0 && (
-                              <Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                                  {t('profilePage.structuredInfo.inferredOccupationGroups.removedForNextSave')}
-                                </Typography>
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                                  {hidden.map((row, idx) => {
-                                    const code = String(row?.code || '').trim();
-                                    const display = resolveIscoDisplayEntry(code);
-                                    return (
-                                      <Chip
-                                        key={`hidden-isco-${code}-${idx}`}
-                                        label={display.label}
-                                        size="small"
-                                        variant="outlined"
-                                        onDelete={() => handleRestoreDerivedIscoCode(code)}
-                                        deleteIcon={<AddIcon />}
-                                      />
-                                    );
-                                  })}
-                                </Box>
-                              </Box>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </Box>
-                  )}
                 </Box>
                 {sectionIdx < 4 ? <Divider sx={{ my: 3 }} /> : null}
                 </React.Fragment>
@@ -1745,43 +1626,6 @@ const Profile = ({
                       />
                     ))}
                   </Box>
-                  {inferredIsco.length > 0 && (
-                    <Box sx={{ mt: 1.5 }}>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {(() => {
-                          const merged = new Map();
-                          for (const row of inferredIsco) {
-                            const rawCode = row?.code ? String(row.code) : '';
-                            const score = Number(row?.score);
-                            if (!rawCode || !Number.isFinite(score) || score <= 0) continue;
-                            const entry = resolveIscoDisplayEntry(rawCode);
-                            const label = String(entry.label || '').trim();
-                            if (!label) continue;
-                            const key = label.toLowerCase();
-                            const prev = merged.get(key) || { score: 0, label };
-                            merged.set(key, {
-                              score: prev.score + score,
-                              label: prev.label
-                            });
-                          }
-                          return Array.from(merged.entries())
-                            .map(([code, data]) => ({ code, score: data.score, label: data.label }))
-                            .sort((a, b) => b.score - a.score)
-                            .map((row, idx) => {
-                              return (
-                                <Chip
-                                  key={`summary-isco-${row.code}-${idx}`}
-                                  label={row.label}
-                                  color="success"
-                                  variant="outlined"
-                                  sx={goodAtReadonlyChipSx}
-                                />
-                              );
-                            });
-                        })()}
-                      </Box>
-                    </Box>
-                  )}
                 </>
               ) : (
                 <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
@@ -1937,13 +1781,6 @@ const Profile = ({
               >
                 Edit
               </Button>
-              <Button 
-                variant="outlined" 
-                onClick={handleRecalculateClick} 
-                disabled={recalculateLoading}
-              >
-                {recalculateLoading ? t('profilePage.careerInputs.recalculating') : t('profilePage.careerInputs.recalculateFromProfile')}
-              </Button>
             </Box>
           )}
           {careerInputsError && <Alert severity="error" sx={{ mb: 2 }}>{careerInputsError}</Alert>}
@@ -2088,10 +1925,6 @@ const Profile = ({
                   const s = profile.profile.careerSimulationInputs.structuredUserInfo || {};
                   const csiDomains = getRawItems(s.domains);
                   const hasDomains = csiDomains.length > 0;
-                  const profileStructured = profile.profile?.structuredUserInfo || {};
-                  const inferredIsco = Array.isArray(s.derivedInferredIsco) && s.derivedInferredIsco.length > 0
-                    ? s.derivedInferredIsco
-                    : (Array.isArray(profileStructured.derivedInferredIsco) ? profileStructured.derivedInferredIsco : []);
                   if (!hasDomains) {
                     return (
                       <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
@@ -2100,55 +1933,11 @@ const Profile = ({
                     );
                   }
                   return (
-                    <>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {csiDomains.map((domain, idx) => (
-                          <Chip key={`domain-${idx}`} label={chipLabelFromGoodAtItem(domain)} size="small" color="success" variant="outlined" />
-                        ))}
-                      </Box>
-                      {inferredIsco.length > 0 && (
-                        <Box sx={{ mt: 1.5 }}>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {(() => {
-                              // De-duplicate by effective display code after hierarchical fallback.
-                              const merged = new Map();
-                              for (const row of inferredIsco) {
-                                const rawCode = row?.code ? String(row.code) : '';
-                                const score = Number(row?.score);
-                                if (!rawCode || !Number.isFinite(score) || score <= 0) continue;
-                                const entry = resolveIscoDisplayEntry(rawCode);
-                                const key = entry.displayCode || rawCode;
-                                const prev = merged.get(key) || { score: 0, label: entry.label || key };
-                                merged.set(key, {
-                                  score: prev.score + score,
-                                  label: entry.label || prev.label || key
-                                });
-                              }
-                              return Array.from(merged.entries())
-                                .map(([code, data]) => ({ code, score: data.score, label: data.label }))
-                                .sort((a, b) => b.score - a.score)
-                                .map((row, idx) => {
-                                  const codeWithLabel = row.label && row.label !== row.code ? `${row.code} - ${row.label}` : row.code;
-                                  return (
-                                    <Chip
-                                      key={`isco-${row.code}-${idx}`}
-                                      label={codeWithLabel}
-                                      size="small"
-                                      color="default"
-                                      variant="outlined"
-                                    />
-                                  );
-                                });
-                            })()}
-                          </Box>
-                        </Box>
-                      )}
-                      {inferredIsco.length === 0 && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                          No ISCO inference available yet for the current domains.
-                        </Typography>
-                      )}
-                    </>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {csiDomains.map((domain, idx) => (
+                        <Chip key={`domain-${idx}`} label={chipLabelFromGoodAtItem(domain)} size="small" color="success" variant="outlined" />
+                      ))}
+                    </Box>
                   );
                 })()}
               </Box>
@@ -2341,48 +2130,6 @@ const Profile = ({
           </DialogActions>
         </Dialog>
       )}
-
-      {/* Conflict Resolution Dialog for Recalculate */}
-      <Dialog open={recalculateDialogOpen} onClose={handleCancelRecalculate} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('profilePage.recalculateDialog.title')}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            {t('profilePage.recalculateDialog.description')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t('profilePage.recalculateDialog.willDoTitle')}
-          </Typography>
-          <Box component="ul" sx={{ pl: 2, mb: 2 }}>
-            <Typography component="li" variant="body2" color="text.secondary">
-              {t('profilePage.recalculateDialog.bullets.replaceInputs')}
-            </Typography>
-            <Typography component="li" variant="body2" color="text.secondary">
-              {t('profilePage.recalculateDialog.bullets.resetManualFlag')}
-            </Typography>
-            <Typography component="li" variant="body2" color="text.secondary">
-              {t('profilePage.recalculateDialog.bullets.updateTimestamp')}
-            </Typography>
-          </Box>
-          {recalculateError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {recalculateError}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCancelRecalculate} disabled={recalculateLoading}>
-            {t('profilePage.recalculateDialog.keepManualEditsCta')}
-          </Button>
-          <Button 
-            onClick={handleRecalculate} 
-            variant="contained" 
-            color="primary" 
-            disabled={recalculateLoading}
-          >
-            {recalculateLoading ? t('profilePage.careerInputs.recalculating') : t('profilePage.recalculateDialog.recalculateAndOverwriteCta')}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog
         open={profileNameDialogOpen}

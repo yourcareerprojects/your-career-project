@@ -7,6 +7,7 @@ const {
   EXPLORATION_STRUCTURE_UPPER_BOUND,
   EXPLORATION_STRUCTURE_LOWER_BOUND,
 } = require('../embedding/roleMatchingScorer');
+const { logMemory } = require('./simulationMemoryProfiler');
 
 /** Top-N roles by HybridFinalNEXT before NEXT_ROLE MMR (diversity pass). */
 const DEFAULT_NEXT_MMR_CANDIDATE_POOL_SIZE = 150;
@@ -306,6 +307,9 @@ async function computePairwiseSimilarityPercentile(steps, embedMap, percentile) 
  *   novelty vs next; rank by HybridFinalOOTB, top-N pool, MMR with that score as base relevance
  */
 async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options = {}) {
+  logMemory('before_prioritized_lists_phase2', {
+    scoredPathsCount: safeArray(scoredPaths).length,
+  });
   const careerGoal = userProfile && userProfile.careerGoal ? String(userProfile.careerGoal) : '';
   const careerGoalLower = careerGoal.toLowerCase();
   const excludeTitleMatchingCareerGoal =
@@ -552,6 +556,16 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   });
 
   const outsideFinal = outsideDiverse;
+
+  logMemory('after_prioritized_lists_phase2', {
+    scoredPathsCount: safeArray(scoredPaths).length,
+    nextEligibleCount: nextEligibleRaw.length,
+    nextPoolSize: nextPoolRaw.length,
+    nextMmrPoolSize: nextMmrPool.length,
+    nextDiverseCount: nextDiverse.length,
+    outsidePoolRawCount: outsidePoolRaw.length,
+    outsideFinalCount: outsideFinal.length,
+  });
 
   return {
     nextCareerRoles: nextDiverse.map((s) => ({

@@ -90,10 +90,6 @@ jest.mock('../services/profile/extractionNarrativeEnrichmentService', () => {
   };
 });
 
-jest.mock('../services/embedding/userOccupationInference', () => ({
-  inferIscoFromDomains: jest.fn(async () => ({ inferred: [], methodUsed: 'rule_based' })),
-}));
-
 const { clearProfileResponseCache } = require('../services/profileGetResponseCache');
 const profileController = require('../controllers/profileController');
 const { generateDimensionSummary } = require('../services/jobAnalysis/dimensionSummaryGenerator');

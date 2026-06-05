@@ -77,10 +77,6 @@ jest.mock('../services/profile/extractionNarrativeEnrichmentService', () => {
   };
 });
 
-jest.mock('../services/embedding/userOccupationInference', () => ({
-  inferIscoFromDomains: jest.fn(async () => ({ inferred: [], methodUsed: 'rule_based' })),
-}));
-
 jest.mock('../services/ai/translationCache', () => ({
   cachedTranslate: jest.fn(async (_text, _lang, fn) => fn()),
 }));

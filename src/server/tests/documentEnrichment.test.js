@@ -51,10 +51,56 @@ Portfolio Website - Built with React and Node
     };
 
     const merged = mapExtractedToSimulationInputs(extracted, base);
-    expect(merged.structuredUserInfo.skills).toEqual(expect.arrayContaining(['React', 'JavaScript']));
+    expect(merged.structuredUserInfo.skills).toEqual(['React', 'JavaScript']);
     expect(merged.structuredUserInfo.skillsInDevelopment).toEqual(expect.any(Array));
     expect(merged.structuredUserInfo.keyResponsibilities).toEqual(expect.any(Array));
     expect(merged.structuredUserInfo.domains).toEqual(expect.any(Array));
+  });
+
+  test('preserves narrative-shaped domains when merging extracted skills', () => {
+    const base = {
+      structuredUserInfo: {
+        skills: { raw_items: ['React'], summary_text: 'React skills' },
+        domains: { raw_items: ['Tech', 'Education'], summary_text: 'Tech and education' },
+        skillDomains: { raw_items: ['Marketing'], summary_text: 'Marketing' },
+      },
+    };
+
+    const merged = mapExtractedToSimulationInputs({ skills: ['JavaScript'] }, base);
+
+    expect(merged.structuredUserInfo.domains).toEqual({
+      raw_items: ['Tech', 'Education'],
+      summary_text: 'Tech and education',
+    });
+    expect(merged.structuredUserInfo.skillDomains).toEqual({
+      raw_items: ['Marketing'],
+      summary_text: 'Marketing',
+    });
+    expect(merged.structuredUserInfo.skills).toEqual({
+      raw_items: ['React', 'JavaScript'],
+      summary_text: 'React skills',
+    });
+  });
+
+  test('merges extracted skills into bilingual narrative without corrupting summary_text', () => {
+    const summaryField = {
+      original_language: 'en',
+      original: 'React skills',
+      translations: { en: 'React skills', de: 'React-Fähigkeiten' },
+    };
+    const base = {
+      structuredUserInfo: {
+        skills: {
+          raw_items: ['React'],
+          summary_text: summaryField,
+        },
+      },
+    };
+
+    const merged = mapExtractedToSimulationInputs({ skills: ['JavaScript', 'React'] }, base);
+
+    expect(merged.structuredUserInfo.skills.raw_items).toEqual(['React', 'JavaScript']);
+    expect(merged.structuredUserInfo.skills.summary_text).toEqual(summaryField);
   });
 
   test('does not treat every CV line as a skill when no Skills section exists', () => {

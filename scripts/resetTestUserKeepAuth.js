@@ -70,7 +70,6 @@ function defaultProfile() {
       skillsInDevelopment: { ...nar },
       keyResponsibilities: { ...nar },
       domains: { ...nar },
-      excludedDerivedInferredIscoCodes: [],
     },
     userIdentityAnswers: {
       workEnjoyMost: '',
@@ -93,7 +92,6 @@ function defaultProfile() {
         skillsInDevelopment: emptyNarrative(),
         keyResponsibilities: emptyNarrative(),
         domains: emptyNarrative(),
-        excludedDerivedInferredIscoCodes: [],
       },
       userIdentity: {
         workEnjoyMost: '',

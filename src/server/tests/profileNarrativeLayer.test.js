@@ -65,10 +65,6 @@ jest.mock('../services/profile/deferredProfileNarrativeService', () => ({
   scheduleDeferredProfileNarrativesForUser: jest.fn(),
 }));
 
-jest.mock('../services/embedding/userOccupationInference', () => ({
-  inferIscoFromDomains: jest.fn(async () => ({ inferred: [], methodUsed: 'rule_based' })),
-}));
-
 const { clearProfileResponseCache } = require('../services/profileGetResponseCache');
 const profileController = require('../controllers/profileController');
 const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');

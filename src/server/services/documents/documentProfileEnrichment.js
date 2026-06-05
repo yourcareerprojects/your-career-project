@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const { runStageIfCvPipeline } = require('../../utils/metricsLogger');
+const { getRawItems } = require('../profile/profileReviewSaveService');
 
 // Optional: DOCX parsing (installed in Phase 3). If unavailable, we fall back gracefully.
 let mammoth = null;
@@ -352,6 +353,25 @@ async function parseDocumentToText(filePath) {
   return text;
 }
 
+function mergeDimensionRawItems(existingDimension, incomingItems = []) {
+  const existing = getRawItems(existingDimension);
+  const merged = uniqStrings([...existing, ...incomingItems]);
+
+  if (existingDimension && typeof existingDimension === 'object' && !Array.isArray(existingDimension)) {
+    return {
+      ...existingDimension,
+      raw_items: merged,
+    };
+  }
+  if (Array.isArray(existingDimension)) {
+    return merged;
+  }
+  if (merged.length === 0) {
+    return { raw_items: [], summary_text: '' };
+  }
+  return { raw_items: merged, summary_text: '' };
+}
+
 function mapExtractedToSimulationInputs(extracted, baseInputs) {
   const out = JSON.parse(JSON.stringify(baseInputs || {}));
 
@@ -359,33 +379,10 @@ function mapExtractedToSimulationInputs(extracted, baseInputs) {
     ? out.structuredUserInfo
     : {};
 
-  /** Coerce stored skills (string | object | array) to string[] for merge. */
-  function normalizeStoredSkills(raw) {
-    if (raw == null) return [];
-    if (Array.isArray(raw)) {
-      return raw.map((s) => (typeof s === 'string' ? s : s && s.name != null ? String(s.name) : '')).filter(Boolean);
-    }
-    if (typeof raw === 'string') {
-      return raw
-        .split(/[,;\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    if (typeof raw === 'object') {
-      return Object.values(raw)
-        .map((v) => (typeof v === 'string' ? v : v && v.name != null ? String(v.name) : ''))
-        .filter(Boolean);
-    }
-    return [];
-  }
-
-  const existingSkills = normalizeStoredSkills(currentStructured.skills);
-
+  // Preserve narrative dimensions (domains, skillDomains, summary_text, etc.); merge skills via raw_items.
   out.structuredUserInfo = {
-    skills: uniqStrings([...existingSkills, ...(extracted.skills || [])]),
-    skillsInDevelopment: Array.isArray(currentStructured.skillsInDevelopment) ? currentStructured.skillsInDevelopment : [],
-    keyResponsibilities: Array.isArray(currentStructured.keyResponsibilities) ? currentStructured.keyResponsibilities : [],
-    domains: Array.isArray(currentStructured.domains) ? currentStructured.domains : []
+    ...currentStructured,
+    skills: mergeDimensionRawItems(currentStructured.skills, extracted.skills || []),
   };
 
   return out;

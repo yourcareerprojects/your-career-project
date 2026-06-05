@@ -248,8 +248,7 @@
       "fetchProfileFailed": "Error fetching profile",
       "saveChangesFailed": "Error saving changes",
       "identityQuestionsRequired": "Please answer all five identity questions.",
-      "saveStructuredInfoFailed": "Failed to save structured user info",
-      "recalculateFailed": "Failed to recalculate inputs"
+      "saveStructuredInfoFailed": "Failed to save structured user info"
     },
     "loginSecurity": {
       "title": "Login & Security",
@@ -334,7 +333,7 @@
         "title": "Industry sectors",
         "addCta": "Add industry sector",
         "helper": "Use sectors like MedTech, Life Sciences, Manufacturing.",
-        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). ISCO codes are derived from these — not from job functions like Marketing."
+        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). Use sectors, not job functions like Marketing."
       },
       "responsibilities": {
         "title": "Your responsibilities",
@@ -353,12 +352,6 @@
         "addCta": "Add learning goal",
         "helper": "Skills you are actively building.",
         "empty": "No learning goals provided"
-      },
-      "inferredOccupationGroups": {
-        "title": "Inferred occupation groups",
-        "helper": "These are inferred from your industry sectors. Remove any that do not fit.",
-        "empty": "No inferred ISCO entries to review yet.",
-        "removedForNextSave": "Removed for next save"
       }
     },
     "seniority": {
@@ -426,13 +419,11 @@
       "title": "Career Simulation Inputs",
       "description": "This section shows the data used for career path simulations. You can edit these inputs for more accurate recommendations.",
       "tipLabel": "Tip:",
-      "tipDescription": "More complete information leads to better career path suggestions. Use \"Recalculate from Profile\" to automatically update these fields from your profile data.",
-      "recalculateFromProfile": "Recalculate from Profile",
-      "recalculating": "Recalculating...",
+      "tipDescription": "More complete information leads to better career path suggestions.",
       "embeddingIdentityLabel": "Career-simulation embedding identity text (cached)",
       "notAvailableYet": "Not available yet",
       "strengthsLabel": "Your strengths (skill_domains — overarching skills)",
-      "occupationGroupLabel": "Occupation group input (domains + derived ISCO)",
+      "occupationGroupLabel": "Industry sectors (occupation group input)",
       "responsibilitiesLabel": "Responsibilities input (structured vector: responsibilities)",
       "requiredSkillsLabel": "Required skills input (structured vector: required_skills)",
       "skillsInDevelopmentLabel": "Skills in development input",
@@ -455,18 +446,6 @@
         "responsibilities": "Enter a responsibility and press Enter",
         "skills": "Enter a skill and press Enter or click Add",
         "learningGoals": "Enter a skill you're learning and press Enter"
-      }
-    },
-    "recalculateDialog": {
-      "title": "Recalculate Career Simulation Inputs?",
-      "description": "You have manually edited your career simulation inputs. Recalculating from your profile will overwrite these manual changes.",
-      "willDoTitle": "This action will:",
-      "keepManualEditsCta": "Keep My Manual Edits",
-      "recalculateAndOverwriteCta": "Recalculate and Overwrite",
-      "bullets": {
-        "replaceInputs": "Replace all manually edited inputs with automatically calculated values from your profile",
-        "resetManualFlag": "Reset the \"manually edited\" status",
-        "updateTimestamp": "Update the \"last calculated\" timestamp"
       }
     }
   },
