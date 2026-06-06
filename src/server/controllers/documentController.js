@@ -11,6 +11,7 @@ const {
   createExtractionJob,
   findLatestCvExtractionJobForUserDocument,
   retryCvExtractionForDocument,
+  cancelActiveCvExtractionJobsForDocument,
 } = require('../services/documents/cvExtractionJobService');
 const { buildCvExtractionStatusResponse } = require('../services/documents/cvExtractionStatus');
 const { getPublicWorkerHealthForExtractionStatus } = require('../services/documents/cvExtractionZombieSignals');
@@ -496,6 +497,12 @@ const documentController = {
       await deleteStoredDocumentBlob(docToDelete).catch(() => {});
       const { deleteCvExtractedTextCacheForDocument } = require('../services/documents/cvExtractedTextCacheService');
       await deleteCvExtractedTextCacheForDocument(req.user.userId, req.params.documentId).catch(() => {});
+      await cancelActiveCvExtractionJobsForDocument(req.params.documentId).catch((err) => {
+        logger.error('cancel_cv_extraction_jobs_on_delete_failed', {
+          documentId: String(req.params.documentId),
+          ...serializeErrorSafe(err),
+        });
+      });
 
       // Remove document from user's documents array
       user.profile.documents.pull(req.params.documentId);

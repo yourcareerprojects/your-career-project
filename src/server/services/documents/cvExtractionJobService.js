@@ -175,6 +175,45 @@ async function deactivateFingerprintForJob(jobIdStr) {
 }
 
 /**
+ * Stop in-flight extraction jobs when the source document is removed (e.g. wizard cancel rollback).
+ * Without this, orphaned `queued`/`processing` jobs keep counting toward upload concurrency limits.
+ * @param {string|mongoose.Types.ObjectId} documentId
+ * @returns {Promise<number>} number of jobs cancelled
+ */
+async function cancelActiveCvExtractionJobsForDocument(documentId) {
+  const docObjectId = toObjectId(documentId, 'documentId');
+  const activeJobs = await CvExtractionJob.find({
+    documentId: docObjectId,
+    status: { $in: ['queued', 'processing'] },
+  })
+    .select({ jobId: 1 })
+    .lean();
+
+  if (!activeJobs.length) return 0;
+
+  await CvExtractionJob.updateMany(
+    {
+      documentId: docObjectId,
+      status: { $in: ['queued', 'processing'] },
+    },
+    {
+      $set: {
+        status: 'failed',
+        errorKey: null,
+        error: '',
+        internalError: { message: 'Document removed before extraction completed' },
+      },
+      $unset: { processingStartedAt: '' },
+    }
+  );
+
+  for (const job of activeJobs) {
+    await deactivateFingerprintForJob(String(job.jobId));
+  }
+  return activeJobs.length;
+}
+
+/**
  * Re-queue jobs stuck in `processing` (crash, deploy, hang) so they can be claimed again.
  * Jobs at or above {@link MAX_RETRIES} claims are marked failed instead of requeued.
  * @returns {Promise<{ requeued: number, failedMaxRetries: number }>}
@@ -473,4 +512,5 @@ module.exports = {
   reclaimStaleProcessingCvExtractionJobs,
   findLatestCvExtractionJobForUserDocument,
   retryCvExtractionForDocument,
+  cancelActiveCvExtractionJobsForDocument,
 };

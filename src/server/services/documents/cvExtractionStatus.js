@@ -16,6 +16,21 @@ const { layerStatusFromJob } = require('../cv/cvExtractionStateManager');
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed']);
 
+function resolveFailedExtractionErrorKey(job, doc) {
+  const fromJob = job ? resolvePublicErrorKey(job) : null;
+  if (fromJob && fromJob !== EXTRACTION_ERROR_KEYS.INTERNAL_ERROR) {
+    return fromJob;
+  }
+  const messageKey = String(doc?.extractionMessageKey || '').trim();
+  if (messageKey === 'documentUpload.extraction.noDocumentText') {
+    return EXTRACTION_ERROR_KEYS.OCR_FAILED;
+  }
+  if (messageKey === 'documentUpload.extraction.semanticInterpretationNone') {
+    return EXTRACTION_ERROR_KEYS.EXTRACTION_FAILED;
+  }
+  return fromJob || EXTRACTION_ERROR_KEYS.INTERNAL_ERROR;
+}
+
 const DISPLAY_PROGRESS = {
   upload: 10,
   ocr: 35,
@@ -135,7 +150,7 @@ function buildCvExtractionStatusResponse({
   let hasResult = hasDocResult || Boolean(job?.result);
 
   if (status === 'failed') {
-    errorKey = job ? resolvePublicErrorKey(job) : EXTRACTION_ERROR_KEYS.INTERNAL_ERROR;
+    errorKey = resolveFailedExtractionErrorKey(job, doc);
   } else if (status === 'completed') {
     completedAt = job?.status === 'completed' && job?.updatedAt
       ? job.updatedAt

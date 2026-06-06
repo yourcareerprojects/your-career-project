@@ -13,6 +13,15 @@ try {
   mammoth = null;
 }
 
+// Optional: legacy .doc (OLE) parsing.
+let WordExtractor = null;
+try {
+  // eslint-disable-next-line global-require
+  WordExtractor = require('word-extractor');
+} catch (e) {
+  WordExtractor = null;
+}
+
 function normalizeSkill(value) {
   return String(value || '')
     .trim()
@@ -332,12 +341,25 @@ async function parseDocumentToTextWithMeta(filePath) {
       return { text: text || '', source: 'image_ocr' };
     }
 
-    if ((treatAsDocx || treatAsDoc) && mammoth && treatAsDocx) {
+    if (treatAsDocx && mammoth) {
       const text = await runStageIfCvPipeline('docx_extract_text', {}, async () => {
         const res = await mammoth.extractRawText({ buffer: buf });
         return res.value || '';
       });
       return { text: text || '', source: 'docx' };
+    }
+
+    if (treatAsDoc && WordExtractor) {
+      const text = await runStageIfCvPipeline('doc_extract_text', {}, async () => {
+        const extractor = new WordExtractor();
+        const extracted = await extractor.extract(buf);
+        return extracted.getBody() || '';
+      });
+      return { text: text || '', source: 'doc' };
+    }
+
+    if (treatAsDoc) {
+      return { text: '', source: 'doc_unsupported' };
     }
 
     if (treatAsTxt) {

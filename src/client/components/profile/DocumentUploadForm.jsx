@@ -1024,7 +1024,11 @@ const DocumentUploadForm = ({
         if (errorData.errorKey) {
           throw new Error(getExtractionErrorMessage(errorData.errorKey, t));
         }
-        throw new Error(errorData.message || 'Upload failed');
+        throw new Error(
+          errorData.message
+            || errorData.error
+            || t('documentUpload.errors.uploadFailed')
+        );
       }
 
       const data = await response.json();

@@ -111,4 +111,18 @@ describe('cvExtractionStatus', () => {
     expect(payload.error).toBeUndefined();
     expect(payload.estimatedState).toBeNull();
   });
+
+  test('failed outcome with noDocumentText surfaces OCR_FAILED errorKey', () => {
+    const payload = buildCvExtractionStatusResponse({
+      documentId: '507f1f77bcf86cd799439015',
+      doc: {
+        type: 'cv',
+        extractionOutcomeStatus: 'failed',
+        extractionMessageKey: 'documentUpload.extraction.noDocumentText',
+      },
+      job: { jobId: 'j2', status: 'completed', stage: 'extraction' },
+    });
+    expect(payload.status).toBe('failed');
+    expect(payload.errorKey).toBe('OCR_FAILED');
+  });
 });
