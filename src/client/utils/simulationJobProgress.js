@@ -5,7 +5,9 @@
 
 const DEFAULT_MAX_WAIT_MS = 10 * 60 * 1000;
 /** If no SSE heartbeat / message arrives in this window, fall back to polling (proxy buffering). */
-const SSE_SILENCE_FALLBACK_MS = 45 * 1000;
+const SSE_SILENCE_FALLBACK_MS = 20 * 1000;
+/** Poll Mongo-backed status in parallel with SSE so terminal `completed` is never missed. */
+const SSE_PARALLEL_POLL_MS = 3000;
 
 function abortableDelay(ms, signal) {
   if (ms <= 0) return Promise.resolve();
@@ -123,6 +125,7 @@ export async function waitForSimulationJobCompletion({
     let done = false;
     let es = null;
     let silenceTimer = null;
+    let parallelPollTimer = null;
     let fallbackRunning = false;
 
     const detachAbort = () => {
@@ -133,6 +136,10 @@ export async function waitForSimulationJobCompletion({
       if (silenceTimer != null) {
         clearTimeout(silenceTimer);
         silenceTimer = null;
+      }
+      if (parallelPollTimer != null) {
+        clearInterval(parallelPollTimer);
+        parallelPollTimer = null;
       }
       if (es) {
         try {
@@ -192,11 +199,35 @@ export async function waitForSimulationJobCompletion({
       `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/events` +
       `?lang=${encodeURIComponent(lang)}&access_token=${encodeURIComponent(token)}`;
 
+    const pollTerminalStatusOnce = async () => {
+      if (done || fallbackRunning) return;
+      try {
+        const { statusRes, statusData } = await fetchSimulationJobStatus(jobId, token, lang);
+        if (!statusRes.ok || done) return;
+        const jobStatus = statusData?.job?.status;
+        applySnapshotToUi(onJobPhase, {
+          status: jobStatus,
+          progress: Number(statusData?.job?.progress ?? 0),
+        });
+        if (jobStatus === 'completed') {
+          finalize({ kind: 'completed' });
+        } else if (jobStatus === 'failed') {
+          finalize({ kind: 'failed', error: statusData?.job?.error || '' });
+        }
+      } catch {
+        /* polling is best-effort while SSE is primary */
+      }
+    };
+
     es = new EventSource(url);
     armSilenceFallback();
+    parallelPollTimer = setInterval(() => {
+      pollTerminalStatusOnce();
+    }, SSE_PARALLEL_POLL_MS);
 
     es.addEventListener('open', () => {
       armSilenceFallback();
+      pollTerminalStatusOnce();
     });
 
     es.addEventListener('heartbeat', () => {

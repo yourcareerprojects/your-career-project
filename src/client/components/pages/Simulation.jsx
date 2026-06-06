@@ -1065,9 +1065,28 @@ const Simulation = () => {
       simulationRunAbortRef.current = runAbort;
 
       let data = null;
+      const fetchLastSimulationPayload = async () => {
+        const lastRes = await fetch(
+          `/api/profile/simulation/last?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          }
+        );
+        const lastData = await lastRes.json();
+        if (lastRes.ok && lastData?.results) {
+          return {
+            results: lastData.results,
+            careerGoal: lastData.selectedGoal || '',
+            profileCompletion: profileCompletion || 0,
+          };
+        }
+        return null;
+      };
+
       const fetchCompletedJobResult = async () => {
         // The status can flip to completed just before the result document is visible.
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
           // eslint-disable-next-line no-await-in-loop
           const resultRes = await fetch(
             `/api/profile/simulation/jobs/${encodeURIComponent(jobId)}/result?lang=${encodeURIComponent(requestLang)}&_ts=${Date.now()}`,
@@ -1079,11 +1098,11 @@ const Simulation = () => {
           // eslint-disable-next-line no-await-in-loop
           const resultData = await resultRes.json();
           if (resultRes.ok && resultData?.results) return resultData;
-          if (resultRes.status !== 409) return null;
+          if (resultRes.status !== 409) break;
           // eslint-disable-next-line no-await-in-loop
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-        return null;
+        return fetchLastSimulationPayload();
       };
 
       const outcome = await waitForSimulationJobCompletion({
@@ -1115,12 +1134,8 @@ const Simulation = () => {
         return;
       }
 
-      if (outcome.kind === 'completed') {
+      if (outcome.kind === 'completed' || outcome.kind === 'timeout') {
         data = await fetchCompletedJobResult();
-        if (!data) {
-          setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
-          return;
-        }
       }
 
       if (!data) {

@@ -1,13 +1,17 @@
 const SimulationJob = require('../models/SimulationJob');
+const { getSimulationJobExecutionLimitMs } = require('./simulationJobExecutionLimits');
 
-/** Jobs left in `running` (crash, deploy, OOM, hang) never return to the queue; reclaim them after this age. */
-const DEFAULT_STALE_RUNNING_MS = 60 * 60 * 1000;
+/** Reclaim `running` rows after execution budget + buffer (crash, deploy, OOM, hang). */
+function getDefaultStaleRunningMs() {
+  const execMs = getSimulationJobExecutionLimitMs();
+  return execMs + 10 * 60 * 1000;
+}
 
 function getStaleRunningCutoffMs() {
   const raw = process.env.SIMULATION_JOB_STALE_RUNNING_MS;
-  if (raw == null || raw === '') return DEFAULT_STALE_RUNNING_MS;
+  if (raw == null || raw === '') return getDefaultStaleRunningMs();
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_STALE_RUNNING_MS;
+  return Number.isFinite(n) && n > 0 ? n : getDefaultStaleRunningMs();
 }
 
 /**

@@ -1435,6 +1435,24 @@ exports.startSimulation = async (req, res) => {
     }
 
     const language = req.language || 'en';
+
+    // Orphaned `running` rows (crashed worker, closed tab) block worker diagnostics; fail them when a new run starts.
+    await SimulationJob.updateMany(
+      {
+        userId,
+        status: 'running',
+        'payload.jobType': 'simulation_run',
+      },
+      {
+        $set: {
+          status: 'failed',
+          completedAt: new Date(),
+          progress: 100,
+          error: 'Superseded by a new simulation run.',
+        },
+      }
+    );
+
     const job = await createSimulationJob({
       userId,
       language,
@@ -1644,6 +1662,14 @@ exports.getSimulationJobResult = async (req, res) => {
         status: job.status,
         error: job.error || '',
       });
+    }
+    if (job.result?.results) {
+      return res.json(job.result);
+    }
+    // Fork worker stores large payloads on User.lastSimulationResult; job.result may be lean or missing.
+    const hydrated = await buildSimulationForkJobResultPayload(job, { attempts: 5, delayMs: 250 });
+    if (hydrated?.results) {
+      return res.json(hydrated);
     }
     return res.json(job.result || { success: false, message: 'Simulation result payload missing.' });
   } catch (err) {
