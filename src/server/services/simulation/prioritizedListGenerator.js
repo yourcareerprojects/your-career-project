@@ -8,6 +8,7 @@ const {
   EXPLORATION_STRUCTURE_LOWER_BOUND,
 } = require('../embedding/roleMatchingScorer');
 const { logMemory } = require('./simulationMemoryProfiler');
+const { hydrateScoredPathsWithMeta } = require('./phase2ScoredPath');
 
 /** Top-N roles by HybridFinalNEXT before NEXT_ROLE MMR (diversity pass). */
 const DEFAULT_NEXT_MMR_CANDIDATE_POOL_SIZE = 150;
@@ -362,6 +363,13 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     typeof options.outsideVectorLoader === 'function'
       ? options.outsideVectorLoader
       : (typeof options.vectorLoader === 'function' ? options.vectorLoader : null);
+  const metaLoader =
+    typeof options.metaLoader === 'function' ? options.metaLoader : null;
+
+  if (metaLoader && nextPoolRaw.length > 0) {
+    await hydrateScoredPathsWithMeta(nextPoolRaw, metaLoader);
+    logMemory('after_next_pool_meta_hydrate', { nextPoolSize: nextPoolRaw.length });
+  }
   if (nextVectorLoader && nextPoolRaw.length > 0) {
     const needIds = nextPoolRaw.map((p) => p._id).filter(Boolean);
     const loaded = await nextVectorLoader(needIds);
@@ -524,6 +532,12 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
         if (rv !== undefined) role.roleVectors = rv;
       }
     }
+  }
+
+  if (metaLoader && explorationCapped.length > 0) {
+    const explorationRoles = explorationCapped.map(({ role }) => role);
+    await hydrateScoredPathsWithMeta(explorationRoles, metaLoader);
+    logMemory('after_exploration_meta_hydrate', { explorationCappedCount: explorationCapped.length });
   }
 
   let explorationCandidates = explorationCapped.map(({ role, result }) => {

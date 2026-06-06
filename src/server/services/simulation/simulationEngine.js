@@ -24,6 +24,10 @@ const localizedContentService = require('../localization/localizedContentService
 const { enrichCareerPathWithHybridScores } = require('../scoring/careerPathScorer');
 const { buildUserProfileForHybrid } = require('../scoring/hybridUserProfileForMatching');
 const { generatePrioritizedListsPhase2 } = require('./prioritizedListGenerator');
+const {
+  buildPhase2MinimalScoredPath,
+  PHASE2_ENRICHMENT_CP_PROJECTION,
+} = require('./phase2ScoredPath');
 const { EMBEDDING_DIMS } = require('../embedding/embeddingService');
 const { structuredSubVectorKeysInOrder } = require('../embedding/roleVectorService');
 const { logMemory } = require('./simulationMemoryProfiler');
@@ -614,42 +618,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       }
     }
 
-    /** Subset of CareerPath fields needed after scoring (no roleVectors / hybrid_vector). */
-    const LEAN_SCORED_CP_KEYS = [
-      '_id',
-      'escoId',
-      'title',
-      'description',
-      'requiredSkills',
-      'requiredSkillKeys',
-      'altTitles',
-      'hiddenTitles',
-      'seniority',
-      'keyResponsibilities',
-      'skillDomains',
-      'skillModel',
-      'roleIdentity',
-    ];
-
-    function buildLeanScoredCareerPath(cpDoc, scored) {
-      const lean = {};
-      for (let ki = 0; ki < LEAN_SCORED_CP_KEYS.length; ki += 1) {
-        const k = LEAN_SCORED_CP_KEYS[ki];
-        if (Object.prototype.hasOwnProperty.call(cpDoc, k)) {
-          lean[k] = cpDoc[k];
-        }
-      }
-      if (scored && typeof scored === 'object') {
-        for (const [k, v] of Object.entries(scored)) {
-          if (k === 'roleVectors' || k === 'hybrid_vector') continue;
-          lean[k] = v;
-        }
-      }
-      delete lean.roleVectors;
-      delete lean.hybrid_vector;
-      return lean;
-    }
-
     const vectorCache = getSimulationRoleVectorCache();
     /** Per-run embeddings + vector dedup across phase2 hydrate calls */
     const vectorRunDedup = new Map();
@@ -758,6 +726,31 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       });
     }
 
+    async function phase2MetaLoader(rawIds) {
+      const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
+      const out = new Map();
+      const objectIds = [];
+      for (let mi = 0; mi < unique.length; mi += 1) {
+        try {
+          objectIds.push(new mongoose.Types.ObjectId(unique[mi]));
+        } catch {
+          /* invalid id */
+        }
+      }
+      if (objectIds.length === 0) return out;
+      const docs = await CareerPath.find({ _id: { $in: objectIds } })
+        .select(PHASE2_ENRICHMENT_CP_PROJECTION)
+        .lean();
+      for (let di = 0; di < docs.length; di += 1) {
+        out.set(String(docs[di]._id), docs[di]);
+      }
+      logMemory('after_phase2_meta_load', {
+        requestedIdCount: unique.length,
+        loadedCount: docs.length,
+      });
+      return out;
+    }
+
     const scoredPaths = [];
     const totalChunks = Math.ceil(pathIds.length / SCORE_CHUNK_SIZE);
     for (let i = 0; i < pathIds.length; i += SCORE_CHUNK_SIZE) {
@@ -815,7 +808,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
           vectorCache.set(vectorCacheKey(sid, CACHE_SCOPE_STRUCTURED), pickStructuredRoleVectors(rv));
           vectorCache.delete(sid);
         }
-        scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
+        scoredPaths.push(buildPhase2MinimalScoredPath(cp, scored));
         if (sid) vectorRunDedup.delete(vectorCacheKey(sid, CACHE_SCOPE_FULL));
       }
       logMemory('after_score_chunk', {
@@ -827,11 +820,23 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     }
 
     assertNotAborted();
+    const candidatePoolSize = scoredPaths.length;
     logMemory('after_all_paths_scored', {
       userId: String(userId),
       scoredPathsCount: scoredPaths.length,
-      candidatePoolSize: picked.length,
+      candidatePoolSize,
       vectorRunDedupSize: vectorRunDedup.size,
+    });
+
+    // Scoring-era structures are no longer needed once scoredPaths is built.
+    metaById.clear();
+    picked.length = 0;
+    pathIds.length = 0;
+    seen.clear();
+    logMemory('after_scoring_era_release', {
+      userId: String(userId),
+      scoredPathsCount: scoredPaths.length,
+      candidatePoolSize,
     });
 
     let prioritizedListsRaw;
@@ -860,6 +865,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         outsideK: 25,
         nextVectorLoader: phase2NextVectorLoader,
         outsideVectorLoader: phase2OutsideVectorLoader,
+        metaLoader: phase2MetaLoader,
       });
     } catch (phase2Err) {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
@@ -963,7 +969,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     console.log('[simulation-engine] simulation_completed', {
       userId: String(userId),
       totalMs,
-      candidatePoolSize: picked.length,
+      candidatePoolSize,
       scoreChunkSize: SCORE_CHUNK_SIZE,
       scoreConcurrency: SCORE_CONCURRENCY,
       targetedLimit: TARGETED_PATH_LIMIT,
