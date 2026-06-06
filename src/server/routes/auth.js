@@ -45,6 +45,17 @@ const resendVerificationLimiter = rateLimit({
   }
 });
 
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email || req.ip,
+  message: {
+    error: 'Too many password reset requests. Please try again later.'
+  }
+});
+
 // Simple email validation for login (no DNS lookup to avoid timeouts)
 const simpleEmailValidation = [
   body('email')
@@ -85,7 +96,8 @@ router.get('/verify-email', authController.verifyEmailGet);
 router.get('/verify-email/:token', authController.verifyEmailGet);
 router.get('/verify', auth, authController.getCurrentUser);
 router.get('/login-security', auth, authController.getLoginSecuritySummary);
-router.post('/request-password-reset', 
+router.post('/request-password-reset',
+  passwordResetRequestLimiter,
   emailValidation,
   authController.requestPasswordReset
 );

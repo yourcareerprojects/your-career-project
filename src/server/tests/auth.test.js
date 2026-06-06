@@ -439,4 +439,135 @@ describe('Authentication System Tests', () => {
       expect(res.body.user).toHaveProperty('email', 'your.career.projects@gmail.com');
     });
   });
+
+  describe('Password Reset Tests', () => {
+    const resetToken = 'reset-token-123';
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const newPassword = 'NewPass1!@#';
+
+    beforeEach(async () => {
+      await User.create({
+        email: 'reset@example.com',
+        password: 'Test123!@#',
+        emailVerified: true,
+        tokenVersion: 0,
+        accountStatus: {
+          isVerified: true,
+          isActive: true,
+          resetPasswordToken: resetTokenHash,
+          resetPasswordExpires: Date.now() + 60 * 60 * 1000
+        }
+      });
+    });
+
+    test('should send reset email for verified account without revealing existence', async () => {
+      const res = await request(app)
+        .post('/api/auth/request-password-reset')
+        .send({ email: 'reset@example.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('eligible');
+
+      const user = await User.findOne({ email: 'reset@example.com' });
+      expect(user.accountStatus.resetPasswordToken).toBeTruthy();
+      expect(user.accountStatus.resetPasswordToken).not.toBe(resetTokenHash);
+      expect(user.accountStatus.resetPasswordToken).toHaveLength(64);
+    });
+
+    test('should return generic success for unknown email', async () => {
+      const res = await request(app)
+        .post('/api/auth/request-password-reset')
+        .send({ email: 'missing@example.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('eligible');
+    });
+
+    test('should reset password with valid token and invalidate old sessions', async () => {
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: resetToken,
+          password: newPassword
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('successful');
+
+      const user = await User.findOne({ email: 'reset@example.com' });
+      expect(user.accountStatus.resetPasswordToken).toBeUndefined();
+      expect(user.accountStatus.resetPasswordExpires).toBeUndefined();
+      expect(user.tokenVersion).toBe(1);
+
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'reset@example.com',
+          password: newPassword
+        });
+
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body).toHaveProperty('token');
+    });
+
+    test('should reject invalid reset token', async () => {
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: 'invalid-token',
+          password: newPassword
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Invalid or expired');
+    });
+
+    test('should reject weak password on reset', async () => {
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: resetToken,
+          password: 'weak'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toBeDefined();
+    });
+
+    test('should reject duplicate reset attempts after token is consumed', async () => {
+      const firstRes = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: resetToken,
+          password: newPassword
+        });
+
+      expect(firstRes.status).toBe(200);
+
+      const secondRes = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: resetToken,
+          password: newPassword
+        });
+
+      expect(secondRes.status).toBe(400);
+      expect(secondRes.body.error).toContain('Invalid or expired');
+    });
+
+    test('should keep reset token when new password matches current password', async () => {
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({
+          token: resetToken,
+          password: 'Test123!@#'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('different from the current password');
+
+      const user = await User.findOne({ email: 'reset@example.com' });
+      expect(user.accountStatus.resetPasswordToken).toBe(resetTokenHash);
+    });
+  });
 }); 

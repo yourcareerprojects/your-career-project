@@ -317,6 +317,27 @@ const buildVerifyEmailRedirectUrl = (token = '') => {
   return redirectUrl.toString();
 };
 
+const hashResetToken = (token) => crypto
+  .createHash('sha256')
+  .update(String(token || '').trim())
+  .digest('hex');
+
+const buildResetPasswordUrl = (token = '') => {
+  const clientBaseUrl = String(process.env.CLIENT_URL || process.env.FRONTEND_URL || '').trim();
+
+  if (!clientBaseUrl) {
+    return token
+      ? `/reset-password?token=${encodeURIComponent(token)}`
+      : '/reset-password';
+  }
+
+  const redirectUrl = new URL('/reset-password', clientBaseUrl.endsWith('/') ? clientBaseUrl : `${clientBaseUrl}/`);
+  if (token) {
+    redirectUrl.searchParams.set('token', token);
+  }
+  return redirectUrl.toString();
+};
+
 const sanitizePendingEmailChange = (pending = null) => {
   // Handle null, undefined, empty object, or missing newEmail
   if (!pending || typeof pending !== 'object' || !pending.newEmail) {
@@ -664,6 +685,11 @@ exports.login = async (req, res) => {
 // Request password reset
 exports.requestPasswordReset = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { email } = req.body;
 
     const user = await User.findOne({ email });
@@ -673,26 +699,48 @@ exports.requestPasswordReset = async (req, res) => {
       });
     }
 
-    // Generate reset token
+    // Generate reset token (store hash in DB; send plain token in email link)
     const resetToken = crypto.randomBytes(32).toString('hex');
-    user.accountStatus.resetPasswordToken = resetToken;
-    user.accountStatus.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-    await user.save();
+    const resetTokenHash = hashResetToken(resetToken);
+    const resetExpiresAt = new Date(Date.now() + 3600000);
 
-    // Send reset email
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-    const transporter = await createTransporter(email);
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: 'Reset your password',
-      html: `
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          'accountStatus.resetPasswordToken': resetTokenHash,
+          'accountStatus.resetPasswordExpires': resetExpiresAt,
+        },
+      }
+    );
+
+    if (process.env.NODE_ENV !== 'test') {
+      const resetUrl = buildResetPasswordUrl(resetToken);
+      const transporter = await createTransporter(email);
+      await transporter.sendMail({
+        from: process.env.EMAIL_FROM,
+        to: email,
+        subject: 'Reset your password',
+        html: `
         <h1>Password Reset Request</h1>
-        <p>Click the link below to reset your password:</p>
-        <a href="${resetUrl}">Reset Password</a>
-        <p>This link will expire in 1 hour.</p>
-      `
-    });
+        <p>We received a request to reset the password for your Career Path Explorer account.</p>
+        <p>Click the button below to choose a new password:</p>
+        <a href="${resetUrl}" style="
+          display: inline-block;
+          padding: 10px 20px;
+          background-color: #1976d2;
+          color: white;
+          text-decoration: none;
+          border-radius: 5px;
+          margin: 20px 0;
+        ">Reset Password</a>
+        <p>Or copy and paste this link into your browser:</p>
+        <p>${resetUrl}</p>
+        <p>This link will expire in 1 hour. If you did not request a password reset, you can ignore this email.</p>
+      `,
+        text: `Reset your Career Path Explorer password: ${resetUrl}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.`
+      });
+    }
 
     res.json({
       message: 'If an eligible account exists, a reset email has been sent.'
@@ -708,11 +756,25 @@ exports.requestPasswordReset = async (req, res) => {
 // Reset password
 exports.resetPassword = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { token, password } = req.body;
+    const normalizedToken = String(token || '').trim();
+
+    if (!normalizedToken) {
+      return res.status(400).json({
+        error: 'Invalid or expired reset token'
+      });
+    }
+
+    const tokenHash = hashResetToken(normalizedToken);
 
     const user = await User.findOne({
-      'accountStatus.resetPasswordToken': token,
-      'accountStatus.resetPasswordExpires': { $gt: Date.now() }
+      'accountStatus.resetPasswordToken': tokenHash,
+      'accountStatus.resetPasswordExpires': { $gt: new Date() },
     });
 
     if (!user) {
@@ -721,11 +783,53 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Update password
-    user.password = password;
-    user.accountStatus.resetPasswordToken = undefined;
-    user.accountStatus.resetPasswordExpires = undefined;
-    await user.save();
+    const isSamePassword = await user.comparePassword(password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        error: 'New password must be different from the current password'
+      });
+    }
+
+    const consumedUser = await User.findOneAndUpdate(
+      {
+        _id: user._id,
+        'accountStatus.resetPasswordToken': tokenHash,
+        'accountStatus.resetPasswordExpires': { $gt: new Date() },
+      },
+      {
+        $unset: {
+          'accountStatus.resetPasswordToken': '',
+          'accountStatus.resetPasswordExpires': '',
+        },
+      },
+      { new: true }
+    );
+
+    if (!consumedUser) {
+      return res.status(400).json({
+        error: 'Invalid or expired reset token'
+      });
+    }
+
+    consumedUser.password = password;
+    consumedUser.security = consumedUser.security || {};
+    consumedUser.security.lastPasswordChangeAt = new Date();
+    consumedUser.tokenVersion = (consumedUser.tokenVersion || 0) + 1;
+
+    logSecurityEvent(consumedUser, {
+      type: 'password_reset',
+      status: 'success',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    await consumedUser.save();
+
+    try {
+      await sendPasswordChangeAlert({ to: user.email });
+    } catch (emailError) {
+      console.error('Failed to send password reset confirmation email:', emailError);
+    }
 
     res.json({
       message: 'Password reset successful'

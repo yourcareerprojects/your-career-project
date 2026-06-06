@@ -12,10 +12,46 @@
     "passwordLabel": "Passwort",
     "submitCta": "Anmelden",
     "registerPrompt": "Noch kein Konto? Registrieren",
+    "forgotPasswordLink": "Passwort vergessen?",
     "errors": {
       "emailRequired": "E-Mail ist erforderlich",
       "emailInvalid": "E-Mail ist ungültig",
       "passwordRequired": "Passwort ist erforderlich",
+      "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+    }
+  },
+  "forgotPassword": {
+    "title": "Passwort zurücksetzen",
+    "description": "Gib die E-Mail-Adresse deines Kontos ein. Wenn sie zu einem bestätigten Konto gehört, senden wir dir einen Link zum Festlegen eines neuen Passworts.",
+    "emailLabel": "E-Mail-Adresse",
+    "submitCta": "Link senden",
+    "backToLogin": "Zurück zur Anmeldung",
+    "messages": {
+      "emailSent": "Falls ein berechtigtes Konto existiert, wurde eine E-Mail zum Zurücksetzen gesendet."
+    },
+    "errors": {
+      "emailRequired": "E-Mail ist erforderlich",
+      "emailInvalid": "E-Mail ist ungültig",
+      "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+    }
+  },
+  "resetPassword": {
+    "title": "Neues Passwort festlegen",
+    "description": "Gib dein neues Passwort unten ein und bestätige es.",
+    "passwordLabel": "Neues Passwort",
+    "confirmPasswordLabel": "Neues Passwort bestätigen",
+    "submitCta": "Passwort aktualisieren",
+    "messages": {
+      "success": "Passwort erfolgreich zurückgesetzt"
+    },
+    "actions": {
+      "goToLogin": "Zur Anmeldung",
+      "requestNewLink": "Neuen Link anfordern"
+    },
+    "errors": {
+      "missingToken": "Dieser Link zum Zurücksetzen ist ungültig oder unvollständig.",
+      "requirementsNotMet": "Bitte erfülle alle Passwortanforderungen.",
+      "passwordMismatch": "Passwörter stimmen nicht überein.",
       "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
     }
   },

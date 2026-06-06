@@ -20,6 +20,8 @@ import SavedCareerStepDetails from './pages/SavedCareerStepDetails';
 import SimulationResultDetails from './pages/SimulationResultDetails';
 import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../constants/profileCompletion';
 import { useProfileCompletionQuery } from '../hooks/useProfileQueries';
 
@@ -153,6 +155,9 @@ const App = () => {
               />
               <Route path="/shared-result/:shareId" element={<SharedResult />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/reset-password/:token" element={<ResetPassword />} />
 
               {/* Saved content: single auth + completion gate so navigation does not re-fetch completion */}
               <Route element={<ProtectedOutlet />}>

@@ -12,10 +12,46 @@
     "passwordLabel": "Password",
     "submitCta": "Login",
     "registerPrompt": "Don't have an account? Register",
+    "forgotPasswordLink": "Forgot your password?",
     "errors": {
       "emailRequired": "Email is required",
       "emailInvalid": "Email is invalid",
       "passwordRequired": "Password is required",
+      "unexpected": "An unexpected error occurred. Please try again."
+    }
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "description": "Enter the email address for your account. If it matches a verified account, we will send you a link to choose a new password.",
+    "emailLabel": "Email Address",
+    "submitCta": "Send reset link",
+    "backToLogin": "Back to login",
+    "messages": {
+      "emailSent": "If an eligible account exists, a reset email has been sent."
+    },
+    "errors": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Email is invalid",
+      "unexpected": "An unexpected error occurred. Please try again."
+    }
+  },
+  "resetPassword": {
+    "title": "Choose a new password",
+    "description": "Enter and confirm your new password below.",
+    "passwordLabel": "New Password",
+    "confirmPasswordLabel": "Confirm New Password",
+    "submitCta": "Update password",
+    "messages": {
+      "success": "Password reset successful"
+    },
+    "actions": {
+      "goToLogin": "Go to login",
+      "requestNewLink": "Request a new reset link"
+    },
+    "errors": {
+      "missingToken": "This reset link is invalid or incomplete.",
+      "requirementsNotMet": "Please meet all password requirements.",
+      "passwordMismatch": "Passwords do not match.",
       "unexpected": "An unexpected error occurred. Please try again."
     }
   },

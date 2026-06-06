@@ -22,6 +22,36 @@ try {
   WordExtractor = null;
 }
 
+/** Merge all readable Word streams (body, text boxes, headers — common in CV templates). */
+function extractWordDocumentPlainText(document) {
+  if (!document) return '';
+  const parts = [
+    document.getBody?.(),
+    document.getTextboxes?.(),
+    document.getHeaders?.({ includeFooters: true }),
+    document.getFootnotes?.(),
+    document.getEndnotes?.(),
+  ];
+  return parts
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+}
+
+async function extractDocxPlainText(buf) {
+  if (!mammoth) return '';
+  const res = await mammoth.extractRawText({ buffer: buf });
+  return String(res.value || '').trim();
+}
+
+async function extractLegacyDocPlainText(buf) {
+  if (!WordExtractor) return '';
+  const extractor = new WordExtractor();
+  const extracted = await extractor.extract(buf);
+  return extractWordDocumentPlainText(extracted);
+}
+
 function normalizeSkill(value) {
   return String(value || '')
     .trim()
@@ -286,8 +316,9 @@ async function parseDocumentToTextWithMeta(filePath) {
     const inferredKind = inferKindFromBuffer(buf);
     const treatAsPdf = ext === '.pdf' || inferredKind === 'pdf';
     const treatAsImage = ext === '.png' || ext === '.jpg' || ext === '.jpeg' || inferredKind === 'png' || inferredKind === 'jpeg';
-    const treatAsDocx = (ext === '.docx') || (ext !== '.doc' && inferredKind === 'zip');
-    const treatAsDoc = ext === '.doc' || inferredKind === 'ole';
+    // Prefer buffer magic bytes over extension — mislabeled DOCX-as-.doc must not hit OLE parser.
+    const treatAsDocx = inferredKind === 'zip' || ext === '.docx';
+    const treatAsDoc = (inferredKind === 'ole' || ext === '.doc') && inferredKind !== 'zip';
     const treatAsTxt = ext === '.txt';
 
     if (treatAsPdf) {
@@ -342,19 +373,18 @@ async function parseDocumentToTextWithMeta(filePath) {
     }
 
     if (treatAsDocx && mammoth) {
-      const text = await runStageIfCvPipeline('docx_extract_text', {}, async () => {
-        const res = await mammoth.extractRawText({ buffer: buf });
-        return res.value || '';
-      });
+      const text = await runStageIfCvPipeline('docx_extract_text', {}, async () => extractDocxPlainText(buf));
       return { text: text || '', source: 'docx' };
     }
 
     if (treatAsDoc && WordExtractor) {
-      const text = await runStageIfCvPipeline('doc_extract_text', {}, async () => {
-        const extractor = new WordExtractor();
-        const extracted = await extractor.extract(buf);
-        return extracted.getBody() || '';
-      });
+      let text = await runStageIfCvPipeline('doc_extract_text', {}, async () => extractLegacyDocPlainText(buf));
+      if (!text && mammoth && inferredKind === 'zip') {
+        text = await runStageIfCvPipeline('docx_extract_text', {}, async () => extractDocxPlainText(buf));
+        if (text) {
+          return { text, source: 'docx' };
+        }
+      }
       return { text: text || '', source: 'doc' };
     }
 
@@ -413,6 +443,9 @@ function mapExtractedToSimulationInputs(extracted, baseInputs) {
 module.exports = {
   parseDocumentToText,
   parseDocumentToTextWithMeta,
+  extractWordDocumentPlainText,
+  extractLegacyDocPlainText,
+  extractDocxPlainText,
   extractFromTextHeuristics,
   mapExtractedToSimulationInputs,
   looksLikeSkillCandidate,

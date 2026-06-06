@@ -159,6 +159,17 @@ const Login = () => {
                 ),
               }}
             />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+              <Button
+                component={RouterLink}
+                to="/forgot-password"
+                variant="text"
+                size="small"
+                sx={{ mt: 0.5, textTransform: 'none' }}
+              >
+                {t('login.forgotPasswordLink')}
+              </Button>
+            </Box>
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2, width: '100%' }}>
               <Button
                 type="submit"

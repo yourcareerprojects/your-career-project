@@ -330,7 +330,9 @@ const userSchema = new mongoose.Schema({
       attemptsRemaining: Number,
       maxAttempts: Number,
       reauthExpiresAt: Date
-    }
+    },
+    resetPasswordToken: String,
+    resetPasswordExpires: Date
   },
   security: {
     lastPasswordChangeAt: {

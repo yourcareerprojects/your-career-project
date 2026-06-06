@@ -244,6 +244,17 @@ process.on('unhandledRejection', (reason, _promise) => {
 });
 
 // Start server
-app.listen(port, () => {
-    console.log(`Server is running at http://localhost:${port}`);
+const server = app.listen(port, () => {
+  console.log(`Server is running at http://localhost:${port}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `FATAL: Port ${port} is already in use. Another server is probably still running.\n` +
+      `Stop it first (PowerShell: netstat -ano | findstr :${port}, then taskkill /PID <pid> /F) and restart.`
+    );
+    process.exit(1);
+  }
+  throw err;
 });
