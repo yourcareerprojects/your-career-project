@@ -1,5 +1,5 @@
 const SimulationJob = require('../models/SimulationJob');
-const { getSimulationJobExecutionLimitMs } = require('./simulationJobExecutionLimits');
+const { getSimulationJobExecutionLimitMs } = require('./simulation/simulationJobExecutionLimits');
 
 /** Reclaim `running` rows after execution budget + buffer (crash, deploy, OOM, hang). */
 function getDefaultStaleRunningMs() {
