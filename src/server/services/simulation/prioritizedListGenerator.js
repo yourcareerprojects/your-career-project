@@ -341,11 +341,13 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   );
   const nextPoolRaw = filterUniqueByTitle(sortedByHybridNext).slice(0, poolSize);
 
-  const vectorLoader =
-    typeof options.vectorLoader === 'function' ? options.vectorLoader : null;
-  if (vectorLoader && nextPoolRaw.length > 0) {
+  const nextVectorLoader =
+    typeof options.nextVectorLoader === 'function'
+      ? options.nextVectorLoader
+      : (typeof options.vectorLoader === 'function' ? options.vectorLoader : null);
+  if (nextVectorLoader && nextPoolRaw.length > 0) {
     const needIds = nextPoolRaw.map((p) => p._id).filter(Boolean);
-    const loaded = await vectorLoader(needIds);
+    const loaded = await nextVectorLoader(needIds);
     for (const p of nextPoolRaw) {
       const k = String(p._id || '');
       if (loaded.has(k)) {
@@ -455,6 +457,9 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
       (a, b) => (b.result.hybridScoreFinal ?? -Infinity) - (a.result.hybridScoreFinal ?? -Infinity)
     );
   }
+
+  const vectorLoader =
+    typeof options.vectorLoader === 'function' ? options.vectorLoader : null;
 
   const explorationVectorCapRaw = Number(process.env.SIMULATION_EXPLORATION_VECTOR_CAP || '500');
   const explorationVectorCap = Number.isFinite(explorationVectorCapRaw)

@@ -27,6 +27,31 @@ const { generatePrioritizedListsPhase2 } = require('./prioritizedListGenerator')
 const { EMBEDDING_DIMS } = require('../embedding/embeddingService');
 const { logMemory } = require('./simulationMemoryProfiler');
 
+/** Full roleVectors blob — Phase 1 scoring and OOTB Phase 2 hydrate. */
+const ROLE_VECTORS_FULL_PROJECTION = { _id: 1, roleVectors: 1 };
+
+/** Slim projection for NEXT_ROLE MMR (precomputed final vector only). */
+const ROLE_VECTORS_FINAL_NEXT_PROJECTION = {
+  _id: 1,
+  'roleVectors.dims': 1,
+  'roleVectors.finalVectors.nextRole': 1,
+};
+
+function vectorCacheKey(sid, cacheScope) {
+  return cacheScope === 'full' ? String(sid) : `${cacheScope}:${sid}`;
+}
+
+/** Keep only fields read by getPrecomputedFinalVector(..., 'NEXT_ROLE'). */
+function pickFinalNextRoleVectors(rv) {
+  if (!rv || typeof rv !== 'object') return rv;
+  const nextRole = rv.finalVectors?.nextRole;
+  const slim = { dims: rv.dims };
+  if (Array.isArray(nextRole) && nextRole.length > 0) {
+    slim.finalVectors = { nextRole };
+  }
+  return slim;
+}
+
 function logStructured(component, payload) {
   const line = { ts: new Date().toISOString(), component, ...payload };
   try {
@@ -546,22 +571,36 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       isForkChild: Boolean(runtimeOpts.isForkChild),
     });
 
-    async function fetchRoleVectorsMapForIds(rawIds) {
+    async function fetchRoleVectorsMapForIds(rawIds, options = {}) {
+      const cacheScope = options.cacheScope === 'finalNext' ? 'finalNext' : 'full';
+      const projection = options.projection || ROLE_VECTORS_FULL_PROJECTION;
+      const normalizeRv = cacheScope === 'finalNext' ? pickFinalNextRoleVectors : (rv) => rv;
       const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
       const out = new Map();
       const needQuery = [];
 
       for (let ui = 0; ui < unique.length; ui += 1) {
         const sid = unique[ui];
-        if (vectorRunDedup.has(sid)) {
-          out.set(sid, vectorRunDedup.get(sid));
+        const scopedKey = vectorCacheKey(sid, cacheScope);
+        if (vectorRunDedup.has(scopedKey)) {
+          out.set(sid, vectorRunDedup.get(scopedKey));
           continue;
         }
-        const cached = vectorCache.get(sid);
+        const cached = vectorCache.get(scopedKey);
         if (cached !== undefined) {
-          vectorRunDedup.set(sid, cached);
+          vectorRunDedup.set(scopedKey, cached);
           out.set(sid, cached);
           continue;
+        }
+        if (cacheScope === 'finalNext') {
+          const fullCached = vectorCache.get(sid);
+          if (fullCached !== undefined) {
+            const slim = pickFinalNextRoleVectors(fullCached);
+            vectorCache.set(scopedKey, slim);
+            vectorRunDedup.set(scopedKey, slim);
+            out.set(sid, slim);
+            continue;
+          }
         }
         needQuery.push(sid);
       }
@@ -577,23 +616,25 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         }
         if (objectIds.length > 0) {
           const docs = await CareerPath.find({ _id: { $in: objectIds } })
-            .select({ _id: 1, roleVectors: 1 })
+            .select(projection)
             .lean();
           const foundDoc = new Map(docs.map((d) => [String(d._id), d]));
           for (let qi = 0; qi < needQuery.length; qi += 1) {
             const sid = needQuery[qi];
+            const scopedKey = vectorCacheKey(sid, cacheScope);
             const d = foundDoc.get(sid);
-            const rv = d ? d.roleVectors : undefined;
+            const rv = d ? normalizeRv(d.roleVectors) : undefined;
             if (rv !== undefined && rv !== null) {
-              vectorCache.set(sid, rv);
+              vectorCache.set(scopedKey, rv);
             }
-            vectorRunDedup.set(sid, rv);
+            vectorRunDedup.set(scopedKey, rv);
             out.set(sid, rv);
           }
         } else {
           for (let qi = 0; qi < needQuery.length; qi += 1) {
             const sid = needQuery[qi];
-            vectorRunDedup.set(sid, undefined);
+            const scopedKey = vectorCacheKey(sid, cacheScope);
+            vectorRunDedup.set(scopedKey, undefined);
             out.set(sid, undefined);
           }
         }
@@ -605,12 +646,20 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         mongoQueryCount: needQuery.length,
         vectorRunDedupSize: vectorRunDedup.size,
         resultMapSize: out.size,
+        cacheScope,
       });
 
       return out;
     }
 
-    async function phase2RoleVectorLoader(ids) {
+    async function phase2NextVectorLoader(ids) {
+      return fetchRoleVectorsMapForIds(ids, {
+        cacheScope: 'finalNext',
+        projection: ROLE_VECTORS_FINAL_NEXT_PROJECTION,
+      });
+    }
+
+    async function phase2OutsideVectorLoader(ids) {
       return fetchRoleVectorsMapForIds(ids);
     }
 
@@ -669,7 +718,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
           vectorCache.set(sid, cp.roleVectors);
         }
         scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
-        if (sid) vectorRunDedup.delete(sid);
+        if (sid) vectorRunDedup.delete(vectorCacheKey(sid, 'full'));
       }
       logMemory('after_score_chunk', {
         chunkIndex,
@@ -711,7 +760,8 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       }, {
         nextK: 25,
         outsideK: 25,
-        vectorLoader: phase2RoleVectorLoader,
+        nextVectorLoader: phase2NextVectorLoader,
+        vectorLoader: phase2OutsideVectorLoader,
       });
     } catch (phase2Err) {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
