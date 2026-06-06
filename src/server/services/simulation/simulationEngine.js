@@ -321,12 +321,32 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       mergedIdentityAnswers.workingLifeAchievement ||
       (reqLike.body?.careerGoal ? String(reqLike.body.careerGoal).trim() : null) ||
       null;
+    logStructured('[simulation-engine]', {
+      userId: String(userId),
+      event: 'before_career_goal_generation',
+      isForkChild: Boolean(runtimeOpts.isForkChild),
+      hasRawCareerGoal: Boolean(rawCareerGoal && String(rawCareerGoal).trim()),
+    });
+    const careerSloganTimeoutMs = runtimeOpts.isForkChild
+      ? 0
+      : toPositiveIntEnv(process.env.SIMULATION_CAREER_SLOGAN_TIMEOUT_MS, 30000);
     const careerGoalResult = await generateCareerSlogan(rawCareerGoal || '', {
       lang: reqLike.language,
       returnBundle: true,
+      // Worker subprocess: skip LLM so scoring is not blocked on chat completions.
+      deterministicOnly: Boolean(runtimeOpts.isForkChild),
+      // API / in-process path: cap wall-clock wait; falls back to deterministic slogan.
+      timeoutMs: careerSloganTimeoutMs > 0 ? careerSloganTimeoutMs : undefined,
     });
     const careerGoal = careerGoalResult.canonical;
     const localizedCareerGoal = careerGoalResult.localized?.[reqLike.language] || '';
+    logStructured('[simulation-engine]', {
+      userId: String(userId),
+      event: 'after_career_goal_generation',
+      careerGoalLength: careerGoal ? String(careerGoal).length : 0,
+      careerSloganTimeoutMs: careerSloganTimeoutMs > 0 ? careerSloganTimeoutMs : null,
+      careerSloganDeterministicOnly: Boolean(runtimeOpts.isForkChild),
+    });
     logMemory('after_career_goal_generation', {
       userId: String(userId),
       userSkillCount: userSkills.length,
@@ -385,6 +405,14 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       roleVectors: 1,
     };
 
+    logStructured('[simulation-engine]', {
+      userId: String(userId),
+      event: 'before_career_path_load',
+      userSkillKeyCount: userSkillKeys.length,
+      targetedPathLimit: TARGETED_PATH_LIMIT,
+      fallbackPathLimit: FALLBACK_PATH_LIMIT,
+    });
+
     if (userSkillKeys.length > 0) {
       const skillMatched = await escoService.getCachedCareerPaths(
         { requiredSkillKeys: { $in: userSkillKeys } },
@@ -427,6 +455,11 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       });
     }
 
+    logStructured('[simulation-engine]', {
+      userId: String(userId),
+      event: 'after_career_path_load',
+      candidatePoolSize: picked.length,
+    });
     logMemory('after_candidate_pool', {
       userId: String(userId),
       candidatePoolSize: picked.length,
@@ -558,6 +591,12 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     console.time('STEP_3_scoring');
     step3Started = true;
+    logStructured('[simulation-engine]', {
+      userId: String(userId),
+      event: 'scoring_start',
+      candidatePoolSize: picked.length,
+      isForkChild: Boolean(runtimeOpts.isForkChild),
+    });
     const scoreChunkDefault = runtimeOpts.isForkChild ? 24 : 200;
     const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, scoreChunkDefault);
     const scoreConcDefault = runtimeOpts.isForkChild ? 1 : 12;

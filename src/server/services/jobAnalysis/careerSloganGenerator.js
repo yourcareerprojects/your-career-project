@@ -127,27 +127,53 @@ function deterministicFallback(userInput, lang = 'en') {
   return DEFAULT_CAREER_SLOGAN_EN;
 }
 
+function buildCareerSloganBundle(canonical, lang, localized = {}) {
+  return {
+    canonical,
+    canonicalLanguage: lang,
+    localized,
+  };
+}
+
+function finishCareerSlogan(canonical, lang, options, localized = {}) {
+  if (options.returnBundle) {
+    return buildCareerSloganBundle(canonical, lang, localized);
+  }
+  return localized[lang] || canonical;
+}
+
 /**
  * Generate a short, slogan-like career statement from free-form input.
  * @param {string} userInput
- * @returns {Promise<string>}
+ * @param {object} [options]
+ * @param {boolean} [options.returnBundle] When true, returns { canonical, canonicalLanguage, localized }
+ * @param {boolean} [options.deterministicOnly] Skip LLM (simulation worker fast path)
+ * @param {number} [options.timeoutMs] Wall-clock cap for the LLM path; falls back to deterministic on expiry
+ * @returns {Promise<string|{ canonical: string, canonicalLanguage: string, localized: object }>}
  */
 async function generateCareerSlogan(userInput, options = {}) {
   const normalized = normalizeInput(userInput);
   const lang = String(options.lang || 'en').toLowerCase().split('-')[0] || 'en';
 
-  if (!normalized) return lang === 'de' ? DEFAULT_CAREER_SLOGAN_DE : DEFAULT_CAREER_SLOGAN_EN;
+  if (!normalized) {
+    const canonical = lang === 'de' ? DEFAULT_CAREER_SLOGAN_DE : DEFAULT_CAREER_SLOGAN_EN;
+    return finishCareerSlogan(canonical, lang, options);
+  }
+
+  if (options.deterministicOnly) {
+    return finishCareerSlogan(deterministicFallback(normalized, lang), lang, options);
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !String(apiKey).trim()) {
-    return deterministicFallback(normalized, lang);
+    return finishCareerSlogan(deterministicFallback(normalized, lang), lang, options);
   }
 
   const trimmedInput = normalized.slice(0, MAX_INPUT_CHARS);
   const condensed = buildCondensedThemeHints(trimmedInput, lang);
 
-  try {
-    const aiResult = await generateAI({
+  const runLlm = () =>
+    generateAI({
       task: 'career_slogan',
       input: { trimmedInput, condensed },
       lang,
@@ -164,11 +190,35 @@ async function generateCareerSlogan(userInput, options = {}) {
         return sanitized || deterministicFallback(normalized, targetLang);
       },
     });
+
+  const timeoutMs =
+    typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : 0;
+
+  try {
+    let aiResult;
+    if (timeoutMs > 0) {
+      let timerId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timerId = setTimeout(
+          () => reject(new Error(`Career slogan LLM exceeded ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      });
+      try {
+        aiResult = await Promise.race([runLlm(), timeoutPromise]);
+      } finally {
+        if (timerId) clearTimeout(timerId);
+      }
+    } else {
+      aiResult = await runLlm();
+    }
     if (options.returnBundle) return aiResult;
     return aiResult.localized[lang] || aiResult.canonical;
   } catch (err) {
     console.warn('[careerSloganGenerator] Falling back to deterministic slogan:', err.message);
-    return deterministicFallback(normalized, lang);
+    return finishCareerSlogan(deterministicFallback(normalized, lang), lang, options);
   }
 }
 
