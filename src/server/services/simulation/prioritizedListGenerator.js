@@ -27,6 +27,19 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+/** Release embedding blobs from a step once precomputed Float32Array maps exist. */
+function dropStepVectors(step) {
+  if (!step || typeof step !== 'object') return;
+  delete step.roleVectors;
+  delete step.hybrid_vector;
+}
+
+/** Release embedding blobs from lean scored-path rows (shared refs with steps). */
+function dropRoleVectors(raw) {
+  if (!raw || typeof raw !== 'object') return;
+  delete raw.roleVectors;
+}
+
 function quantile(sortedAsc, q) {
   if (!Array.isArray(sortedAsc) || sortedAsc.length === 0) return null;
   const qq = Math.min(1, Math.max(0, q));
@@ -345,6 +358,10 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     typeof options.nextVectorLoader === 'function'
       ? options.nextVectorLoader
       : (typeof options.vectorLoader === 'function' ? options.vectorLoader : null);
+  const outsideVectorLoader =
+    typeof options.outsideVectorLoader === 'function'
+      ? options.outsideVectorLoader
+      : (typeof options.vectorLoader === 'function' ? options.vectorLoader : null);
   if (nextVectorLoader && nextPoolRaw.length > 0) {
     const needIds = nextPoolRaw.map((p) => p._id).filter(Boolean);
     const loaded = await nextVectorLoader(needIds);
@@ -368,7 +385,34 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     mode: 'NEXT_ROLE'
   });
 
+  // NEXT MMR only needs precomputed Float32Arrays — drop blobs from rejected pool rows.
+  // Keep vectors on nextDiverse until novelty embedMap is built (structured hydrate follows).
+  const nextDiverseSet = new Set(nextDiverse);
+  for (const step of nextMmrPool) {
+    if (!nextDiverseSet.has(step)) dropStepVectors(step);
+  }
+  for (const p of nextPoolRaw) dropRoleVectors(p);
+  logMemory('after_next_mmr_vector_cleanup', {
+    nextMmrPoolSize: nextMmrPool.length,
+    nextDiverseCount: nextDiverse.length,
+  });
+
   const nextTitleSet = new Set(nextDiverse.map((s) => stepPoolExclusionKey(s)).filter(Boolean));
+
+  // NEXT slim hydrate keeps finalVectors.nextRole only; novelty-vs-next needs structured sub-vectors (~25 roles).
+  if (outsideVectorLoader && nextDiverse.length > 0) {
+    const needIds = nextDiverse.map((s) => s._id).filter(Boolean);
+    const loaded = await outsideVectorLoader(needIds);
+    for (const s of nextDiverse) {
+      const k = String(s._id || '');
+      if (!loaded.has(k)) continue;
+      const structuredRv = loaded.get(k);
+      if (structuredRv === undefined) continue;
+      s.roleVectors = s.roleVectors && typeof s.roleVectors === 'object'
+        ? { ...s.roleVectors, ...structuredRv }
+        : structuredRv;
+    }
+  }
 
   // Outside-the-box pool: exploration criteria (identity-aligned structural shift).
   // No 6dim score band filter. Filter by: identity >= threshold, structure in [lower, upper].
@@ -458,9 +502,6 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     );
   }
 
-  const vectorLoader =
-    typeof options.vectorLoader === 'function' ? options.vectorLoader : null;
-
   const explorationVectorCapRaw = Number(process.env.SIMULATION_EXPLORATION_VECTOR_CAP || '500');
   const explorationVectorCap = Number.isFinite(explorationVectorCapRaw)
     ? Math.max(outsidePoolSize * 4, Math.min(2000, explorationVectorCapRaw))
@@ -473,9 +514,9 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
 
   const explorationCapped = explorationSorted.slice(0, explorationVectorCap);
 
-  if (vectorLoader && explorationCapped.length > 0) {
+  if (outsideVectorLoader && explorationCapped.length > 0) {
     const needIds = explorationCapped.map(({ role }) => role._id).filter(Boolean);
-    const loaded = await vectorLoader(needIds);
+    const loaded = await outsideVectorLoader(needIds);
     for (const { role } of explorationCapped) {
       const k = String(role._id || '');
       if (loaded.has(k)) {
@@ -535,6 +576,9 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     if (noveltyVsNext >= noveltyThresholdVsNext) outsideNovelVsNext.push(s);
   }
 
+  // Novelty-vs-next uses embedMap only — nextDiverse blobs no longer needed.
+  for (const s of nextDiverse) dropStepVectors(s);
+
   let ootbNovelPool = outsideNovelVsNext;
   if (ootbNovelPool.length === 0 && explorationCandidates.length > 0) {
     ootbNovelPool = [...explorationCandidates];
@@ -545,8 +589,28 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   );
   const outsideMmrPool = filterUniqueByTitle(sortedByHybridOotb).slice(0, outsidePoolSize);
 
+  // Exploration candidates excluded from OOTB MMR pool won't need vectors again (embedMap retains Float32Arrays).
+  const outsideMmrPoolSet = new Set(outsideMmrPool);
+  const outsideMmrRoleIds = new Set(
+    outsideMmrPool.map((s) => String(s._id || '')).filter(Boolean)
+  );
+  for (const s of explorationCandidates) {
+    if (!outsideMmrPoolSet.has(s)) dropStepVectors(s);
+  }
+  for (const { role } of explorationCapped) {
+    const rid = String(role._id || '');
+    if (rid && !outsideMmrRoleIds.has(rid)) dropRoleVectors(role);
+  }
+
   // OOTB MMR novelty must use structured cosine similarity only.
   const outsidePrecomputed = await precomputeStructuredStepEmbeddings(outsideMmrPool, 'OUT_OF_THE_BOX');
+
+  for (const s of outsideMmrPool) dropStepVectors(s);
+  for (const { role } of explorationCapped) dropRoleVectors(role);
+  logMemory('after_exploration_vector_cleanup', {
+    explorationCandidatesCount: explorationCandidates.length,
+    outsideMmrPoolSize: outsideMmrPool.length,
+  });
   const outsideDiverse = await mmrSelect(outsideMmrPool, {
     k: options.outsideK || 25,
     lambda: options.outsideLambda ?? 0.65,

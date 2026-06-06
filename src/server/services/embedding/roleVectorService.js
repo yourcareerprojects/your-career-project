@@ -304,6 +304,7 @@ module.exports = {
   getPrecomputedFinalVector,
   warnMissingPrecomputedFinalVectors,
   getStructuredVectorForMode,
+  structuredSubVectorKeysInOrder,
   STRUCTURED_WEIGHT,
   IDENTITY_WEIGHT,
   CATEGORY_ORDER,

@@ -58,6 +58,11 @@ class RoleVectorsLRUCache {
     const expiresAt = this.ttlMs > 0 ? Date.now() + this.ttlMs : Number.MAX_SAFE_INTEGER;
     this.map.set(key, { value, expiresAt });
   }
+
+  delete(keyStr) {
+    if (this.maxSize <= 0) return;
+    this.map.delete(String(keyStr));
+  }
 }
 
 let singleton = /** @type {RoleVectorsLRUCache | null} */ (null);

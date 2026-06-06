@@ -25,9 +25,14 @@ const { enrichCareerPathWithHybridScores } = require('../scoring/careerPathScore
 const { buildUserProfileForHybrid } = require('../scoring/hybridUserProfileForMatching');
 const { generatePrioritizedListsPhase2 } = require('./prioritizedListGenerator');
 const { EMBEDDING_DIMS } = require('../embedding/embeddingService');
+const { structuredSubVectorKeysInOrder } = require('../embedding/roleVectorService');
 const { logMemory } = require('./simulationMemoryProfiler');
 
-/** Full roleVectors blob — Phase 1 scoring and OOTB Phase 2 hydrate. */
+const CACHE_SCOPE_FULL = 'full';
+const CACHE_SCOPE_FINAL_NEXT = 'finalNext';
+const CACHE_SCOPE_STRUCTURED = 'structured';
+
+/** Full roleVectors blob — Phase 1 scoring only. */
 const ROLE_VECTORS_FULL_PROJECTION = { _id: 1, roleVectors: 1 };
 
 /** Slim projection for NEXT_ROLE MMR (precomputed final vector only). */
@@ -37,8 +42,18 @@ const ROLE_VECTORS_FINAL_NEXT_PROJECTION = {
   'roleVectors.finalVectors.nextRole': 1,
 };
 
+const STRUCTURED_SUB_VECTOR_KEYS = structuredSubVectorKeysInOrder();
+
+/** Slim projection for OOTB MMR + novelty (structured sub-vectors only). */
+const ROLE_VECTORS_STRUCTURED_PROJECTION = {
+  _id: 1,
+  'roleVectors.dims': 1,
+  'roleVectors.structured_vector_domains': 1,
+  ...Object.fromEntries(STRUCTURED_SUB_VECTOR_KEYS.map((k) => [`roleVectors.${k}`, 1])),
+};
+
 function vectorCacheKey(sid, cacheScope) {
-  return cacheScope === 'full' ? String(sid) : `${cacheScope}:${sid}`;
+  return cacheScope === CACHE_SCOPE_FULL ? String(sid) : `${cacheScope}:${sid}`;
 }
 
 /** Keep only fields read by getPrecomputedFinalVector(..., 'NEXT_ROLE'). */
@@ -50,6 +65,46 @@ function pickFinalNextRoleVectors(rv) {
     slim.finalVectors = { nextRole };
   }
   return slim;
+}
+
+/** Keep only fields read by getStructuredVectorForMode (five-pack + legacy domains). */
+function pickStructuredRoleVectors(rv) {
+  if (!rv || typeof rv !== 'object') return rv;
+  const slim = { dims: rv.dims };
+  for (let ki = 0; ki < STRUCTURED_SUB_VECTOR_KEYS.length; ki += 1) {
+    const k = STRUCTURED_SUB_VECTOR_KEYS[ki];
+    if (Array.isArray(rv[k]) && rv[k].length > 0) slim[k] = rv[k];
+  }
+  if (Array.isArray(rv.structured_vector_domains) && rv.structured_vector_domains.length > 0) {
+    slim.structured_vector_domains = rv.structured_vector_domains;
+  }
+  return slim;
+}
+
+function resolveRoleVectorFetchOptions(options = {}) {
+  const cacheScope = options.cacheScope || CACHE_SCOPE_FULL;
+  if (cacheScope === CACHE_SCOPE_FINAL_NEXT) {
+    return {
+      cacheScope,
+      projection: options.projection || ROLE_VECTORS_FINAL_NEXT_PROJECTION,
+      normalizeRv: pickFinalNextRoleVectors,
+      promoteFromFull: pickFinalNextRoleVectors,
+    };
+  }
+  if (cacheScope === CACHE_SCOPE_STRUCTURED) {
+    return {
+      cacheScope,
+      projection: options.projection || ROLE_VECTORS_STRUCTURED_PROJECTION,
+      normalizeRv: pickStructuredRoleVectors,
+      promoteFromFull: pickStructuredRoleVectors,
+    };
+  }
+  return {
+    cacheScope: CACHE_SCOPE_FULL,
+    projection: options.projection || ROLE_VECTORS_FULL_PROJECTION,
+    normalizeRv: (rv) => rv,
+    promoteFromFull: null,
+  };
 }
 
 function logStructured(component, payload) {
@@ -572,9 +627,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     });
 
     async function fetchRoleVectorsMapForIds(rawIds, options = {}) {
-      const cacheScope = options.cacheScope === 'finalNext' ? 'finalNext' : 'full';
-      const projection = options.projection || ROLE_VECTORS_FULL_PROJECTION;
-      const normalizeRv = cacheScope === 'finalNext' ? pickFinalNextRoleVectors : (rv) => rv;
+      const { cacheScope, projection, normalizeRv, promoteFromFull } = resolveRoleVectorFetchOptions(options);
       const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
       const out = new Map();
       const needQuery = [];
@@ -592,10 +645,10 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
           out.set(sid, cached);
           continue;
         }
-        if (cacheScope === 'finalNext') {
+        if (promoteFromFull) {
           const fullCached = vectorCache.get(sid);
           if (fullCached !== undefined) {
-            const slim = pickFinalNextRoleVectors(fullCached);
+            const slim = promoteFromFull(fullCached);
             vectorCache.set(scopedKey, slim);
             vectorRunDedup.set(scopedKey, slim);
             out.set(sid, slim);
@@ -654,13 +707,16 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     async function phase2NextVectorLoader(ids) {
       return fetchRoleVectorsMapForIds(ids, {
-        cacheScope: 'finalNext',
+        cacheScope: CACHE_SCOPE_FINAL_NEXT,
         projection: ROLE_VECTORS_FINAL_NEXT_PROJECTION,
       });
     }
 
     async function phase2OutsideVectorLoader(ids) {
-      return fetchRoleVectorsMapForIds(ids);
+      return fetchRoleVectorsMapForIds(ids, {
+        cacheScope: CACHE_SCOPE_STRUCTURED,
+        projection: ROLE_VECTORS_STRUCTURED_PROJECTION,
+      });
     }
 
     const scoredPaths = [];
@@ -715,10 +771,13 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         const scored = scoredChunk[j];
         const sid = cp && cp._id != null ? String(cp._id) : '';
         if (sid && cp && cp.roleVectors != null) {
-          vectorCache.set(sid, cp.roleVectors);
+          const rv = cp.roleVectors;
+          vectorCache.set(vectorCacheKey(sid, CACHE_SCOPE_FINAL_NEXT), pickFinalNextRoleVectors(rv));
+          vectorCache.set(vectorCacheKey(sid, CACHE_SCOPE_STRUCTURED), pickStructuredRoleVectors(rv));
+          vectorCache.delete(sid);
         }
         scoredPaths.push(buildLeanScoredCareerPath(cp, scored));
-        if (sid) vectorRunDedup.delete(vectorCacheKey(sid, 'full'));
+        if (sid) vectorRunDedup.delete(vectorCacheKey(sid, CACHE_SCOPE_FULL));
       }
       logMemory('after_score_chunk', {
         chunkIndex,
@@ -761,7 +820,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         nextK: 25,
         outsideK: 25,
         nextVectorLoader: phase2NextVectorLoader,
-        vectorLoader: phase2OutsideVectorLoader,
+        outsideVectorLoader: phase2OutsideVectorLoader,
       });
     } catch (phase2Err) {
       logControllerError('Phase 2 prioritized lists error', phase2Err);
