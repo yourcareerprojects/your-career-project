@@ -108,7 +108,7 @@ function runSimulationInChildProcess(jobId, options = {}) {
       if (signal) {
         const hint =
           signal === 'SIGABRT'
-            ? ' (often Node heap OOM on small hosts; try a larger Render plan, set SIMULATION_FORK_MAX_OLD_SPACE_MB, lower SIMULATION_VECTOR_CACHE_SIZE, set SIMULATION_SCORE_CONCURRENCY=1, or reduce SIMULATION_*_PATH_LIMIT / SIMULATION_EXPLORATION_VECTOR_CAP)'
+            ? ' (often Node heap OOM on small hosts; try a larger Render plan, set SIMULATION_FORK_MAX_OLD_SPACE_MB, lower SIMULATION_VECTOR_CACHE_SIZE, set SIMULATION_SCORE_CONCURRENCY=1, reduce SIMULATION_*_PATH_LIMIT / SIMULATION_EXPLORATION_VECTOR_CAP, or lower SIMULATION_EXPLORATION_HYDRATE_CHUNK_SIZE)'
             : '';
         finish(new Error(`Child process exited with signal ${signal}${hint}`));
         return;

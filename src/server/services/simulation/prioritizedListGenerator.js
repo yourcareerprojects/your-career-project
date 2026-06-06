@@ -24,6 +24,12 @@ const MIN_CAREER_GOAL_CHARS_FOR_TITLE_SUBSTRING_FILTER = 14;
 
 const DEFAULT_EXPLORATION_IDENTITY_PASS_RATE = 0.60;
 
+/** Structured-vector hydrate batch size for exploration novelty (mirror scoring chunk pattern). */
+const DEFAULT_EXPLORATION_HYDRATE_CHUNK_SIZE = 32;
+
+/** Stop scanning once this many unique novel candidates are found (buffer before title dedupe / MMR). */
+const EXPLORATION_NOVEL_TARGET_POOL_MULTIPLIER = 2;
+
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -39,6 +45,73 @@ function dropStepVectors(step) {
 function dropRoleVectors(raw) {
   if (!raw || typeof raw !== 'object') return;
   delete raw.roleVectors;
+}
+
+function toPositiveInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function resolveExplorationHydrateChunkSize() {
+  return toPositiveInt(process.env.SIMULATION_EXPLORATION_HYDRATE_CHUNK_SIZE, DEFAULT_EXPLORATION_HYDRATE_CHUNK_SIZE);
+}
+
+/** Lean step for exploration novelty — meta hydrated later for MMR survivors only. */
+function buildExplorationNoveltyStep(role, result) {
+  const step = buildStepObject(role, { category: 'outsideTheBoxRoles' });
+  step.structuredSimilarity = result.structuredSimilarity;
+  step.identitySimilarity = result.identitySimilarity;
+  if (typeof result.hybridScoreFinal === 'number' && Number.isFinite(result.hybridScoreFinal)) {
+    step.hybridScoreOutOfTheBox = result.hybridScoreFinal;
+  }
+  if (typeof result.hybridCosine === 'number' && Number.isFinite(result.hybridCosine)) {
+    step.hybridCosineOutOfTheBox = result.hybridCosine;
+  }
+  return step;
+}
+
+/** Drop embedMap entries not needed for the remaining pipeline stage. */
+function pruneEmbedMap(embedMap, keepSteps) {
+  const keep = new Set(keepSteps);
+  for (const step of embedMap.keys()) {
+    if (!keep.has(step)) embedMap.delete(step);
+  }
+}
+
+/**
+ * Fuse structured embeddings into embedMap; batch text-embed only for missing vectors.
+ * When metaLoader is provided, hydrates enrichment fields for text-fallback steps first
+ * (matches pre-chunked behavior where meta preceded embedding).
+ */
+async function mergeStructuredStepEmbeddings(steps, embedMap, mode, { metaLoader } = {}) {
+  const needEmbed = [];
+  for (const step of steps) {
+    const structured = getStructuredVectorForMode(step, mode);
+    if (structured) {
+      embedMap.set(step, structured);
+    } else {
+      needEmbed.push(step);
+    }
+  }
+  if (needEmbed.length === 0) return;
+  if (metaLoader) {
+    await hydrateScoredPathsWithMeta(needEmbed, metaLoader);
+  }
+  const texts = needEmbed.map((s) => buildCareerStepEmbeddingText(s, { category: s.category }));
+  const vectors = await embedTextBatchSafe(texts);
+  let missCount = 0;
+  for (let i = 0; i < needEmbed.length; i += 1) {
+    const v = vectors[i];
+    if (v) {
+      embedMap.set(needEmbed[i], v);
+    } else {
+      missCount += 1;
+    }
+  }
+  if (missCount > 0) {
+    logMemory('structured_embed_miss', { missCount, stepCount: needEmbed.length, mode });
+  }
 }
 
 function quantile(sortedAsc, q) {
@@ -520,45 +593,20 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
       ((b.result.hybridScoreFinal ?? -Infinity) - (a.result.hybridScoreFinal ?? -Infinity))
   );
 
-  const explorationCapped = explorationSorted.slice(0, explorationVectorCap);
+  const explorationScanLimit = Math.min(explorationSorted.length, explorationVectorCap);
+  const explorationHydrateChunkSize = resolveExplorationHydrateChunkSize();
+  const novelTargetCount = outsidePoolSize * EXPLORATION_NOVEL_TARGET_POOL_MULTIPLIER;
 
-  if (outsideVectorLoader && explorationCapped.length > 0) {
-    const needIds = explorationCapped.map(({ role }) => role._id).filter(Boolean);
-    const loaded = await outsideVectorLoader(needIds);
-    for (const { role } of explorationCapped) {
-      const k = String(role._id || '');
-      if (loaded.has(k)) {
-        const rv = loaded.get(k);
-        if (rv !== undefined) role.roleVectors = rv;
-      }
-    }
-  }
+  logMemory('before_exploration_chunked_hydrate', {
+    explorationPassingCount: explorationPassing.length,
+    explorationScanLimit,
+    explorationHydrateChunkSize,
+    novelTargetCount,
+    outsidePoolSize,
+  });
 
-  if (metaLoader && explorationCapped.length > 0) {
-    const explorationRoles = explorationCapped.map(({ role }) => role);
-    await hydrateScoredPathsWithMeta(explorationRoles, metaLoader);
-    logMemory('after_exploration_meta_hydrate', { explorationCappedCount: explorationCapped.length });
-  }
-
-  let explorationCandidates = explorationCapped.map(({ role, result }) => {
-      const step = buildStepObject(role, { category: 'outsideTheBoxRoles' });
-      step.structuredSimilarity = result.structuredSimilarity;
-      step.identitySimilarity = result.identitySimilarity;
-      if (typeof result.hybridScoreFinal === 'number' && Number.isFinite(result.hybridScoreFinal)) {
-        step.hybridScoreOutOfTheBox = result.hybridScoreFinal;
-      }
-      if (typeof result.hybridCosine === 'number' && Number.isFinite(result.hybridCosine)) {
-        step.hybridCosineOutOfTheBox = result.hybridCosine;
-      }
-      return step;
-    });
-
-  // Build structured-only embedding cache for OOTB novelty-vs-next (batch for performance)
-  const allForEmbed = [...nextDiverse];
-  for (const s of explorationCandidates) {
-    if (!allForEmbed.includes(s)) allForEmbed.push(s);
-  }
-  const embedMap = await precomputeStructuredStepEmbeddings(allForEmbed, 'OUT_OF_THE_BOX');
+  // NEXT embeddings only — exploration vectors are hydrated per chunk below.
+  const embedMap = await precomputeStructuredStepEmbeddings(nextDiverse, 'OUT_OF_THE_BOX');
 
   // Relative novelty threshold:
   // similarity threshold = 75th percentile of pairwise NEXT↔NEXT similarities
@@ -575,27 +623,77 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     return Math.min(computed, MAX_OUTSIDE_NOVELTY_THRESHOLD_VS_NEXT);
   })();
 
-  for (const s of explorationCandidates) {
-    const maxSim = await computeMaxSimilarityToSet(s, nextDiverse, embedMap);
-    s.maxSimilarityToNextRoles = maxSim;
-    s.noveltyScore = 1 - maxSim;
-  }
-
+  const explorationCandidatesAll = [];
   const outsideNovelVsNext = [];
-  for (const s of explorationCandidates) {
-    const maxSim = s.maxSimilarityToNextRoles ?? await computeMaxSimilarityToSet(s, nextDiverse, embedMap);
-    const noveltyVsNext = 1 - maxSim;
-    s.noveltyVsNextThreshold = noveltyThresholdVsNext;
-    s.noveltyVsNext = noveltyVsNext;
-    if (noveltyVsNext >= noveltyThresholdVsNext) outsideNovelVsNext.push(s);
+  const totalExplorationChunks = Math.ceil(explorationScanLimit / explorationHydrateChunkSize) || 0;
+  let explorationChunksProcessed = 0;
+  let explorationScannedCount = 0;
+
+  for (let ci = 0; ci < explorationScanLimit; ci += explorationHydrateChunkSize) {
+    const chunk = explorationSorted.slice(ci, Math.min(ci + explorationHydrateChunkSize, explorationScanLimit));
+    explorationChunksProcessed += 1;
+    explorationScannedCount += chunk.length;
+    const chunkIndex = Math.floor(ci / explorationHydrateChunkSize);
+
+    if (outsideVectorLoader && chunk.length > 0) {
+      const needIds = chunk.map(({ role }) => role._id).filter(Boolean);
+      const loaded = await outsideVectorLoader(needIds);
+      for (const { role } of chunk) {
+        const k = String(role._id || '');
+        if (loaded.has(k)) {
+          const rv = loaded.get(k);
+          if (rv !== undefined) role.roleVectors = rv;
+        }
+      }
+    }
+
+    const chunkSteps = chunk.map(({ role, result }) => buildExplorationNoveltyStep(role, result));
+    await mergeStructuredStepEmbeddings(chunkSteps, embedMap, 'OUT_OF_THE_BOX', { metaLoader });
+
+    for (let si = 0; si < chunk.length; si += 1) {
+      const { role } = chunk[si];
+      const step = chunkSteps[si];
+      if (!embedMap.has(step)) {
+        logMemory('exploration_embed_missing_before_novelty', {
+          chunkIndex,
+          stepId: String(step._id || ''),
+        });
+        dropRoleVectors(role);
+        dropStepVectors(step);
+        continue;
+      }
+      const maxSim = await computeMaxSimilarityToSet(step, nextDiverse, embedMap);
+      const noveltyVsNext = 1 - maxSim;
+      step.maxSimilarityToNextRoles = maxSim;
+      step.noveltyScore = noveltyVsNext;
+      step.noveltyVsNextThreshold = noveltyThresholdVsNext;
+      step.noveltyVsNext = noveltyVsNext;
+      explorationCandidatesAll.push(step);
+      dropRoleVectors(role);
+      dropStepVectors(step);
+      if (noveltyVsNext >= noveltyThresholdVsNext) outsideNovelVsNext.push(step);
+    }
+
+    const uniqueNovelCount = filterUniqueByTitle(outsideNovelVsNext).length;
+    logMemory('after_exploration_chunk', {
+      chunkIndex,
+      totalExplorationChunks,
+      chunkSize: chunk.length,
+      explorationScannedCount,
+      explorationCandidatesCount: explorationCandidatesAll.length,
+      outsideNovelVsNextCount: outsideNovelVsNext.length,
+      uniqueNovelCount,
+    });
+
+    if (uniqueNovelCount >= novelTargetCount) break;
   }
 
   // Novelty-vs-next uses embedMap only — nextDiverse blobs no longer needed.
   for (const s of nextDiverse) dropStepVectors(s);
 
   let ootbNovelPool = outsideNovelVsNext;
-  if (ootbNovelPool.length === 0 && explorationCandidates.length > 0) {
-    ootbNovelPool = [...explorationCandidates];
+  if (ootbNovelPool.length === 0 && explorationCandidatesAll.length > 0) {
+    ootbNovelPool = [...explorationCandidatesAll];
   }
 
   const sortedByHybridOotb = [...ootbNovelPool].sort(
@@ -603,34 +701,57 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
   );
   const outsideMmrPool = filterUniqueByTitle(sortedByHybridOotb).slice(0, outsidePoolSize);
 
-  // Exploration candidates excluded from OOTB MMR pool won't need vectors again (embedMap retains Float32Arrays).
-  const outsideMmrPoolSet = new Set(outsideMmrPool);
-  const outsideMmrRoleIds = new Set(
-    outsideMmrPool.map((s) => String(s._id || '')).filter(Boolean)
-  );
-  for (const s of explorationCandidates) {
-    if (!outsideMmrPoolSet.has(s)) dropStepVectors(s);
-  }
-  for (const { role } of explorationCapped) {
-    const rid = String(role._id || '');
-    if (rid && !outsideMmrRoleIds.has(rid)) dropRoleVectors(role);
+  if (metaLoader && outsideMmrPool.length > 0) {
+    const poolNeedMeta = outsideMmrPool.filter((s) => {
+      const desc = s.description != null ? getEnglishField(s.description) : '';
+      return !String(desc).trim();
+    });
+    if (poolNeedMeta.length > 0) {
+      await hydrateScoredPathsWithMeta(poolNeedMeta, metaLoader);
+    }
+    logMemory('after_exploration_meta_hydrate', {
+      outsideMmrPoolSize: outsideMmrPool.length,
+      poolNeedMetaCount: poolNeedMeta.length,
+    });
   }
 
-  // OOTB MMR novelty must use structured cosine similarity only.
-  const outsidePrecomputed = await precomputeStructuredStepEmbeddings(outsideMmrPool, 'OUT_OF_THE_BOX');
+  // OOTB MMR novelty must use structured cosine similarity only — reuse novelty embedMap when present.
+  const outsidePrecomputed = new Map();
+  const outsideMmrNeedEmbed = [];
+  for (const s of outsideMmrPool) {
+    const emb = embedMap.get(s);
+    if (emb) {
+      outsidePrecomputed.set(s, emb);
+    } else {
+      outsideMmrNeedEmbed.push(s);
+    }
+  }
+  if (outsideMmrNeedEmbed.length > 0) {
+    logMemory('outside_mmr_embed_fallback', { count: outsideMmrNeedEmbed.length });
+    const extra = await precomputeStructuredStepEmbeddings(outsideMmrNeedEmbed, 'OUT_OF_THE_BOX');
+    for (const [step, emb] of extra) {
+      embedMap.set(step, emb);
+      outsidePrecomputed.set(step, emb);
+    }
+  }
 
-  for (const s of outsideMmrPool) dropStepVectors(s);
-  for (const { role } of explorationCapped) dropRoleVectors(role);
+  // MMR only needs pool embeddings — release scanned-but-rejected entries.
+  pruneEmbedMap(embedMap, outsideMmrPool);
+
   logMemory('after_exploration_vector_cleanup', {
-    explorationCandidatesCount: explorationCandidates.length,
+    explorationCandidatesCount: explorationCandidatesAll.length,
+    explorationScannedCount,
+    explorationChunksProcessed,
     outsideMmrPoolSize: outsideMmrPool.length,
+    outsideMmrNeedEmbedCount: outsideMmrNeedEmbed.length,
+    embedMapSize: embedMap.size,
   });
   const outsideDiverse = await mmrSelect(outsideMmrPool, {
     k: options.outsideK || 25,
     lambda: options.outsideLambda ?? 0.65,
     minNovelty: options.outsideMinNovelty ?? 0.06,
     normalizationMode: 'global',
-    embedFn: (it) => Promise.resolve(outsidePrecomputed.get(it) ?? embedMap.get(it)),
+    embedFn: (it) => Promise.resolve(outsidePrecomputed.get(it)),
     scoreFn: (it) => {
       const h = getHybridFinalOotbScore(it);
       return h != null ? h : 0;
