@@ -1,3 +1,5 @@
+const { getLocalizedFieldLenient } = require('../utils/i18nFields');
+
 /**
  * Seniority Service
  *
@@ -242,12 +244,22 @@ function analyzeSkillComplexity(requiredSkills, skillModel) {
   return { signal, leadershipCount, totalSkills, leadershipRatio };
 }
 
+// ── Apprenticeship detection ───────────────────────────────────────────────
+
+function isApprenticeshipRole({ escoId, sourceVersion }) {
+  if (escoId && String(escoId).startsWith('de-ausbildung-')) return true;
+  if (sourceVersion === 'ausbildung-v1') return true;
+  return false;
+}
+
 // ── Signal aggregation ─────────────────────────────────────────────────────
 
 /**
  * Infer seniority for a single career path / occupation.
  *
  * @param {object} params
+ * @param {string} [params.escoId]        – occupation identifier
+ * @param {string} [params.sourceVersion] – data source version tag
  * @param {string} params.title           – occupation title
  * @param {string} params.description     – occupation description
  * @param {string[]} params.requiredSkills – flat skill title array
@@ -255,7 +267,21 @@ function analyzeSkillComplexity(requiredSkills, skillModel) {
  * @param {object} [params.skillModel]    – structured skill model (if available)
  * @returns {object} { seniority_level, seniority_label, seniority_reasoning, extraction_confidence }
  */
-function inferSeniority({ title, description, requiredSkills, iscoGroup, skillModel }) {
+function inferSeniority({ escoId, sourceVersion, title, description, requiredSkills, iscoGroup, skillModel }) {
+  if (isApprenticeshipRole({ escoId, sourceVersion })) {
+    return {
+      seniority_level: 0,
+      seniority_label: SENIORITY_LABELS[0],
+      seniority_reasoning: 'German vocational apprenticeship (Ausbildung) role; classified as Entry / Intern / Trainee.',
+      extraction_confidence: 0.95,
+      built_at: new Date(),
+      built_with: 'heuristic'
+    };
+  }
+
+  const titleText = getLocalizedFieldLenient(title);
+  const descriptionText = getLocalizedFieldLenient(description);
+
   const signals = [];
   const reasons = [];
 
@@ -269,15 +295,15 @@ function inferSeniority({ title, description, requiredSkills, iscoGroup, skillMo
   // --- Signal 2: Title keywords (strongest signal) ---
   // Level 6 title indicators (director, head of, chief, VP) with high pattern
   // confidence get extra weight so they aren't diluted below 6 by averaging.
-  const titleSignal = analyzeTitleKeywords(title);
+  const titleSignal = analyzeTitleKeywords(titleText);
   if (titleSignal) {
     const titleWeight = (titleSignal.level === 6 && titleSignal.weight >= 9) ? 8 : 5;
     signals.push({ level: titleSignal.level, weight: titleWeight, source: 'title' });
-    reasons.push(`Title "${title}" contains seniority keyword signaling ${SENIORITY_LABELS[titleSignal.level]}.`);
+    reasons.push(`Title "${titleText}" contains seniority keyword signaling ${SENIORITY_LABELS[titleSignal.level]}.`);
   }
 
   // --- Signal 3: Description keywords (weight 2) ---
-  const descSignal = analyzeDescription(description);
+  const descSignal = analyzeDescription(descriptionText);
   if (descSignal.signal !== null) {
     signals.push({ level: descSignal.signal, weight: 2, source: 'description' });
   }
@@ -401,6 +427,8 @@ function inferSeniorityBatch(careerPaths) {
   const results = new Map();
   for (const cp of careerPaths) {
     const result = inferSeniority({
+      escoId: cp.escoId,
+      sourceVersion: cp.sourceVersion,
       title: cp.title,
       description: cp.description,
       requiredSkills: cp.requiredSkills,
@@ -418,6 +446,7 @@ module.exports = {
   SENIORITY_LABELS,
   // Exported for testing
   getIscoBaseSeniority,
+  isApprenticeshipRole,
   analyzeTitleKeywords,
   analyzeDescription,
   analyzeSkillComplexity,

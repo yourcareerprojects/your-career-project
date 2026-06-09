@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
+const { getLocalizedFieldLenient } = require('../utils/i18nFields');
 
 // ── CSV paths ──────────────────────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, '../../../ESCO dataset - v1.2.0 - classification - en - csv');
@@ -161,6 +162,9 @@ const MIN_CORE = 3;
  * @returns {object|null}  Skill model object or null when no data is available.
  */
 function buildSkillModel(escoId, { title, description, requiredSkills } = {}) {
+  const titleText = getLocalizedFieldLenient(title);
+  const descriptionText = getLocalizedFieldLenient(description);
+
   const essentialEntries = (_occEssentialSkills && _occEssentialSkills[escoId]) || [];
   const optionalEntries = (_occOptionalSkills && _occOptionalSkills[escoId]) || [];
 
@@ -221,8 +225,8 @@ function buildSkillModel(escoId, { title, description, requiredSkills } = {}) {
   const extraction_confidence = computeExtractionConfidence({
     coreCount: core_skills.length,
     optionalCount: optional_skills.length,
-    hasDescription: Boolean(description && description.trim()),
-    hasTitle: Boolean(title && title.trim()),
+    hasDescription: Boolean(descriptionText),
+    hasTitle: Boolean(titleText),
     fromCsv: essentialEntries.length > 0 || optionalEntries.length > 0
   });
 

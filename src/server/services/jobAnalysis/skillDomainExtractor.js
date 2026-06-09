@@ -135,10 +135,45 @@ async function openaiProvider(messages, opts = {}) {
 const VALID_IMPORTANCE = new Set(['core', 'important', 'supporting']);
 
 /**
+ * Normalize a domain label to embedded i18n shape required by CareerPath schema.
+ *
+ * @param {string|{ en?: string, de?: string|null }} domain
+ * @returns {{ en: string, de: string|null }|null}
+ */
+function normalizeDomainLabel(domain) {
+  if (domain && typeof domain === 'object' && !Array.isArray(domain)) {
+    const en = typeof domain.en === 'string' ? domain.en.trim() : '';
+    if (!en) return null;
+    const de = domain.de == null || domain.de === '' ? null : String(domain.de).trim();
+    return { en, de };
+  }
+  const label = typeof domain === 'string' ? domain.trim() : '';
+  return label ? { en: label, de: null } : null;
+}
+
+/**
+ * @param {Array<{ domain: unknown, importance: string, mapped_items: string[] }>} skillDomains
+ * @returns {Array<{ domain: { en: string, de: string|null }, importance: string, mapped_items: string[] }>}
+ */
+function normalizeSkillDomainItems(skillDomains) {
+  return skillDomains
+    .map((item) => {
+      const domain = normalizeDomainLabel(item.domain);
+      if (!domain) return null;
+      return {
+        domain,
+        importance: item.importance,
+        mapped_items: item.mapped_items,
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
  * Validate and normalise the raw LLM output into the expected schema.
  *
  * @param {string} raw – Raw text returned by the LLM (should be JSON)
- * @returns {{ skill_domains: Array<{ domain: string, importance: string, mapped_items: string[] }>, extraction_confidence: number }}
+ * @returns {{ skill_domains: Array<{ domain: { en: string, de: string|null }, importance: string, mapped_items: string[] }>, extraction_confidence: number }}
  * @throws {Error} If the output cannot be parsed or fails validation
  */
 function validateExtraction(raw) {
@@ -166,7 +201,7 @@ function validateExtraction(raw) {
   for (const item of parsed.skill_domains) {
     if (!item || typeof item !== 'object') continue;
 
-    const domain = typeof item.domain === 'string' ? item.domain.trim() : '';
+    const domain = normalizeDomainLabel(item.domain);
     if (!domain) continue;
 
     const importance = typeof item.importance === 'string'
@@ -201,7 +236,7 @@ function validateExtraction(raw) {
   }
 
   return {
-    skill_domains: skillDomains,
+    skill_domains: normalizeSkillDomainItems(skillDomains),
     extraction_confidence: Math.round(confidence * 100) / 100,
   };
 }
@@ -428,7 +463,7 @@ function extractHeuristic({ skills, key_responsibilities }) {
   if (result.length >= 5 && coverageRatio >= 0.8) confidence = 0.65;
 
   return {
-    skill_domains: result,
+    skill_domains: normalizeSkillDomainItems(result),
     extraction_confidence: confidence,
   };
 }
@@ -536,6 +571,8 @@ module.exports = {
   extractFromCareerPath,
   extractHeuristic,
   validateExtraction,
+  normalizeDomainLabel,
+  normalizeSkillDomainItems,
   openaiProvider,
   // Exported for testing
   DOMAIN_TAXONOMY,

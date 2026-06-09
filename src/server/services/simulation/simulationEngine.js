@@ -31,6 +31,12 @@ const {
 const { EMBEDDING_DIMS } = require('../embedding/embeddingService');
 const { structuredSubVectorKeysInOrder } = require('../embedding/roleVectorService');
 const { logMemory } = require('./simulationMemoryProfiler');
+const { resolveUserSkillsForPoolFetch } = require('./userSkillKeysForPoolFetch');
+const {
+  buildUserSeniorityProfileFromSimulationContext,
+  fetchSeniorityAwareFallbackCareerPaths,
+} = require('./seniorityAwareCandidatePool');
+const { mergeSimulationPoolFilter } = require('./simulationCareerPathPoolFilter');
 
 const CACHE_SCOPE_FULL = 'full';
 const CACHE_SCOPE_FINAL_NEXT = 'finalNext';
@@ -365,17 +371,8 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const mostSeniorWorkExperience = seniorityInputs.mostSeniorWorkExperience ?? profile.seniority?.mostSeniorWorkExperience ?? '';
     const dateOfBirth = profile.personalInfo?.dateOfBirth ?? enrichedInputs.dateOfBirth ?? null;
 
-    const normalizeSkillKey = (value) => {
-      if (!value) return '';
-      return String(value)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim()
-        .replace(/\s+/g, ' ');
-    };
-
     // Fetch cached career paths.
-    // Data quality + relevance: first try a targeted pull using normalized requiredSkillKeys.
+    // Targeted pull: resolved requiredSkillKeys (DE/EN via Skill catalog) + CareerPathSkill links.
     const escoService = require('../escoService');
     const targetedDefault = runtimeOpts.isForkChild ? 350 : 900;
     const fallbackDefault = runtimeOpts.isForkChild ? 500 : 1200;
@@ -384,7 +381,9 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, fallbackDefault);
     const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, minPoolDefault);
 
-    const userSkillKeys = userSkills.map(normalizeSkillKey).filter(Boolean);
+    const poolResolution = await resolveUserSkillsForPoolFetch(userSkills);
+    const userSkillKeys = poolResolution.requiredSkillKeys;
+    const linkedCareerPathIds = poolResolution.careerPathIds;
     const picked = [];
     const seen = new Set();
 
@@ -413,19 +412,54 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       userId: String(userId),
       event: 'before_career_path_load',
       userSkillKeyCount: userSkillKeys.length,
+      linkedCareerPathIdCount: linkedCareerPathIds.length,
+      resolvedSkillMatchCount: poolResolution.matchedSkillCount,
       targetedPathLimit: TARGETED_PATH_LIMIT,
       fallbackPathLimit: FALLBACK_PATH_LIMIT,
     });
 
+    if (linkedCareerPathIds.length > 0) {
+      const linkedObjectIds = [];
+      for (let li = 0; li < linkedCareerPathIds.length; li += 1) {
+        try {
+          linkedObjectIds.push(new mongoose.Types.ObjectId(linkedCareerPathIds[li]));
+        } catch {
+          /* invalid id */
+        }
+      }
+      if (linkedObjectIds.length > 0) {
+        const linkedPaths = await CareerPath.find(
+          mergeSimulationPoolFilter({ _id: { $in: linkedObjectIds } })
+        )
+          .select(simulationCareerPathMetaProjection)
+          .lean();
+        for (const cp of linkedPaths) {
+          const id = cp.escoId || cp._id;
+          if (!id || seen.has(String(id))) continue;
+          seen.add(String(id));
+          picked.push(cp);
+        }
+        logMemory('after_skill_linked_career_paths', {
+          userId: String(userId),
+          linkedPathCount: linkedPaths.length,
+          pickedCount: picked.length,
+        });
+      }
+    }
+
     if (userSkillKeys.length > 0) {
       const skillMatched = await escoService.getCachedCareerPaths(
         { requiredSkillKeys: { $in: userSkillKeys } },
-        { limit: TARGETED_PATH_LIMIT, projection: simulationCareerPathMetaProjection }
+        {
+          limit: TARGETED_PATH_LIMIT,
+          projection: simulationCareerPathMetaProjection,
+          forSimulationPool: true,
+        }
       );
       for (const cp of skillMatched) {
         const id = cp.escoId || cp._id;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
+        if (!id || seen.has(String(id))) continue;
+        seen.add(String(id));
         picked.push(cp);
       }
       logMemory('after_skill_matched_career_paths', {
@@ -437,25 +471,44 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       });
     }
 
-    // Fallback/coverage: add more occupations so the sim still works for sparse profiles.
+    // Fallback/coverage: seniority-aware expansion (user level + one step up), not a fixed DB slice.
     if (picked.length < MIN_CANDIDATE_POOL) {
-      const extra = await escoService.getCachedCareerPaths(
-        {},
-        { limit: FALLBACK_PATH_LIMIT, projection: simulationCareerPathMetaProjection }
-      );
+      const excludeIds = picked.map((cp) => (cp._id != null ? String(cp._id) : '')).filter(Boolean);
+      const { docs: extra, userLevel, allowedLevels } = await fetchSeniorityAwareFallbackCareerPaths({
+        userSeniorityProfile: buildUserSeniorityProfileFromSimulationContext({
+          currentStatus,
+          yearsOfExperience,
+          highestDegree,
+          mostSeniorWorkExperience,
+          userWorkExperience,
+        }),
+        excludeIds,
+        limit: FALLBACK_PATH_LIMIT,
+        projection: simulationCareerPathMetaProjection,
+      });
       for (const cp of extra) {
         const id = cp.escoId || cp._id;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
+        if (!id || seen.has(String(id))) continue;
+        seen.add(String(id));
         picked.push(cp);
         if (picked.length >= FALLBACK_PATH_LIMIT) break;
       }
-      logMemory('after_fallback_career_path_expansion', {
+      logMemory('after_seniority_fallback_career_path_expansion', {
         userId: String(userId),
         extraFetchedCount: extra.length,
         pickedCount: picked.length,
         fallbackPathLimit: FALLBACK_PATH_LIMIT,
         minCandidatePool: MIN_CANDIDATE_POOL,
+        userSeniorityLevel: userLevel,
+        allowedRoleSeniorityLevels: allowedLevels,
+      });
+      logStructured('[simulation-engine]', {
+        userId: String(userId),
+        event: 'seniority_fallback_applied',
+        userSeniorityLevel: userLevel,
+        allowedRoleSeniorityLevels: allowedLevels,
+        extraFetchedCount: extra.length,
+        pickedCount: picked.length,
       });
     }
 

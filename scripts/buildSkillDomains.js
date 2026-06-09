@@ -39,6 +39,7 @@
  *   --concurrency=N  Parallel LLM calls per batch (default 5, ignored for heuristic)
  *   --throttle-ms=N  Delay in ms between LLM calls (default 200, ignored for heuristic)
  *   --limit=N        Process at most N documents (useful for testing)
+ *   --esco-id=ID     Process a single role by escoId (implies rebuild for that role)
  */
 
 const mongoose = require('mongoose');
@@ -46,6 +47,7 @@ require('dotenv').config();
 
 const CareerPath = require('../src/server/models/CareerPath');
 const { extractFromCareerPath } = require('../src/server/services/jobAnalysis/skillDomainExtractor');
+const { getLocalizedFieldLenient } = require('../src/server/utils/i18nFields');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/career-path-explorer';
 
@@ -61,10 +63,12 @@ function parseArgs() {
     concurrency: 5,
     throttleMs: 200,
     limit: Infinity,
+    escoId: null,
   };
 
   for (const arg of args) {
     if (arg === '--force') flags.force = true;
+    else if (arg.startsWith('--esco-id=')) flags.escoId = arg.split('=').slice(1).join('=');
     else if (arg === '--dry-run') flags.dryRun = true;
     else if (arg === '--heuristic') flags.heuristic = true;
     else if (arg.startsWith('--batch-size=')) {
@@ -145,6 +149,7 @@ async function main() {
   console.log(`  Concurrency: ${flags.heuristic ? 'n/a' : flags.concurrency}`);
   console.log(`  Throttle:    ${flags.heuristic ? 'n/a' : flags.throttleMs + 'ms'}`);
   console.log(`  Limit:       ${flags.limit === Infinity ? 'none' : flags.limit}`);
+  console.log(`  ESCO id:     ${flags.escoId || '(all)'}`);
   console.log(`  Dry run:     ${flags.dryRun}`);
   console.log('');
 
@@ -159,9 +164,12 @@ async function main() {
   console.log('Connected to MongoDB');
 
   // Determine which documents to process
-  const filter = flags.force
-    ? {}
-    : { $or: [{ skillDomains: null }, { skillDomains: { $exists: false } }] };
+  const filter = {};
+  if (flags.escoId) {
+    filter.escoId = flags.escoId;
+  } else if (!flags.force) {
+    filter.$or = [{ skillDomains: null }, { skillDomains: { $exists: false } }];
+  }
 
   const totalInDb = await CareerPath.countDocuments(filter);
   const totalDocs = Math.min(totalInDb, flags.limit);
@@ -315,7 +323,13 @@ async function main() {
 
     // Write batch to database
     if (bulkOps.length > 0 && !flags.dryRun) {
-      await CareerPath.bulkWrite(bulkOps, { ordered: false });
+      const writeResult = await CareerPath.bulkWrite(bulkOps, { ordered: false });
+      if (writeResult.matchedCount === 0 && writeResult.modifiedCount === 0) {
+        console.warn('\n  Warning: bulkWrite matched/updated 0 documents in this batch');
+      }
+      if (Array.isArray(writeResult.mongoose?.validationErrors) && writeResult.mongoose.validationErrors.length > 0) {
+        console.error('\n  bulkWrite validation errors:', writeResult.mongoose.validationErrors.slice(0, 3));
+      }
     }
 
     processed += batch.length;
@@ -366,10 +380,10 @@ async function main() {
 function logSample(doc, result, count) {
   // Log a sample at the first doc and every 100 docs
   if (count === 1 || count % 100 === 0) {
-    console.log(`\n--- Sample #${count} [${doc.title}] ---`);
+    console.log(`\n--- Sample #${count} [${getLocalizedFieldLenient(doc.title)}] ---`);
     console.log(`  Skill Domains (${result.skill_domains.length}):`);
     for (const sd of result.skill_domains) {
-      console.log(`    [${sd.importance.padEnd(10)}] ${sd.domain}`);
+      console.log(`    [${sd.importance.padEnd(10)}] ${getLocalizedFieldLenient(sd.domain)}`);
       for (const item of sd.mapped_items.slice(0, 3)) {
         console.log(`      - ${item}`);
       }

@@ -3,6 +3,7 @@ const { TIMEOUT_MS_EXTERNAL_DEFAULT } = require('../utils/httpTimeouts');
 const CareerPath = require('../models/CareerPath');
 const { attachSkillsToCareerPaths } = require('./careerPathSkillService');
 const { getEscoUriToTitleMap } = require('../utils/escoUriToTitleMap');
+const { mergeSimulationPoolFilter } = require('./simulation/simulationCareerPathPoolFilter');
 
 const ESCO_API_BASE = 'https://ec.europa.eu/esco/api/v1';
 const ESCO_RESOURCE_BASE = 'https://ec.europa.eu/esco/api/resource';
@@ -354,9 +355,11 @@ async function getCachedCareerPaths(filter = {}, options = {}) {
     includeLocalizedSkills = false,
     language = 'en',
     projection = null,
+    forSimulationPool = false,
     ...queryOptions
   } = options || {};
-  const docs = await CareerPath.find(filter, projection, queryOptions).lean();
+  const queryFilter = forSimulationPool ? mergeSimulationPoolFilter(filter) : filter;
+  const docs = await CareerPath.find(queryFilter, projection, queryOptions).lean();
   if (!includeLocalizedSkills) return docs;
   return attachSkillsToCareerPaths(docs, language);
 }
@@ -370,4 +373,5 @@ module.exports = {
   fetchESCOOccupationsPage,
   normalizeCareerPathRequiredSkills,
   normalizeRequiredSkillsForDisplay,
+  normalizeSkillKey,
 }; 

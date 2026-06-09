@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Finds skill domain labels that need German translation.
+ *
+ * Deduplicates by normalized domain key across all career paths. A domain is
+ * "bad" when ANY role still has missing/placeholder German or a poor translation
+ * (not only the first role seen for that key).
+ */
 require('dotenv').config();
 
 const fs = require('fs');
@@ -18,9 +25,57 @@ function labelEnDe(raw) {
   if (raw == null) return { en: '', de: '' };
   if (typeof raw === 'string') return { en: normalizeLabel(raw), de: '' };
   if (typeof raw === 'object' && !Array.isArray(raw)) {
-    return { en: normalizeLabel(raw.en), de: normalizeLabel(raw.de) };
+    const en = normalizeLabel(raw.en);
+    const de = raw.de == null || raw.de === '' ? '' : normalizeLabel(raw.de);
+    return { en, de };
   }
   return { en: '', de: '' };
+}
+
+/**
+ * Merge one domain row into the aggregated entry for its canonical key.
+ *
+ * @param {Map<string, object>} domainMap
+ * @param {{ domain?: unknown, key?: string }} domainRow
+ */
+function accumulateDomainRow(domainMap, domainRow) {
+  const { en, de } = labelEnDe(domainRow?.domain);
+  if (!en && !de) return;
+
+  const key = normalizeSkillKey(domainRow?.key || en);
+  if (!key) return;
+
+  let entry = domainMap.get(key);
+  if (!entry) {
+    entry = {
+      en: en || '',
+      de: '',
+      anyMissingDe: false,
+      anyBadTranslation: false,
+      rowCount: 0,
+    };
+    domainMap.set(key, entry);
+  }
+
+  entry.rowCount += 1;
+  if (en && !entry.en) entry.en = en;
+
+  const rowDe = de || '';
+  if (!rowDe) {
+    entry.anyMissingDe = true;
+  } else if (!entry.de) {
+    entry.de = rowDe;
+  }
+
+  const labelEn = en || entry.en;
+  if (isBadTranslation(labelEn, rowDe)) {
+    entry.anyBadTranslation = true;
+  }
+}
+
+function isBadDomainEntry(entry) {
+  if (!entry?.en) return false;
+  return Boolean(entry.anyMissingDe || entry.anyBadTranslation);
 }
 
 async function run() {
@@ -28,39 +83,41 @@ async function run() {
   const limit = Number.parseInt(String(args.limit || '0'), 10);
   await connectDB();
 
-  const docs = await CareerPath.find({}, { skillDomains: 1 }).lean();
   const domainMap = new Map();
+  const docs = await CareerPath.find({}, { skillDomains: 1 }).lean();
   for (const doc of docs) {
     const domains = Array.isArray(doc?.skillDomains?.skill_domains) ? doc.skillDomains.skill_domains : [];
     for (const domain of domains) {
-      const { en, de } = labelEnDe(domain?.domain);
-      if (!en && !de) continue;
-      const key = normalizeSkillKey(domain?.key || en);
-      if (!key) continue;
-      if (!domainMap.has(key)) domainMap.set(key, { en, de });
+      accumulateDomainRow(domainMap, domain);
     }
   }
 
-  let domains = Array.from(domainMap.entries()).map(([key, lab]) => ({ key, ...lab }));
+  let domains = Array.from(domainMap.entries()).map(([key, entry]) => ({ key, ...entry }));
   if (Number.isFinite(limit) && limit > 0) domains = domains.slice(0, limit);
 
   const bad = [];
+  let missingDeKeys = 0;
+  let poorTranslationKeys = 0;
+
   for (const d of domains) {
-    const en = d.en || '';
-    const de = d.de || '';
-    if (isBadTranslation(en, de)) {
-      bad.push({
-        domain_key: d.key,
-        en,
-        de,
-      });
-    }
+    if (!isBadDomainEntry(d)) continue;
+
+    if (d.anyMissingDe) missingDeKeys += 1;
+    if (d.anyBadTranslation && !d.anyMissingDe) poorTranslationKeys += 1;
+
+    bad.push({
+      domain_key: d.key,
+      en: d.en || '',
+      de: d.anyMissingDe ? '' : (d.de || ''),
+    });
   }
 
   ensureTmpDir();
   fs.writeFileSync(BAD_SKILL_DOMAINS_PATH, JSON.stringify(bad, null, 2), 'utf8');
   console.log(`[findBadSkillDomains] totalDomains=${domains.length}`);
   console.log(`[findBadSkillDomains] badDomains=${bad.length}`);
+  console.log(`[findBadSkillDomains] badWithAnyMissingDe=${missingDeKeys}`);
+  console.log(`[findBadSkillDomains] badPoorTranslationOnly=${poorTranslationKeys}`);
   console.log(`[findBadSkillDomains] output=${BAD_SKILL_DOMAINS_PATH}`);
 }
 

@@ -16,6 +16,7 @@
 // ENGLISH_ONLY_PIPELINE: Heuristic verb/sentence extraction assumes canonical English input text.
 
 const { buildMessages } = require('../../prompts/extractKeyResponsibilities');
+const { getLocalizedFieldLenient } = require('../../utils/i18nFields');
 const logger = require('../../utils/logger');
 const {
   TIMEOUT_MS_LLM,
@@ -320,8 +321,8 @@ async function extractKeyResponsibilities(input, options = {}) {
  */
 async function extractFromCareerPath(doc, options = {}) {
   const method = options.method || 'llm';
-  const title = doc.title || '';
-  const description = doc.description || '';
+  const title = getLocalizedFieldLenient(doc.title);
+  const description = getLocalizedFieldLenient(doc.description);
 
   // Build required_skills string from available data
   const coreSkills = doc.skillModel?.core_skills || doc.requiredSkills || [];

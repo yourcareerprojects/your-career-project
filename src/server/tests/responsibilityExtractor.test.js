@@ -308,6 +308,37 @@ describe('extractFromCareerPath', () => {
     expect(messages[1].content).toContain('testing');
     expect(messages[1].content).toContain('quality assurance');
   });
+
+  test('resolves localized title and description objects to English strings', async () => {
+    const localizedDoc = {
+      title: { en: 'Alteration Tailor', de: 'Änderungsschneider*in' },
+      description: {
+        en: 'Alteration tailors adjust garments, repair textiles and perform clothing alterations according to customer requirements.',
+        de: 'Änderungsschneiderinnen passen Kleidungsstücke an.',
+      },
+      requiredSkills: ['Sewing', 'Taking measurements'],
+    };
+
+    const mockResponse = JSON.stringify({
+      key_responsibilities: [
+        'Adjust garments according to customer requirements',
+        'Repair textiles and perform clothing alterations',
+      ],
+      extraction_confidence: 0.8,
+    });
+    const mockProvider = jest.fn().mockImplementation(() => Promise.resolve(mockResponse));
+
+    const result = await extractFromCareerPath(localizedDoc, {
+      method: 'llm',
+      llmProvider: mockProvider,
+    });
+
+    expect(result.responsibilities).toHaveLength(2);
+    const [messages] = mockProvider.mock.calls[0];
+    expect(messages[1].content).toContain('title:\nAlteration Tailor');
+    expect(messages[1].content).toContain('adjust garments');
+    expect(messages[1].content).not.toContain('[object Object]');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -30,17 +30,42 @@
  *   --concurrency=N  Parallel LLM calls per batch (default 5, ignored for heuristic)
  *   --throttle-ms=N  Delay in ms between LLM calls (default 200, ignored for heuristic)
  *   --limit=N        Process at most N documents (useful for testing)
+ *   --esco-prefix=P  Only process documents whose escoId starts with P
+ *   --esco-ids-file=F  Only process escoIds listed in a JSON roles file
  */
 
+const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
 const CareerPath = require('../src/server/models/CareerPath');
 const { extractFromCareerPath } = require('../src/server/services/jobAnalysis/responsibilityExtractor');
+const { getLocalizedFieldLenient } = require('../src/server/utils/i18nFields');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/career-path-explorer';
 
 // ── CLI argument parsing ───────────────────────────────────────────────────
+
+function loadEscoIdsFromFile(filePath) {
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`File not found: ${resolved}`);
+  }
+  const data = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  const roles = Array.isArray(data) ? data : data?.roles;
+  if (!Array.isArray(roles)) {
+    throw new Error('Expected a JSON array or an object with a "roles" array');
+  }
+  const escoIds = roles
+    .map((role) => role?.escoId || role?.id || role?.esco_id)
+    .filter((id) => typeof id === 'string' && id.trim())
+    .map((id) => id.trim());
+  if (escoIds.length === 0) {
+    throw new Error(`No escoId values found in ${resolved}`);
+  }
+  return escoIds;
+}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -52,12 +77,16 @@ function parseArgs() {
     concurrency: 5,
     throttleMs: 200,
     limit: Infinity,
+    escoPrefix: null,
+    escoIdsFile: null,
   };
 
   for (const arg of args) {
     if (arg === '--force') flags.force = true;
     else if (arg === '--dry-run') flags.dryRun = true;
     else if (arg === '--heuristic') flags.heuristic = true;
+    else if (arg.startsWith('--esco-prefix=')) flags.escoPrefix = arg.split('=').slice(1).join('=');
+    else if (arg.startsWith('--esco-ids-file=')) flags.escoIdsFile = arg.split('=').slice(1).join('=');
     else if (arg.startsWith('--batch-size=')) {
       const n = parseInt(arg.split('=')[1], 10);
       if (Number.isFinite(n) && n > 0) flags.batchSize = n;
@@ -123,6 +152,8 @@ async function main() {
   console.log(`  Concurrency: ${flags.heuristic ? 'n/a' : flags.concurrency}`);
   console.log(`  Throttle:    ${flags.heuristic ? 'n/a' : flags.throttleMs + 'ms'}`);
   console.log(`  Limit:       ${flags.limit === Infinity ? 'none' : flags.limit}`);
+  console.log(`  ESCO prefix: ${flags.escoPrefix || '(all)'}`);
+  console.log(`  ESCO ids:    ${flags.escoIdsFile || '(all)'}`);
   console.log(`  Dry run:     ${flags.dryRun}`);
   console.log('');
 
@@ -137,9 +168,16 @@ async function main() {
   console.log('Connected to MongoDB');
 
   // Determine which documents to process
-  const filter = flags.force
-    ? {}
-    : { $or: [{ keyResponsibilities: null }, { keyResponsibilities: { $exists: false } }] };
+  const filter = {};
+  if (flags.escoIdsFile) {
+    const escoIds = loadEscoIdsFromFile(flags.escoIdsFile);
+    filter.escoId = { $in: escoIds };
+  } else if (flags.escoPrefix) {
+    filter.escoId = new RegExp(`^${flags.escoPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+  }
+  if (!flags.force) {
+    filter.$or = [{ keyResponsibilities: null }, { keyResponsibilities: { $exists: false } }];
+  }
 
   const totalInDb = await CareerPath.countDocuments(filter);
   const totalDocs = Math.min(totalInDb, flags.limit);
@@ -183,7 +221,7 @@ async function main() {
         lastId = doc._id;
 
         try {
-          if (!doc.description) {
+          if (!getLocalizedFieldLenient(doc.description)) {
             skipped++;
             continue;
           }
@@ -205,6 +243,7 @@ async function main() {
                 update: {
                   $set: {
                     keyResponsibilities: result,
+                    keyResponsibilitiesDe: [],
                     lastUpdated: new Date(),
                   },
                 },
@@ -229,7 +268,7 @@ async function main() {
 
         lastId = doc._id; // will be overwritten but we fix after
 
-        if (!doc.description) {
+        if (!getLocalizedFieldLenient(doc.description)) {
           return { doc, status: 'skipped' };
         }
 
@@ -270,6 +309,7 @@ async function main() {
               update: {
                 $set: {
                   keyResponsibilities: r.result,
+                  keyResponsibilitiesDe: [],
                   lastUpdated: new Date(),
                 },
               },
@@ -326,7 +366,7 @@ async function main() {
 function logSample(doc, result, count) {
   // Log a sample at the first doc and every 100 docs
   if (count === 1 || count % 100 === 0) {
-    console.log(`\n--- Sample #${count} [${doc.title}] ---`);
+    console.log(`\n--- Sample #${count} [${getLocalizedFieldLenient(doc.title)}] ---`);
     console.log(`  Responsibilities (${result.responsibilities.length}):`);
     for (const r of result.responsibilities) {
       console.log(`    - ${r}`);

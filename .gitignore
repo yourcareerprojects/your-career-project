@@ -82,6 +82,9 @@ evaluation/
 # Database dumps / backups
 #############################################
 backup/
+backup-*/
+mongo-dump*/
+*.archive
 *.bson
 *.metadata.json
 

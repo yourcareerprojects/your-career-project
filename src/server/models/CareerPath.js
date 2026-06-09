@@ -145,7 +145,11 @@ const CareerPathSchema = new mongoose.Schema({
   importedFrom: { type: String }, // "csv" | "api"
   lastUpdated: { type: Date, default: Date.now },
   // Non-canonical ESCO URIs merged into this document (deduplication traceability)
-  mergedFromEscoIds: [{ type: String }]
+  mergedFromEscoIds: [{ type: String }],
+  // When true, role is omitted from simulation candidate pools (manual QA / curation).
+  simulationExcluded: { type: Boolean, default: false },
+  simulationExcludedReason: { type: String, default: '' },
+  simulationExcludedAt: { type: Date, default: null },
 });
 
 // Add indexes for better query performance
@@ -159,5 +163,6 @@ CareerPathSchema.index({ 'seniority.seniority_level': 1 });
 CareerPathSchema.index({ 'skillDomains.skill_domains.domain.en': 1 });
 CareerPathSchema.index({ 'skillDomains.skill_domains.importance': 1 });
 CareerPathSchema.index({ 'roleIdentity.input_hash': 1 });
+CareerPathSchema.index({ simulationExcluded: 1 });
 
 module.exports = mongoose.model('CareerPath', CareerPathSchema); 

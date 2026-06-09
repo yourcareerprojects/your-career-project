@@ -35,6 +35,7 @@ require('dotenv').config();
 
 const CareerPath = require('../src/server/models/CareerPath');
 const { loadEscoSkillData, buildSkillModel } = require('../src/server/services/skillModelService');
+const { getLocalizedFieldLenient } = require('../src/server/utils/i18nFields');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/career-path-explorer';
 
@@ -151,7 +152,7 @@ async function main() {
 
         // Log a sample every 500 documents
         if (built === 1 || built % 500 === 0) {
-          console.log(`\n--- Sample [${doc.title}] ---`);
+          console.log(`\n--- Sample [${getLocalizedFieldLenient(doc.title)}] ---`);
           console.log(`  Core skills (${model.core_skills.length}):     ${model.core_skills.join(', ')}`);
           console.log(`  Optional skills (${model.optional_skills.length}):  ${model.optional_skills.slice(0, 5).join(', ')}${model.optional_skills.length > 5 ? '...' : ''}`);
           console.log(`  Confidence:        ${model.extraction_confidence}`);

@@ -15,12 +15,13 @@
  *   6 = Head / Director / Expert
  *
  * Usage:
- *   node scripts/buildSeniorityLevels.js [--force] [--batch-size=250] [--dry-run]
+ *   node scripts/buildSeniorityLevels.js [--force] [--esco-prefix=de-ausbildung-] [--batch-size=250] [--dry-run]
  *
  * Flags:
- *   --force       Re-infer seniority even if one already exists
- *   --batch-size  Number of documents per processing batch (default 250)
- *   --dry-run     Print what would happen without writing to the database
+ *   --force         Re-infer seniority even if one already exists
+ *   --esco-prefix   Only process documents whose escoId starts with this prefix
+ *   --batch-size    Number of documents per processing batch (default 250)
+ *   --dry-run       Print what would happen without writing to the database
  */
 
 const mongoose = require('mongoose');
@@ -28,6 +29,7 @@ require('dotenv').config();
 
 const CareerPath = require('../src/server/models/CareerPath');
 const { inferSeniority, SENIORITY_LABELS } = require('../src/server/services/seniorityService');
+const { getLocalizedFieldLenient } = require('../src/server/utils/i18nFields');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/career-path-explorer';
 
@@ -37,6 +39,7 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const flags = {
     force: false,
+    escoPrefix: null,
     batchSize: 250,
     dryRun: false,
   };
@@ -44,6 +47,7 @@ function parseArgs() {
   for (const arg of args) {
     if (arg === '--force') flags.force = true;
     else if (arg === '--dry-run') flags.dryRun = true;
+    else if (arg.startsWith('--esco-prefix=')) flags.escoPrefix = arg.split('=').slice(1).join('=');
     else if (arg.startsWith('--batch-size=')) {
       const n = parseInt(arg.split('=')[1], 10);
       if (Number.isFinite(n) && n > 0) flags.batchSize = n;
@@ -60,8 +64,9 @@ async function main() {
 
   console.log('=== Build Seniority Levels ===');
   console.log(`  MongoDB:    ${MONGODB_URI}`);
-  console.log(`  Force:      ${flags.force}`);
-  console.log(`  Batch size: ${flags.batchSize}`);
+  console.log(`  Force:       ${flags.force}`);
+  console.log(`  ESCO prefix: ${flags.escoPrefix || '(all)'}`);
+  console.log(`  Batch size:  ${flags.batchSize}`);
   console.log(`  Dry run:    ${flags.dryRun}`);
   console.log('');
 
@@ -69,9 +74,13 @@ async function main() {
   console.log('Connected to MongoDB');
 
   // Determine which documents to process
-  const filter = flags.force
-    ? {}
-    : { $or: [{ seniority: null }, { seniority: { $exists: false } }] };
+  const filter = {};
+  if (flags.escoPrefix) {
+    filter.escoId = new RegExp(`^${flags.escoPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+  }
+  if (!flags.force) {
+    filter.$or = [{ seniority: null }, { seniority: { $exists: false } }];
+  }
 
   const totalDocs = await CareerPath.countDocuments(filter);
   console.log(`\nDocuments to process: ${totalDocs}`);
@@ -110,6 +119,8 @@ async function main() {
 
       try {
         const result = inferSeniority({
+          escoId: doc.escoId,
+          sourceVersion: doc.sourceVersion,
           title: doc.title,
           description: doc.description,
           requiredSkills: doc.requiredSkills,
@@ -137,7 +148,7 @@ async function main() {
 
         // Log samples
         if (built === 1 || built % 500 === 0) {
-          console.log(`\n--- Sample [${doc.title}] ---`);
+          console.log(`\n--- Sample [${getLocalizedFieldLenient(doc.title)}] ---`);
           console.log(`  Level:      ${result.seniority_level} (${result.seniority_label})`);
           console.log(`  Reasoning:  ${result.seniority_reasoning}`);
           console.log(`  Confidence: ${result.extraction_confidence}`);
