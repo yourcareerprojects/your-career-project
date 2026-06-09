@@ -160,6 +160,10 @@ CareerPathSchema.index({ requiredSkillKeys: 1 });
 CareerPathSchema.index({ iscoGroup: 1 });
 CareerPathSchema.index({ 'skillModel.core_skills': 1 });
 CareerPathSchema.index({ 'seniority.seniority_level': 1 });
+CareerPathSchema.index(
+  { simulationExcluded: 1, 'seniority.seniority_level': 1, _id: 1 },
+  { name: 'simulation_pool_seniority' }
+);
 CareerPathSchema.index({ 'skillDomains.skill_domains.domain.en': 1 });
 CareerPathSchema.index({ 'skillDomains.skill_domains.importance': 1 });
 CareerPathSchema.index({ 'roleIdentity.input_hash': 1 });

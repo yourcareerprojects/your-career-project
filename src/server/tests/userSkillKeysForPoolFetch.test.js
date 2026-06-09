@@ -3,7 +3,7 @@ jest.mock('../models/Skill', () => ({
 }));
 
 jest.mock('../models/CareerPath', () => ({
-  aggregate: jest.fn(),
+  distinct: jest.fn(),
 }));
 
 jest.mock('../models/CareerPathSkill', () => ({
@@ -50,10 +50,10 @@ describe('userSkillKeysForPoolFetch', () => {
         },
       ])
     );
-    CareerPath.aggregate.mockResolvedValue([
-      { _id: 'project management' },
-      { _id: 'manage engineering project' },
-      { _id: 'teamwork' },
+    CareerPath.distinct.mockResolvedValue([
+      'project management',
+      'manage engineering project',
+      'teamwork',
     ]);
     CareerPathSkill.find.mockReturnValue(mockFindLean([]));
 
@@ -81,7 +81,7 @@ describe('userSkillKeysForPoolFetch', () => {
         },
       ])
     );
-    CareerPath.aggregate.mockResolvedValue([{ _id: 'operational collaboration' }]);
+    CareerPath.distinct.mockResolvedValue(['operational collaboration']);
     CareerPathSkill.find.mockReturnValue(
       mockFindLean([{ careerPathId: linked1 }, { careerPathId: linked2 }])
     );
@@ -93,7 +93,7 @@ describe('userSkillKeysForPoolFetch', () => {
 
   test('keeps direct English requiredSkillKeys when user already typed them', async () => {
     Skill.find.mockReturnValue(mockLean([]));
-    CareerPath.aggregate.mockResolvedValue([{ _id: 'communication' }]);
+    CareerPath.distinct.mockResolvedValue(['communication']);
     CareerPathSkill.find.mockReturnValue(mockFindLean([]));
 
     const result = await resolveUserSkillsForPoolFetch(['Communication']);

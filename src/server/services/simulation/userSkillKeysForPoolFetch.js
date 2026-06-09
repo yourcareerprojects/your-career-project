@@ -68,13 +68,11 @@ function keysContainingPhraseSubstring(idx, phrase) {
 }
 
 async function loadIndex() {
-  const [skills, keyRows] = await Promise.all([
+  const [skills, requiredKeys] = await Promise.all([
     Skill.find({}, { key: 1, label: 1 }).lean(),
-    CareerPath.aggregate([
-      { $match: { requiredSkillKeys: { $exists: true, $ne: [] } } },
-      { $unwind: '$requiredSkillKeys' },
-      { $group: { _id: '$requiredSkillKeys' } },
-    ]),
+    CareerPath.distinct('requiredSkillKeys', {
+      requiredSkillKeys: { $exists: true, $ne: [] },
+    }),
   ]);
 
   const labelToSkill = new Map();
@@ -83,8 +81,7 @@ async function loadIndex() {
   const requiredKeysList = [];
   const requiredKeysByToken = new Map();
 
-  for (const row of keyRows) {
-    const key = row._id;
+  for (const key of requiredKeys) {
     if (!key) continue;
     requiredSkillKeysSet.add(key);
     requiredKeysList.push(key);

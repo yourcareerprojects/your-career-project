@@ -60,10 +60,6 @@ async function fetchSeniorityAwareFallbackCareerPaths({
   const userLevel = inferUserSeniorityLevel(userSeniorityProfile || {});
   const allowedLevels = buildAllowedRoleSeniorityLevels(userLevel);
 
-  const filter = mergeSimulationPoolFilter({
-    'seniority.seniority_level': { $in: allowedLevels },
-  });
-
   const excludeObjectIds = [];
   for (let ei = 0; ei < excludeIds.length; ei += 1) {
     try {
@@ -72,16 +68,39 @@ async function fetchSeniorityAwareFallbackCareerPaths({
       /* skip invalid id */
     }
   }
-  if (excludeObjectIds.length > 0) {
-    filter._id = { $nin: excludeObjectIds };
+  // Fetch per seniority level (indexed equality) instead of $in + sort.
+  // A compound $in + sort forced an in-memory sort on staging and hit MongoDB's
+  // 32MB limit ("Sort exceeded memory limit … Pass allowDiskUse:true").
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  const perLevelLimit = Math.max(1, Math.ceil(safeLimit / allowedLevels.length));
+  const docs = [];
+  const collectedIds = new Set(excludeObjectIds.map((id) => String(id)));
+
+  for (let li = 0; li < allowedLevels.length; li += 1) {
+    const level = allowedLevels[li];
+    const levelFilter = mergeSimulationPoolFilter({
+      'seniority.seniority_level': level,
+    });
+    if (excludeObjectIds.length > 0) {
+      levelFilter._id = { $nin: excludeObjectIds };
+    }
+
+    const levelDocs = await CareerPath.find(levelFilter, projection, {
+      limit: perLevelLimit,
+    }).lean();
+
+    for (let di = 0; di < levelDocs.length; di += 1) {
+      const cp = levelDocs[di];
+      const id = cp._id != null ? String(cp._id) : '';
+      if (id && collectedIds.has(id)) continue;
+      if (id) collectedIds.add(id);
+      docs.push(cp);
+      if (docs.length >= safeLimit) break;
+    }
+    if (docs.length >= safeLimit) break;
   }
 
-  const docs = await CareerPath.find(filter, projection, {
-    limit: Math.max(1, Number(limit) || 1),
-    sort: { 'seniority.seniority_level': 1, _id: 1 },
-  }).lean();
-
-  return { docs, userLevel, allowedLevels };
+  return { docs: docs.slice(0, safeLimit), userLevel, allowedLevels };
 }
 
 module.exports = {
