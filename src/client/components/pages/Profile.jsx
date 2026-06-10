@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -49,7 +49,11 @@ import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import ProfileSnapTarget from '../profile/ProfileSnapTarget';
 import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
 import { ProfileMobileSnapContext } from '../../contexts/ProfileMobileSnapContext';
-import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
+import {
+  buildReviewSaveUserMessage,
+  saveExtractedProfileReview,
+  scheduleProfileNarrativeRefreshAfterSave,
+} from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 
 const DocumentUploadForm = lazy(() => import('../profile/DocumentUploadForm'));
@@ -212,8 +216,10 @@ const Profile = ({
   const profileCelebrationHandledKeyRef = useRef(null);
   const userIdentitySectionRef = useRef(null);
   const structuredInfoSectionRef = useRef(null);
+  const structuredInfoItemInputRefs = useRef({});
   const senioritySectionRef = useRef(null);
   const careerInputsSectionRef = useRef(null);
+  const [structuredInfoFocusTarget, setStructuredInfoFocusTarget] = useState(null);
   const [sectionScrollTarget, setSectionScrollTarget] = useState(null);
   const isProfileReadOnlyView = !editSection && !editStructuredInfo && !editCareerInputs;
   const mobileSnapActive = useProfileMobileScrollSnap(isProfileReadOnlyView);
@@ -320,6 +326,18 @@ const Profile = ({
   const queueProfileSectionFocus = useCallback((sectionKey) => {
     setSectionScrollTarget(sectionKey);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!structuredInfoFocusTarget) return undefined;
+    const { arrayKey, index } = structuredInfoFocusTarget;
+    const el = structuredInfoItemInputRefs.current[`${arrayKey}-${index}`];
+    if (el) {
+      el.focus({ preventScroll: false });
+      el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    }
+    setStructuredInfoFocusTarget(null);
+    return undefined;
+  }, [structuredInfoFocusTarget]);
 
   useEffect(() => {
     if (!sectionScrollTarget) return undefined;
@@ -525,6 +543,14 @@ const Profile = ({
     }
   };
 
+  const scheduleNarrativeRefreshAfterSectionSave = useCallback((narrativesReady) => {
+    scheduleProfileNarrativeRefreshAfterSave({
+      narrativesReady,
+      langQuery: getProfileApiLangQuery(),
+      onReady: () => fetchProfile({ force: true }),
+    });
+  }, [currentLang]);
+
   const refreshCompletionAfterMutation = async () => {
     try {
       const completionData = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion, {
@@ -677,6 +703,8 @@ const Profile = ({
   const handleCancelStructuredInfo = () => {
     setEditStructuredInfo(false);
     setStructuredInfoError(null);
+    setStructuredInfoFocusTarget(null);
+    queueProfileSectionFocus('structuredInfo');
   };
 
   const handleSaveStructuredInfo = async () => {
@@ -717,6 +745,7 @@ const Profile = ({
       await refreshCompletionAfterMutation();
       setEditStructuredInfo(false);
       queueProfileSectionFocus('structuredInfo');
+      scheduleNarrativeRefreshAfterSectionSave(res.data?.narrativesReady);
     } catch (err) {
       const data = err.response?.data;
       const msg = data?.message || data?.error || t('profilePage.errors.saveStructuredInfoFailed');
@@ -736,11 +765,16 @@ const Profile = ({
   };
 
   const handleStructuredInfoItemAdd = (arrayKey) => {
+    let nextIndex = null;
     setStructuredInfoDraft((prev) => {
       const list = prev[arrayKey] || [];
       if (list.length >= MAX_GOOD_AT_PER_CATEGORY) return prev;
+      nextIndex = list.length;
       return { ...prev, [arrayKey]: [...list, ''] };
     });
+    if (nextIndex != null) {
+      setStructuredInfoFocusTarget({ arrayKey, index: nextIndex });
+    }
   };
 
   const handleStructuredInfoItemRemove = (arrayKey, index) => {
@@ -809,8 +843,12 @@ const Profile = ({
   };
 
   const handleCancel = () => {
+    const sectionKey = editSection;
     setEditSection(null);
     setFormError(null);
+    if (sectionKey === 'userIdentity' || sectionKey === 'seniority') {
+      queueProfileSectionFocus(sectionKey);
+    }
   };
 
   const handleSaveUserIdentity = async (data) => {
@@ -837,6 +875,7 @@ const Profile = ({
       await refreshCompletionAfterMutation();
       setEditSection(null);
       queueProfileSectionFocus('userIdentity');
+      scheduleNarrativeRefreshAfterSectionSave(res.data?.narrativesReady);
     } catch (err) {
       const responseData = err.response?.data;
       const msg = responseData?.message || responseData?.error || t('profilePage.errors.saveChangesFailed');
@@ -922,6 +961,7 @@ const Profile = ({
     setChipInputs({});
     setEditingChip(null);
     setCareerInputsError(null);
+    queueProfileSectionFocus('careerInputs');
   };
   const handleChangeCareerInputs = (field, value) => {
     setCareerInputsDraft(prev => ({ ...prev, [field]: value }));
@@ -1573,8 +1613,13 @@ const Profile = ({
                       {t('profilePage.structuredInfo.emptyEntries')}
                     </Typography>
                   )}
-                  {values.map((value, idx) => (
-                    <Box key={`${key}-${idx}`} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                  {values.map((value, idx) => {
+                    const shouldAutoFocus =
+                      structuredInfoFocusTarget?.arrayKey === key
+                      && structuredInfoFocusTarget?.index === idx;
+                    const itemRefKey = `${key}-${idx}`;
+                    return (
+                    <Box key={itemRefKey} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
                       <TextField
                         fullWidth
                         value={value}
@@ -1582,6 +1627,14 @@ const Profile = ({
                         multiline={multiline}
                         minRows={multiline ? minRows : undefined}
                         placeholder={`${title} ${idx + 1}`}
+                        autoFocus={shouldAutoFocus}
+                        inputRef={(el) => {
+                          if (el) {
+                            structuredInfoItemInputRefs.current[itemRefKey] = el;
+                          } else {
+                            delete structuredInfoItemInputRefs.current[itemRefKey];
+                          }
+                        }}
                       />
                       <IconButton
                         aria-label={`Remove ${title} ${idx + 1}`}
@@ -1591,7 +1644,8 @@ const Profile = ({
                         <DeleteIcon />
                       </IconButton>
                     </Box>
-                  ))}
+                    );
+                  })}
                   <Button
                     size="small"
                     variant="outlined"

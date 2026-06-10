@@ -71,6 +71,7 @@ const { scheduleDeferredProfileNarrativesForUser } = require('../services/profil
 const { generateDimensionSummary } = require('../services/jobAnalysis/dimensionSummaryGenerator');
 const { generateWhoAreYouNarratives } = require('../services/jobAnalysis/whoAreYouNarrativeGenerator');
 const { generateWhoAreYouIdentityEmbeddingText } = require('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
+const { buildPolishedStructuredUserInfo, buildPolishedWhoAreYou } = require('./helpers/narrativeCacheFixtures');
 
 function mockRes() {
   const res = {};
@@ -146,7 +147,7 @@ describe('profileController narrative layer', () => {
     expect(persisted.profile.structuredUserInfo.keyResponsibilities.summary_text).toEqual({ en: '', de: null });
   });
 
-  test('updateStructuredUserInfo regenerates narrative summaries from raw arrays', async () => {
+  test('updateStructuredUserInfo defers narrative generation from raw arrays', async () => {
     const created = await User.create({
       email: 'narrative-update@example.com',
       password: 'password123!',
@@ -171,6 +172,9 @@ describe('profileController narrative layer', () => {
     };
     const res = mockRes();
 
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateDimensionSummary.mockClear();
+
     await profileController.updateStructuredUserInfo(req, res);
 
     expect(res.status).not.toHaveBeenCalledWith(400);
@@ -178,6 +182,24 @@ describe('profileController narrative layer', () => {
 
     const payload = res.json.mock.calls[0][0];
     expect(payload.success).toBe(true);
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativePending).toEqual(
+      expect.arrayContaining([
+        'structuredUserInfo.skillDomains',
+        'structuredUserInfo.skills',
+        'structuredUserInfo.skillsInDevelopment',
+        'structuredUserInfo.keyResponsibilities',
+        'structuredUserInfo.domains',
+      ])
+    );
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({
+        dimensionKeys: expect.arrayContaining(['skills', 'domains', 'keyResponsibilities']),
+        language: 'de',
+      })
+    );
     const structuredResponse = JSON.parse(JSON.stringify(payload.structuredUserInfo));
     expect(structuredResponse.skills.raw_items).toEqual(['Stakeholder management', 'Roadmapping']);
     expect(typeof structuredResponse.skills.summary_text).toBe('object');
@@ -200,10 +222,9 @@ describe('profileController narrative layer', () => {
       'Stakeholder management',
       'Roadmapping',
     ]);
-    expect(generateDimensionSummary).toHaveBeenCalled();
   });
 
-  test('updateUserIdentity stores who_are_you raw answers and generated summary text', async () => {
+  test('updateUserIdentity stores who_are_you raw answers and defers narrative generation', async () => {
     const created = await User.create({
       email: 'who-are-you-update@example.com',
       password: 'password123!',
@@ -229,12 +250,27 @@ describe('profileController narrative layer', () => {
     };
     const res = mockRes();
 
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+    generateWhoAreYouIdentityEmbeddingText.mockClear();
+
     await profileController.updateUserIdentity(req, res);
 
     expect(res.status).not.toHaveBeenCalledWith(400);
     expect(res.status).not.toHaveBeenCalledWith(500);
     const payload = res.json.mock.calls[0][0];
     expect(payload.success).toBe(true);
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativePending).toEqual(['who_are_you']);
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+    expect(generateWhoAreYouIdentityEmbeddingText).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({
+        deferWhoAreYou: true,
+        language: 'de',
+      })
+    );
     const payloadWhoAreYou = JSON.parse(JSON.stringify(payload.who_are_you || {}));
     expect(Array.isArray(payloadWhoAreYou.raw_answers)).toBe(true);
     expect(payloadWhoAreYou.raw_answers).toHaveLength(5);
@@ -242,8 +278,6 @@ describe('profileController narrative layer', () => {
     const parsedPayloadSummary = JSON.parse(payloadWhoAreYou.summary_text);
     expect(Array.isArray(parsedPayloadSummary)).toBe(true);
     expect(parsedPayloadSummary).toHaveLength(5);
-    expect(generateWhoAreYouNarratives).toHaveBeenCalled();
-
     const persisted = await User.findById(created._id).lean();
     expect(Array.isArray(persisted.profile.who_are_you.raw_answers)).toBe(true);
     expect(persisted.profile.who_are_you.raw_answers).toHaveLength(5);
@@ -267,7 +301,110 @@ describe('profileController narrative layer', () => {
       persistedSummary.translations?.en ||
       persistedSummary.original
     );
-    expect(generateWhoAreYouIdentityEmbeddingText).toHaveBeenCalled();
+  });
+
+  test('updateStructuredUserInfo reuses unchanged dimension narratives on partial edit', async () => {
+    const lists = {
+      skillDomains: ['Strategic thinking'],
+      skills: ['Stakeholder management', 'Roadmapping'],
+      skillsInDevelopment: [],
+      keyResponsibilities: ['Led cross-functional delivery'],
+      domains: ['Product'],
+    };
+    const created = await User.create({
+      email: 'narrative-partial-update@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        structuredUserInfo: buildPolishedStructuredUserInfo(lists),
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [],
+      },
+    });
+
+    generateDimensionSummary.mockClear();
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+
+    const req = {
+      user: { userId: String(created._id) },
+      language: 'en',
+      body: {
+        ...lists,
+        skills: ['Stakeholder management', 'Roadmapping', 'Facilitation'],
+      },
+    };
+    const res = mockRes();
+
+    await profileController.updateStructuredUserInfo(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({
+        dimensionKeys: ['skills'],
+        language: 'en',
+      })
+    );
+    expect(res.json.mock.calls[0][0].narrativesReady).toBe(false);
+
+    const persisted = await User.findById(created._id).lean();
+    expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual([
+      'Stakeholder management',
+      'Roadmapping',
+      'Facilitation',
+    ]);
+    expect(persisted.profile.structuredUserInfo.skillDomains.summary_text).toEqual(
+      buildPolishedStructuredUserInfo(lists).skillDomains.summary_text
+    );
+  });
+
+  test('updateUserIdentity skips narrative LLM when answers are unchanged', async () => {
+    const identityBody = {
+      workEnjoyMost: 'Solving practical product problems',
+      topicsIndustriesInterest: 'Health tech and education',
+      naturallyGoodAt: 'Turning ambiguity into clear plans',
+      workEnvironmentFit: 'Calm teams with shared ownership',
+      workingLifeAchievement: 'Build products that improve access',
+    };
+    const created = await User.create({
+      email: 'who-are-you-unchanged@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        userIdentityAnswers: identityBody,
+        who_are_you: {
+          ...buildPolishedWhoAreYou(Object.values(identityBody)),
+          raw_answers: Object.values(identityBody),
+          identity_embedding_text: 'Cached identity embedding text for unchanged profile save.',
+        },
+        structuredUserInfo: {},
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [],
+      },
+    });
+
+    generateWhoAreYouNarratives.mockClear();
+    generateWhoAreYouIdentityEmbeddingText.mockClear();
+
+    const req = {
+      user: { userId: String(created._id) },
+      language: 'en',
+      body: identityBody,
+    };
+    const res = mockRes();
+
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+
+    await profileController.updateUserIdentity(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+    expect(generateWhoAreYouIdentityEmbeddingText).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0].narrativesReady).toBe(true);
   });
 
   test('getProfile serializes embedded documents and omits internal narrativeEnrichment blob', async () => {

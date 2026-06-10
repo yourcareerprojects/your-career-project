@@ -606,6 +606,40 @@ function structuredUserInfoHasPersistedNarratives(structured = {}, language = 'e
   return STRUCTURED_DIMENSIONS.every(({ key }) => hasNarrativeDimensionShape(structured[key], lang));
 }
 
+function profileWhoAreYouNeedsNarrativeWork(profile = {}, sourceLang = 'en') {
+  const lang = normalizeLangCode(sourceLang, 'en');
+  const rawAnswers = buildWhoAreYouRawAnswersFromIdentity(profile.userIdentityAnswers || {});
+  if (!rawAnswers.some(Boolean)) return false;
+  const who = profile.who_are_you || {};
+  const currentSummary = String(localizedContentService.get(who.summary_text, lang) || '').trim();
+  const parsed = parseWhoAreYouNarratives(currentSummary);
+  const currentSummaryIsPlaceholder = !currentSummary || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER);
+  const storedRaw = Array.isArray(who.raw_answers)
+    ? who.raw_answers.map((value) => String(value || '').trim())
+    : [];
+  const changedRaw = JSON.stringify(storedRaw) !== JSON.stringify(rawAnswers);
+  const narrativesStale = changedRaw || !meetsWhoAreYouNarrativesQuality(parsed, rawAnswers);
+  return currentSummaryIsPlaceholder || narrativesStale;
+}
+
+function schedulePendingProfileNarrativesIfNeeded(userId, profile = {}, language = 'en') {
+  const narrativeSourceLanguage = resolveNarrativeSourceLanguage(profile || {}, 'en');
+  const narrativeReadiness = getProfileDisplayNarrativesReadiness(profile || {}, language);
+  if (narrativeReadiness.ready) {
+    return { narrativesReady: true, narrativePending: [] };
+  }
+  const dimensionKeys = narrativeReadiness.pending
+    .filter((field) => field.startsWith('structuredUserInfo.'))
+    .map((field) => field.slice('structuredUserInfo.'.length));
+  scheduleDeferredProfileNarrativesForUser(userId, {
+    dimensionKeys,
+    deferWhoAreYou: narrativeReadiness.pending.includes('who_are_you'),
+    language,
+    sourceLanguage: narrativeSourceLanguage,
+  });
+  return { narrativesReady: false, narrativePending: narrativeReadiness.pending };
+}
+
 async function toNarrativeDimension(
   value,
   label,
@@ -799,7 +833,12 @@ async function normalizeWhoAreYouForStorage(
       changed = true;
     } else if (
       deferLlm
-      && (!currentSummary || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER))
+      && (
+        changedRaw
+        || narrativesStaleForAnswers
+        || !currentSummary
+        || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER)
+      )
     ) {
       summaryText = JSON.stringify(Array(5).fill(WHO_ARE_YOU_PLACEHOLDER));
       changed = true;
@@ -2648,12 +2687,15 @@ exports.updateUserIdentity = async (req, res) => {
         user.markModified('profile.cvExtractLocalization');
       }
     }
+    const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
+    const deferWhoAreYouNarrative = profileWhoAreYouNeedsNarrativeWork(user.profile || {}, narrativeSourceLanguage);
     const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
       user.profile || {},
       {
-        forceRegenerate: true,
+        forceRegenerate: false,
+        deferLlm: deferWhoAreYouNarrative,
         language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+        sourceLanguage: narrativeSourceLanguage,
       }
     );
     user.profile.who_are_you = normalizedWhoAreYou;
@@ -2699,7 +2741,14 @@ exports.updateUserIdentity = async (req, res) => {
 
     await user.save();
 
-    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    const narrativeStatus = schedulePendingProfileNarrativesIfNeeded(
+      req.user.userId,
+      user.profile,
+      req.language
+    );
+    if (narrativeStatus.narrativesReady) {
+      scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    }
 
     const profileStructured = user.profile.structuredUserInfo || {};
     const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
@@ -2708,6 +2757,8 @@ exports.updateUserIdentity = async (req, res) => {
     ).who_are_you;
     res.json({
       success: true,
+      narrativesReady: narrativeStatus.narrativesReady,
+      narrativePending: narrativeStatus.narrativePending,
       userIdentity: overlayIdentityAnswersWithCvLocalization(
         normalizeUserIdentityAnswers(user.profile.userIdentityAnswers || {}),
         user.profile.cvExtractLocalization?.userIdentity,
@@ -2891,12 +2942,33 @@ exports.updateStructuredUserInfo = async (req, res) => {
       user.markModified('profile.cvExtractLocalization');
     }
 
-    const { normalized: structuredUserInfo } = await normalizeStructuredUserInfoForStorage(
+    const existingStructured =
+      user.profile.structuredUserInfo && typeof user.profile.structuredUserInfo === 'object'
+        ? (typeof user.profile.structuredUserInfo.toObject === 'function'
+          ? user.profile.structuredUserInfo.toObject()
+          : user.profile.structuredUserInfo)
+        : {};
+    const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
+    const mergedStructuredBody = buildMergedStructuredPayloadForNormalization(
+      existingStructured,
       structuredBodyOnly,
+      'replace'
+    );
+    const dimensionsNeedingLlm = resolveDimensionKeysNeedingLlmRegeneration(mergedStructuredBody);
+    if (dimensionsNeedingLlm.length > 0) {
+      console.log(
+        '[updateStructuredUserInfo] regenerating dimension narratives:',
+        dimensionsNeedingLlm.join(', ')
+      );
+    }
+
+    const { normalized: structuredUserInfo } = await normalizeStructuredUserInfoForStorage(
+      mergedStructuredBody,
       {
-        forceRegenerate: true,
+        forceRegenerate: false,
+        deferLlmDimensionKeys: dimensionsNeedingLlm,
         language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(user.profile || {}, 'en'),
+        sourceLanguage: narrativeSourceLanguage,
       }
     );
 
@@ -2942,11 +3014,20 @@ exports.updateStructuredUserInfo = async (req, res) => {
 
     await user.save();
 
-    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    const narrativeStatus = schedulePendingProfileNarrativesIfNeeded(
+      req.user.userId,
+      user.profile,
+      req.language
+    );
+    if (narrativeStatus.narrativesReady) {
+      scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    }
 
     const profileStructured = user.profile.structuredUserInfo || {};
     res.json({
       success: true,
+      narrativesReady: narrativeStatus.narrativesReady,
+      narrativePending: narrativeStatus.narrativePending,
       structuredUserInfo: profileStructured,
       careerSimulationInputs: await enrichCareerSimulationInputsForClientResponse(
         user.profile.careerSimulationInputs,

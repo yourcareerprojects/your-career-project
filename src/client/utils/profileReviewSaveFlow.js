@@ -254,6 +254,48 @@ async function waitForProfileNarrativesReady({
 }
 
 /**
+ * After a fast profile section save, poll until narratives are ready then run `onReady`.
+ * Non-blocking when used via `scheduleProfileNarrativeRefreshAfterSave`.
+ */
+async function refreshProfileWhenNarrativesReady({
+  langQuery,
+  fetchImpl = fetch,
+  getAuthToken = () => localStorage.getItem('token'),
+  onReady,
+  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
+}) {
+  await waitForProfileNarrativesReady({
+    langQuery,
+    fetchImpl,
+    getAuthToken,
+    pollIntervalMs,
+    pollMaxAttempts,
+  });
+  if (typeof onReady === 'function') {
+    await onReady();
+  }
+}
+
+function scheduleProfileNarrativeRefreshAfterSave({
+  narrativesReady,
+  langQuery,
+  onReady,
+  fetchImpl = fetch,
+  getAuthToken = () => localStorage.getItem('token'),
+}) {
+  if (narrativesReady !== false) return;
+  void refreshProfileWhenNarrativesReady({
+    langQuery,
+    fetchImpl,
+    getAuthToken,
+    onReady,
+  }).catch((err) => {
+    console.warn('Background profile narrative refresh failed:', err);
+  });
+}
+
+/**
  * Merge server structuredUserInfo with the review dialog lists so profile chips render
  * immediately after save (before GET /api/profile finishes).
  */
@@ -918,6 +960,8 @@ module.exports = {
   mergeStructuredUserInfoForProfileSeed,
   waitForDocumentNarrativeCache,
   waitForProfileNarrativesReady,
+  refreshProfileWhenNarrativesReady,
+  scheduleProfileNarrativeRefreshAfterSave,
   seedProfileCacheFromReviewSave,
   prefetchProfileCacheAfterSave,
   throwIfSaveNotOk,
