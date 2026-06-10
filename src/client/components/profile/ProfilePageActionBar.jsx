@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Button, Portal, useMediaQuery, useTheme } from '@mui/material';
+import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
 
 /** Matches Layout AppBar offset (`mt: '64px'`). */
 const APP_BAR_HEIGHT_PX = 64;
@@ -12,6 +13,8 @@ const ProfilePageActionBar = ({ actions, sx }) => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const sentinelRef = useRef(null);
   const [showCompactBar, setShowCompactBar] = useState(false);
+  const hasNudgeAction = actions?.some((action) => action.nudge);
+  const { nudgeInteractionHandlers, nudgeSx } = useCtaNudgeAnimation({ enabled: hasNudgeAction });
 
   useEffect(() => {
     if (!isMobile) {
@@ -39,12 +42,13 @@ const ProfilePageActionBar = ({ actions, sx }) => {
 
   const renderButton = (action, compact) => (
     <Button
-      key={action.key}
+      key={`${action.key}-${compact ? 'compact' : 'full'}`}
       variant={action.variant}
       color={action.color || 'primary'}
       size={compact ? 'small' : 'medium'}
       startIcon={action.startIcon}
       href={action.href}
+      {...(action.nudge ? nudgeInteractionHandlers : {})}
       sx={{
         fontWeight: 600,
         px: compact ? 1.25 : 3,
@@ -58,6 +62,7 @@ const ProfilePageActionBar = ({ actions, sx }) => {
         overflow: compact ? 'hidden' : undefined,
         textOverflow: compact ? 'ellipsis' : undefined,
         '& .MuiButton-startIcon': compact ? { mr: 0.5, '& > *:nth-of-type(1)': { fontSize: 18 } } : undefined,
+        ...(action.nudge ? nudgeSx : {}),
       }}
     >
       {compact ? action.shortLabel : action.label}

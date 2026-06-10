@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +46,8 @@ import SeniorityForm from '../profile/SeniorityForm';
 import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import ProfileDocumentList from '../profile/ProfileDocumentList';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
+import ProfileSnapTarget from '../profile/ProfileSnapTarget';
+import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 
@@ -80,6 +82,11 @@ import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
 import { shouldCelebrateProfileSave } from '../../utils/profileSaveCelebration';
 import { MOST_SENIOR_OPTIONS } from '../../../constants/senioritySelectOptions';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+import {
+  profileSectionScrollMarginSx,
+  scheduleProfileSectionScroll,
+  scrollProfileSectionIntoView,
+} from '../../utils/profileSectionScroll';
 
 function invalidateProfileCachesAfterMutation() {
   invalidateFullProfileQuery();
@@ -202,6 +209,13 @@ const Profile = ({
   const prevProfileUiLangRef = useRef(null);
   /** Prevents double-fire (Strict Mode) and ties celebration to one history entry. */
   const profileCelebrationHandledKeyRef = useRef(null);
+  const userIdentitySectionRef = useRef(null);
+  const structuredInfoSectionRef = useRef(null);
+  const senioritySectionRef = useRef(null);
+  const careerInputsSectionRef = useRef(null);
+  const [sectionScrollTarget, setSectionScrollTarget] = useState(null);
+  const isProfileReadOnlyView = !editSection && !editStructuredInfo && !editCareerInputs;
+  useProfileMobileScrollSnap(isProfileReadOnlyView);
   const hasSimulationSession = hasActiveCareerSimulationSession();
   const lastSimulationQuery = useLastSimulationQuery({
     enabled:
@@ -301,6 +315,25 @@ const Profile = ({
       updateUser({ email: loginSecurity.data.email });
     }
   }, [loginSecurity?.data?.email, user?.email, updateUser]);
+
+  const queueProfileSectionFocus = useCallback((sectionKey) => {
+    setSectionScrollTarget(sectionKey);
+  }, []);
+
+  useEffect(() => {
+    if (!sectionScrollTarget) return undefined;
+    scheduleProfileSectionScroll(() => {
+      const refBySection = {
+        userIdentity: userIdentitySectionRef,
+        structuredInfo: structuredInfoSectionRef,
+        seniority: senioritySectionRef,
+        careerInputs: careerInputsSectionRef,
+      };
+      scrollProfileSectionIntoView(refBySection[sectionScrollTarget]?.current);
+      setSectionScrollTarget(null);
+    });
+    return undefined;
+  }, [sectionScrollTarget, editSection, editStructuredInfo, editCareerInputs]);
 
   const applyFullProfileToPage = (profileData) => {
     if (!profileData || typeof profileData !== 'object') return;
@@ -637,6 +670,7 @@ const Profile = ({
       skillsInDevelopment: structuredSkillsInDevelopment,
     }));
     setEditStructuredInfo(true);
+    queueProfileSectionFocus('structuredInfo');
   };
 
   const handleCancelStructuredInfo = () => {
@@ -681,6 +715,7 @@ const Profile = ({
       invalidateProfileCachesAfterMutation();
       await refreshCompletionAfterMutation();
       setEditStructuredInfo(false);
+      queueProfileSectionFocus('structuredInfo');
     } catch (err) {
       const data = err.response?.data;
       const msg = data?.message || data?.error || t('profilePage.errors.saveStructuredInfoFailed');
@@ -757,6 +792,7 @@ const Profile = ({
       return acc;
     }, {});
     setEditFormData(summaryBasedIdentity);
+    queueProfileSectionFocus('userIdentity');
   };
 
   const handleEditSeniority = () => {
@@ -768,6 +804,7 @@ const Profile = ({
       highestDegree: seniority.highestDegree || '',
       mostSeniorWorkExperience: seniority.mostSeniorWorkExperience || ''
     });
+    queueProfileSectionFocus('seniority');
   };
 
   const handleCancel = () => {
@@ -798,6 +835,7 @@ const Profile = ({
       invalidateProfileCachesAfterMutation();
       await refreshCompletionAfterMutation();
       setEditSection(null);
+      queueProfileSectionFocus('userIdentity');
     } catch (err) {
       const responseData = err.response?.data;
       const msg = responseData?.message || responseData?.error || t('profilePage.errors.saveChangesFailed');
@@ -832,6 +870,7 @@ const Profile = ({
       invalidateProfileCachesAfterMutation();
       await refreshCompletionAfterMutation();
       setEditSection(null);
+      queueProfileSectionFocus('seniority');
     } catch (err) {
       const responseData = err.response?.data;
       const msg = responseData?.message || responseData?.error || t('profilePage.errors.saveChangesFailed');
@@ -874,6 +913,7 @@ const Profile = ({
     setChipInputs({});
     setEditingChip(null);
     setEditCareerInputs(true);
+    queueProfileSectionFocus('careerInputs');
   };
   const handleCancelCareerInputs = () => {
     setEditCareerInputs(false);
@@ -930,6 +970,7 @@ const Profile = ({
       invalidateProfileCachesAfterMutation();
       setEditCareerInputs(false);
       setCareerInputsDraft(null);
+      queueProfileSectionFocus('careerInputs');
     } catch (err) {
       setCareerInputsError(err.response?.data?.error || t('profilePage.errors.saveChangesFailed'));
     } finally {
@@ -1244,6 +1285,14 @@ const Profile = ({
           },
         ]
       : [
+          {
+            key: 'full-profile-update',
+            label: t('profilePagePrompts.fullUpdateCta'),
+            shortLabel: t('profilePagePrompts.fullUpdateCtaShort'),
+            href: '/profile/fill?mode=full-update',
+            variant: 'outlined',
+            startIcon: <ArrowForwardIcon />,
+          },
           ...(completion && completion.overall >= MIN_PROFILE_COMPLETION_REQUIRED
             ? [
                 {
@@ -1253,24 +1302,43 @@ const Profile = ({
                   href: goToSimulationHref,
                   variant: 'contained',
                   startIcon: <PuzzlePieceIcon />,
+                  nudge: Number(completion?.overall || 0) >= 100,
                 },
               ]
             : []),
-          {
-            key: 'full-profile-update',
-            label: t('profilePagePrompts.fullUpdateCta'),
-            shortLabel: t('profilePagePrompts.fullUpdateCtaShort'),
-            href: '/profile/fill?mode=full-update',
-            variant: 'outlined',
-            startIcon: <ArrowForwardIcon />,
-          },
         ];
+
+  const seniorityDisplayFields = [
+    {
+      key: 'currentStatus',
+      label: t('profilePage.seniority.currentEmploymentStatus'),
+      value: formatCurrentEmploymentStatus(seniority.currentStatus),
+    },
+    {
+      key: 'yearsOfExperience',
+      label: t('profilePage.seniority.yearsOfWorkExperience'),
+      value:
+        seniority.yearsOfExperience !== undefined && seniority.yearsOfExperience !== null
+          ? String(seniority.yearsOfExperience)
+          : '',
+    },
+    {
+      key: 'highestDegree',
+      label: t('profilePage.seniority.highestEducationalDegree'),
+      value: seniority.highestDegree ? formatHighestDegree(seniority.highestDegree) : '',
+    },
+    {
+      key: 'mostSeniorWorkExperience',
+      label: t('profilePage.seniority.mostSeniorWorkExperience'),
+      value: formatMostSeniorWorkExperience(seniority.mostSeniorWorkExperience),
+    },
+  ];
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {/* Prompt to complete profile if below threshold */}
       {completion && completion.overall < MIN_PROFILE_COMPLETION_REQUIRED ? (
-        <>
+        <ProfileSnapTarget snap>
           <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
             {t('profilePagePrompts.incomplete.title')}
           </Typography>
@@ -1278,12 +1346,15 @@ const Profile = ({
             {t('profilePagePrompts.incomplete.description')}
           </Typography>
           <ProfilePageActionBar actions={profilePageActions} />
-        </>
+        </ProfileSnapTarget>
       ) : (
-        <ProfilePageActionBar actions={profilePageActions} />
+        <ProfileSnapTarget snap>
+          <ProfilePageActionBar actions={profilePageActions} />
+        </ProfileSnapTarget>
       )}
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, mb: 4 }} elevation={3}>
+        <ProfileSnapTarget snap>
         <Grid container spacing={3} alignItems="center">
           <Grid item xs={12} sm={3} md={2}>
             <Box
@@ -1377,14 +1448,17 @@ const Profile = ({
             </Box>
           </Grid>
         </Grid>
+        </ProfileSnapTarget>
       </Paper>
 
       {/* Who are you? (five identity prompts → embedding text) */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4 }} elevation={1}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          <PsychologyIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          {t('profilePage.sections.identity')}
-        </Typography>
+      <Paper ref={userIdentitySectionRef} sx={{ p: { xs: 2, sm: 3 }, mb: 4, ...profileSectionScrollMarginSx }} elevation={1}>
+        <ProfileSnapTarget snap>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            <PsychologyIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {t('profilePage.sections.identity')}
+          </Typography>
+        </ProfileSnapTarget>
         {editSection === 'userIdentity' ? (
           <UserIdentityTextForm
             initialData={editFormData}
@@ -1396,7 +1470,7 @@ const Profile = ({
         ) : (
           <>
             {USER_IDENTITY_FIELDS.map(({ key, questionKey }, idx) => (
-              <React.Fragment key={key}>
+              <ProfileSnapTarget key={key} snap={idx > 0}>
                 <Box sx={{ mt: 2, mb: 1 }}>
                   <Typography
                     variant="body1"
@@ -1413,7 +1487,7 @@ const Profile = ({
                   </Typography>
                 </Box>
                 {idx < 4 ? <Divider sx={{ my: 3 }} /> : null}
-              </React.Fragment>
+              </ProfileSnapTarget>
             ))}
             <Button
               variant="outlined"
@@ -1429,11 +1503,13 @@ const Profile = ({
       </Paper>
 
       {/* What are you good at? */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4 }} elevation={1}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          <AccountTreeIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          {t('profilePage.sections.goodAt')}
-        </Typography>
+      <Paper ref={structuredInfoSectionRef} sx={{ p: { xs: 2, sm: 3 }, mb: 4, ...profileSectionScrollMarginSx }} elevation={1}>
+        <ProfileSnapTarget snap>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            <AccountTreeIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {t('profilePage.sections.goodAt')}
+          </Typography>
+        </ProfileSnapTarget>
         {editStructuredInfo ? (
           <>
             {structuredInfoError && (
@@ -1563,31 +1639,33 @@ const Profile = ({
           </>
         ) : (
           <>
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>{t('profilePage.structuredInfo.strengths.title')}</Typography>
-              {strengthSkillDomains.length > 0 ? (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {strengthSkillDomains.map((domain, idx) => (
-                    <Chip
-                      key={idx}
-                      label={chipLabelFromGoodAtItem(domain)}
-                      color="default"
-                      variant="outlined"
-                      sx={goodAtReadonlyChipSx}
-                    />
-                  ))}
-                </Box>
-              ) : (
-                <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                  {t('profilePage.structuredInfo.strengths.empty')}
-                </Typography>
-              )}
-            </Box>
-            <Divider sx={{ my: 3 }} />
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>{t('profilePage.structuredInfo.industrySectors.title')}</Typography>
-              {structuredDomains.length > 0 ? (
-                <>
+            {[
+              {
+                key: 'strengths',
+                title: t('profilePage.structuredInfo.strengths.title'),
+                empty: t('profilePage.structuredInfo.strengths.empty'),
+                content: strengthSkillDomains.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {strengthSkillDomains.map((domain, idx) => (
+                      <Chip
+                        key={idx}
+                        label={chipLabelFromGoodAtItem(domain)}
+                        color="default"
+                        variant="outlined"
+                        sx={goodAtReadonlyChipSx}
+                      />
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    {t('profilePage.structuredInfo.strengths.empty')}
+                  </Typography>
+                ),
+              },
+              {
+                key: 'industrySectors',
+                title: t('profilePage.structuredInfo.industrySectors.title'),
+                content: structuredDomains.length > 0 ? (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                     {structuredDomains.map((domain, idx) => (
                       <Chip
@@ -1599,66 +1677,82 @@ const Profile = ({
                       />
                     ))}
                   </Box>
-                </>
-              ) : (
-                <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                  {t('profilePage.structuredInfo.industrySectors.empty')}
-                </Typography>
-              )}
-            </Box>
-            <Divider sx={{ my: 3 }} />
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>{t('profilePage.structuredInfo.responsibilities.title')}</Typography>
-              {structuredKeyResponsibilities.length > 0 ? (
-                <Box component="ul" sx={{ pl: 2, m: 0 }}>
-                  {structuredKeyResponsibilities.map((responsibility, idx) => (
-                    <Typography key={idx} component="li" variant="body1" color="text.primary">
-                      {chipLabelFromGoodAtItem(responsibility)}
-                    </Typography>
-                  ))}
+                ) : (
+                  <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    {t('profilePage.structuredInfo.industrySectors.empty')}
+                  </Typography>
+                ),
+              },
+              {
+                key: 'responsibilities',
+                title: t('profilePage.structuredInfo.responsibilities.title'),
+                content: structuredKeyResponsibilities.length > 0 ? (
+                  <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                    {structuredKeyResponsibilities.map((responsibility, idx) => (
+                      <Typography key={idx} component="li" variant="body1" color="text.primary">
+                        {chipLabelFromGoodAtItem(responsibility)}
+                      </Typography>
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    {t('profilePage.structuredInfo.responsibilities.empty')}
+                  </Typography>
+                ),
+              },
+              {
+                key: 'skills',
+                title: t('profilePage.structuredInfo.skills.title'),
+                content: structuredSkills.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {structuredSkills.map((skill, idx) => (
+                      <Chip
+                        key={idx}
+                        label={chipLabelFromGoodAtItem(skill)}
+                        color="primary"
+                        variant="outlined"
+                        sx={goodAtReadonlyChipSx}
+                      />
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    {t('profilePage.structuredInfo.skills.empty')}
+                  </Typography>
+                ),
+              },
+              {
+                key: 'learningGoals',
+                title: t('profilePage.structuredInfo.learningGoals.title'),
+                content: structuredSkillsInDevelopment.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {structuredSkillsInDevelopment.map((skill, idx) => (
+                      <Chip
+                        key={idx}
+                        label={chipLabelFromGoodAtItem(skill)}
+                        color="info"
+                        variant="outlined"
+                        sx={goodAtReadonlyChipSx}
+                      />
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    {t('profilePage.structuredInfo.learningGoals.empty')}
+                  </Typography>
+                ),
+              },
+            ].map(({ key, title, content }, sectionIdx) => (
+              <ProfileSnapTarget key={key} snap={sectionIdx > 0}>
+                <Box sx={{ mt: 2, mb: 1 }}>
+                  <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
+                    {title}
+                  </Typography>
+                  {content}
                 </Box>
-              ) : (
-                <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>{t('profilePage.structuredInfo.responsibilities.empty')}</Typography>
-              )}
-            </Box>
-            <Divider sx={{ my: 3 }} />
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>{t('profilePage.structuredInfo.skills.title')}</Typography>
-              {structuredSkills.length > 0 ? (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {structuredSkills.map((skill, idx) => (
-                    <Chip
-                      key={idx}
-                      label={chipLabelFromGoodAtItem(skill)}
-                      color="primary"
-                      variant="outlined"
-                      sx={goodAtReadonlyChipSx}
-                    />
-                  ))}
-                </Box>
-              ) : (
-                <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>{t('profilePage.structuredInfo.skills.empty')}</Typography>
-              )}
-            </Box>
-            <Divider sx={{ my: 3 }} />
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>{t('profilePage.structuredInfo.learningGoals.title')}</Typography>
-              {structuredSkillsInDevelopment.length > 0 ? (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {structuredSkillsInDevelopment.map((skill, idx) => (
-                    <Chip
-                      key={idx}
-                      label={chipLabelFromGoodAtItem(skill)}
-                      color="info"
-                      variant="outlined"
-                      sx={goodAtReadonlyChipSx}
-                    />
-                  ))}
-                </Box>
-              ) : (
-                <Typography variant="body1" color="text.disabled" sx={{ fontStyle: 'italic' }}>{t('profilePage.structuredInfo.learningGoals.empty')}</Typography>
-              )}
-            </Box>
+                {sectionIdx < 4 ? <Divider sx={{ my: 3 }} /> : null}
+              </ProfileSnapTarget>
+            ))}
             <Button
               variant="outlined"
               size="small"
@@ -1673,11 +1767,13 @@ const Profile = ({
       </Paper>
 
       {/* How experienced are you? (seniority data) */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4 }} elevation={1}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          <WorkHistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          {t('profilePage.sections.experience')}
-        </Typography>
+      <Paper ref={senioritySectionRef} sx={{ p: { xs: 2, sm: 3 }, mb: 4, ...profileSectionScrollMarginSx }} elevation={1}>
+        <ProfileSnapTarget snap>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            <WorkHistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {t('profilePage.sections.experience')}
+          </Typography>
+        </ProfileSnapTarget>
         {editSection === 'seniority' ? (
           <SeniorityForm
             initialData={editFormData}
@@ -1688,38 +1784,18 @@ const Profile = ({
           />
         ) : (
           <>
-            {renderField(
-              t('profilePage.seniority.currentEmploymentStatus'),
-              formatCurrentEmploymentStatus(seniority.currentStatus),
-              false,
-              '',
-              { xs: 12, sm: 5, md: 4 },
-              { xs: 12, sm: 7, md: 8 }
-            )}
-            {renderField(
-              t('profilePage.seniority.yearsOfWorkExperience'),
-              seniority.yearsOfExperience !== undefined && seniority.yearsOfExperience !== null ? String(seniority.yearsOfExperience) : '',
-              false,
-              '',
-              { xs: 12, sm: 5, md: 4 },
-              { xs: 12, sm: 7, md: 8 }
-            )}
-            {renderField(
-              t('profilePage.seniority.highestEducationalDegree'),
-              seniority.highestDegree ? formatHighestDegree(seniority.highestDegree) : '',
-              false,
-              '',
-              { xs: 12, sm: 5, md: 4 },
-              { xs: 12, sm: 7, md: 8 }
-            )}
-            {renderField(
-              t('profilePage.seniority.mostSeniorWorkExperience'),
-              formatMostSeniorWorkExperience(seniority.mostSeniorWorkExperience),
-              false,
-              '',
-              { xs: 12, sm: 5, md: 4 },
-              { xs: 12, sm: 7, md: 8 }
-            )}
+            {seniorityDisplayFields.map((field, fieldIdx) => (
+              <ProfileSnapTarget key={field.key} snap={fieldIdx > 0}>
+                {renderField(
+                  field.label,
+                  field.value,
+                  false,
+                  '',
+                  { xs: 12, sm: 5, md: 4 },
+                  { xs: 12, sm: 7, md: 8 }
+                )}
+              </ProfileSnapTarget>
+            ))}
             <Button
               variant="outlined"
               size="small"
@@ -1735,40 +1811,46 @@ const Profile = ({
 
       {/* Career Simulation Inputs */}
       {showCareerSimulationInputs && profile?.profile?.careerSimulationInputs && (
-        <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4 }} elevation={1}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <PuzzlePieceIcon color="primary" sx={{ mr: 1 }} />
-            <Typography variant="h6">{t('profilePage.careerInputs.title')}</Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t('profilePage.careerInputs.description')}
-            <br />
-            <strong>{t('profilePage.careerInputs.tipLabel')}</strong> {t('profilePage.careerInputs.tipDescription')}
-          </Typography>
-          {!editCareerInputs && (
-            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-              <Button
-                variant="outlined"
-                startIcon={<EditIcon />}
-                onClick={handleEditCareerInputs}
-              >
-                Edit
-              </Button>
+        <Paper ref={careerInputsSectionRef} sx={{ p: { xs: 2, sm: 3 }, mb: 4, ...profileSectionScrollMarginSx }} elevation={1}>
+          <ProfileSnapTarget snap>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <PuzzlePieceIcon color="primary" sx={{ mr: 1 }} />
+              <Typography variant="h6">{t('profilePage.careerInputs.title')}</Typography>
             </Box>
-          )}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t('profilePage.careerInputs.description')}
+              <br />
+              <strong>{t('profilePage.careerInputs.tipLabel')}</strong> {t('profilePage.careerInputs.tipDescription')}
+            </Typography>
+            {!editCareerInputs && (
+              <Box sx={{ display: 'flex', gap: 1, mt: 1, mb: 2 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<EditIcon />}
+                  onClick={handleEditCareerInputs}
+                >
+                  Edit
+                </Button>
+              </Box>
+            )}
+          </ProfileSnapTarget>
           {careerInputsError && <Alert severity="error" sx={{ mb: 2 }}>{careerInputsError}</Alert>}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-              {t('profilePage.careerInputs.embeddingIdentityLabel')}
-            </Typography>
-            <Typography
-              variant="body2"
-              color={careerInputsIdentityEmbeddingText ? 'text.primary' : 'text.disabled'}
-              sx={{ whiteSpace: 'pre-wrap' }}
-            >
-              {careerInputsIdentityEmbeddingText || <span style={{ fontStyle: 'italic' }}>{t('profilePage.careerInputs.notAvailableYet')}</span>}
-            </Typography>
-          </Box>
+          {!editCareerInputs && (
+            <ProfileSnapTarget snap={false}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  {t('profilePage.careerInputs.embeddingIdentityLabel')}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color={careerInputsIdentityEmbeddingText ? 'text.primary' : 'text.disabled'}
+                  sx={{ whiteSpace: 'pre-wrap' }}
+                >
+                  {careerInputsIdentityEmbeddingText || <span style={{ fontStyle: 'italic' }}>{t('profilePage.careerInputs.notAvailableYet')}</span>}
+                </Typography>
+              </Box>
+            </ProfileSnapTarget>
+          )}
           {editCareerInputs ? (
             <Box>
               {/* What are you good at? */}
@@ -1863,166 +1945,168 @@ const Profile = ({
             </Box>
           ) : (
             <>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>{t('profilePage.sections.goodAt')}</Typography>
-              </Box>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.strengthsLabel')}
-                </Typography>
-                {(() => {
-                  const csiStructured = profile.profile.careerSimulationInputs?.structuredUserInfo || {};
-                  const strengthChips = getRawItems(csiStructured.skillDomains);
-                  if (strengthChips.length === 0) {
+              {[
+                {
+                  key: 'strengths',
+                  snap: true,
+                  title: t('profilePage.careerInputs.strengthsLabel'),
+                  content: (() => {
+                    const csiStructured = profile.profile.careerSimulationInputs?.structuredUserInfo || {};
+                    const strengthChips = getRawItems(csiStructured.skillDomains);
+                    if (strengthChips.length === 0) {
+                      return (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                          {t('profilePage.careerInputs.empty.strengths')}
+                        </Typography>
+                      );
+                    }
                     return (
-                      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                        {t('profilePage.careerInputs.empty.strengths')}
-                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {strengthChips.map((label, idx) => (
+                          <Chip key={idx} label={chipLabelFromGoodAtItem(label)} size="small" color="default" variant="outlined" />
+                        ))}
+                      </Box>
                     );
-                  }
-                  return (
+                  })(),
+                },
+                {
+                  key: 'occupationGroup',
+                  snap: true,
+                  title: t('profilePage.careerInputs.occupationGroupLabel'),
+                  content: (() => {
+                    const s = profile.profile.careerSimulationInputs.structuredUserInfo || {};
+                    const csiDomains = getRawItems(s.domains);
+                    if (csiDomains.length === 0) {
+                      return (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                          {t('profilePage.careerInputs.empty.industrySectors')}
+                        </Typography>
+                      );
+                    }
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {csiDomains.map((domain, idx) => (
+                          <Chip key={`domain-${idx}`} label={chipLabelFromGoodAtItem(domain)} size="small" color="success" variant="outlined" />
+                        ))}
+                      </Box>
+                    );
+                  })(),
+                },
+                {
+                  key: 'responsibilities',
+                  snap: true,
+                  title: t('profilePage.careerInputs.responsibilitiesLabel'),
+                  content: getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.keyResponsibilities).length > 0 ? (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {strengthChips.map((label, idx) => (
-                        <Chip key={idx} label={chipLabelFromGoodAtItem(label)} size="small" color="default" variant="outlined" />
+                      {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.keyResponsibilities).map((resp, respIdx) => (
+                        <Chip key={respIdx} label={resp} size="small" variant="outlined" />
                       ))}
                     </Box>
-                  );
-                })()}
-              </Box>
-              {/* What are you good at? — your domains (occupation_group) */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.occupationGroupLabel')}
-                </Typography>
-                {(() => {
-                  const s = profile.profile.careerSimulationInputs.structuredUserInfo || {};
-                  const csiDomains = getRawItems(s.domains);
-                  const hasDomains = csiDomains.length > 0;
-                  if (!hasDomains) {
-                    return (
-                      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                        {t('profilePage.careerInputs.empty.industrySectors')}
-                      </Typography>
-                    );
-                  }
-                  return (
+                  ) : (
+                    <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                      {t('profilePage.careerInputs.empty.responsibilities')}
+                    </Typography>
+                  ),
+                },
+                {
+                  key: 'skills',
+                  snap: true,
+                  title: t('profilePage.careerInputs.requiredSkillsLabel'),
+                  content: getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills).length > 0 ? (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {csiDomains.map((domain, idx) => (
-                        <Chip key={`domain-${idx}`} label={chipLabelFromGoodAtItem(domain)} size="small" color="success" variant="outlined" />
+                      {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills).map((skill, idx) => (
+                        <Chip key={idx} label={chipLabelFromGoodAtItem(skill)} size="small" color="primary" variant="outlined" />
                       ))}
                     </Box>
-                  );
-                })()}
-              </Box>
-              {/* Your responsibilities */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.responsibilitiesLabel')}
-                </Typography>
-                {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.keyResponsibilities).length > 0 ? (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.keyResponsibilities).map((resp, respIdx) => (
-                      <Chip key={respIdx} label={resp} size="small" variant="outlined" />
-                    ))}
+                  ) : (
+                    <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                      {t('profilePage.careerInputs.empty.skills')}
+                    </Typography>
+                  ),
+                },
+                {
+                  key: 'learningGoals',
+                  snap: true,
+                  title: t('profilePage.careerInputs.skillsInDevelopmentLabel'),
+                  content: getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment).length > 0 ? (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment).map((skill, idx) => (
+                        <Chip key={idx} label={chipLabelFromGoodAtItem(skill)} size="small" color="secondary" variant="outlined" />
+                      ))}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                      {t('profilePage.careerInputs.empty.learningGoals')}
+                    </Typography>
+                  ),
+                },
+                {
+                  key: 'optionalSkills',
+                  snap: true,
+                  title: t('profilePage.careerInputs.optionalSkillsLabel'),
+                  content: (() => {
+                    const required = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills);
+                    const learning = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment);
+                    const merged = [...new Set(
+                      [...required, ...learning]
+                        .map((v) => normalizeStructuredListItemLabel(v, currentLang))
+                        .filter(Boolean)
+                    )];
+                    if (merged.length === 0) {
+                      return (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                          {t('profilePage.careerInputs.empty.optionalSkills')}
+                        </Typography>
+                      );
+                    }
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {merged.map((skill, idx) => (
+                          <Chip key={`optional-skill-${idx}`} label={chipLabelFromGoodAtItem(skill)} size="small" color="secondary" variant="outlined" />
+                        ))}
+                      </Box>
+                    );
+                  })(),
+                },
+                {
+                  key: 'seniority',
+                  snap: true,
+                  title: t('profilePage.careerInputs.seniorityLabel'),
+                  titleSx: { mb: 1 },
+                  content: (() => {
+                    const s = profile.profile.careerSimulationInputs.seniority;
+                    const hasAny = s && (s.currentStatus || s.yearsOfExperience != null || s.highestDegree || s.mostSeniorWorkExperience);
+                    if (!hasAny) {
+                      return (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                          {t('profilePage.careerInputs.empty.experience')}
+                        </Typography>
+                      );
+                    }
+                    const parts = [];
+                    if (s.currentStatus) parts.push(formatCurrentEmploymentStatus(s.currentStatus));
+                    if (s.yearsOfExperience != null) parts.push(t('profilePage.seniority.yearsValue', { count: s.yearsOfExperience }));
+                    if (s.highestDegree) parts.push(formatHighestDegree(s.highestDegree));
+                    if (s.mostSeniorWorkExperience) parts.push(formatMostSeniorWorkExperience(s.mostSeniorWorkExperience));
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {parts.map((p, i) => (
+                          <Chip key={i} label={p} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    );
+                  })(),
+                },
+              ].map(({ key, snap, title, content, titleSx }) => (
+                <ProfileSnapTarget key={key} snap={snap}>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5, ...titleSx }}>
+                      {title}
+                    </Typography>
+                    {content}
                   </Box>
-                ) : (
-                  <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                    {t('profilePage.careerInputs.empty.responsibilities')}
-                  </Typography>
-                )}
-              </Box>
-              {/* Your skills */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.requiredSkillsLabel')}
-                </Typography>
-                {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills).length > 0 ? (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills).map((skill, idx) => (
-                      <Chip key={idx} label={chipLabelFromGoodAtItem(skill)} size="small" color="primary" variant="outlined" />
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                    {t('profilePage.careerInputs.empty.skills')}
-                  </Typography>
-                )}
-              </Box>
-              {/* Your learning goals */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.skillsInDevelopmentLabel')}
-                </Typography>
-                {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment).length > 0 ? (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment).map((skill, idx) => (
-                      <Chip key={idx} label={chipLabelFromGoodAtItem(skill)} size="small" color="secondary" variant="outlined" />
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                    {t('profilePage.careerInputs.empty.learningGoals')}
-                  </Typography>
-                )}
-              </Box>
-              {/* Optional skills (combined) */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {t('profilePage.careerInputs.optionalSkillsLabel')}
-                </Typography>
-                {(() => {
-                  const required = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skills);
-                  const learning = getRawItems(profile.profile.careerSimulationInputs.structuredUserInfo?.skillsInDevelopment);
-                  const merged = [...new Set(
-                    [...required, ...learning]
-                      .map((v) => normalizeStructuredListItemLabel(v, currentLang))
-                      .filter(Boolean)
-                  )];
-                  if (merged.length === 0) {
-                    return (
-                      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                        {t('profilePage.careerInputs.empty.optionalSkills')}
-                      </Typography>
-                    );
-                  }
-                  return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {merged.map((skill, idx) => (
-                        <Chip key={`optional-skill-${idx}`} label={chipLabelFromGoodAtItem(skill)} size="small" color="secondary" variant="outlined" />
-                      ))}
-                    </Box>
-                  );
-                })()}
-              </Box>
-              {/* Experience / seniority sub-vector (career simulation readout) */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  {t('profilePage.careerInputs.seniorityLabel')}
-                </Typography>
-                {(() => {
-                  const s = profile.profile.careerSimulationInputs.seniority;
-                  const hasAny = s && (s.currentStatus || s.yearsOfExperience != null || s.highestDegree || s.mostSeniorWorkExperience);
-                  if (!hasAny) {
-                    return (
-                      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                        {t('profilePage.careerInputs.empty.experience')}
-                      </Typography>
-                    );
-                  }
-                  const parts = [];
-                  if (s.currentStatus) parts.push(formatCurrentEmploymentStatus(s.currentStatus));
-                  if (s.yearsOfExperience != null) parts.push(t('profilePage.seniority.yearsValue', { count: s.yearsOfExperience }));
-                  if (s.highestDegree) parts.push(formatHighestDegree(s.highestDegree));
-                  if (s.mostSeniorWorkExperience) parts.push(formatMostSeniorWorkExperience(s.mostSeniorWorkExperience));
-                  return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {parts.map((p, i) => (
-                        <Chip key={i} label={p} size="small" variant="outlined" />
-                      ))}
-                    </Box>
-                  );
-                })()}
-              </Box>
+                </ProfileSnapTarget>
+              ))}
               {profile.profile.careerSimulationInputs.lastManualEdit && (
                 <Typography variant="caption" color="text.disabled">
                   {t('profilePage.careerInputs.lastManuallyEdited', { date: new Date(profile.profile.careerSimulationInputs.lastManualEdit).toLocaleString() })}
@@ -2043,10 +2127,12 @@ const Profile = ({
         sx={{ p: { xs: 2, sm: 3 }, mb: 4, width: '100%', maxWidth: '100%', overflow: 'hidden' }}
         elevation={1}
       >
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          {t('profilePage.documents.title')}
-        </Typography>
+        <ProfileSnapTarget snap>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {t('profilePage.documents.title')}
+          </Typography>
+        </ProfileSnapTarget>
         {cvReviewError && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCvReviewError(null)}>
             {cvReviewError}
