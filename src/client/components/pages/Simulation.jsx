@@ -94,6 +94,9 @@ import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
 import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
 import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
+import ProfileSnapTarget from '../profile/ProfileSnapTarget';
+import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
+import { ProfileMobileSnapContext } from '../../contexts/ProfileMobileSnapContext';
 
 /** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
 const Simulation = () => {
@@ -497,6 +500,11 @@ const Simulation = () => {
   const navigate = useNavigate();
   // Note: navigate will be replaced by navigationGuard.navigate below
   const location = useLocation();
+
+  const showSimulationResultsSnap = Boolean(
+    simResults?.evaluationFlow && !loadingLast && !simLoading
+  );
+  const mobileSnapActive = useProfileMobileScrollSnap(showSimulationResultsSnap);
 
   // State update queue to prevent conflicts
   const stateUpdateQueueRef = useRef([]);
@@ -2078,15 +2086,25 @@ const Simulation = () => {
             ? { title: { xs: 1, sm: 0 }, subtitle: { xs: 2, sm: 1 }, profileGate: { xs: 3, sm: 2 }, info: { xs: 4, sm: 3 }, actions: { xs: 0, sm: 5 } }
             : { title: 0, subtitle: 1, profileGate: 2, info: 3, actions: 3 };
 
+          const evalFlow = safeSimResults.evaluationFlow;
+          const nextStepsEvalComplete = evalFlow
+            ? isEvaluationComplete(evalFlow.nextSteps)
+            : true;
+          const outsideEvalComplete = evalFlow
+            ? isEvaluationComplete(evalFlow.outsideTheBox)
+            : true;
+
           return (
             <>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
               {!(loadingLast || simLoading) && simResults && (
                 <Box sx={{ order: resultsHeaderOrder.actions }}>
-                  <ProfilePageActionBar
-                    actions={simulationResultsPageActions}
-                    sx={{ mb: { xs: 2, sm: 4 }, px: { xs: 0.5, sm: 0 } }}
-                  />
+                  <ProfileSnapTarget snap>
+                    <ProfilePageActionBar
+                      actions={simulationResultsPageActions}
+                      sx={{ mb: { xs: 2, sm: 4 }, px: { xs: 0.5, sm: 0 } }}
+                    />
+                  </ProfileSnapTarget>
                 </Box>
               )}
 
@@ -2420,18 +2438,13 @@ const Simulation = () => {
                   {loadingLast && !simLoading && <CircularProgress size={30} />}
                   {simLoading && (
                     <Box sx={{ maxWidth: 440, mx: 'auto' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {simulationJobState === 'queued'
-                            ? t('simulation.loadingQueued', { ns: 'dashboard' })
-                            : simulationJobState === 'running'
-                              ? t('simulation.loadingRunning', { ns: 'dashboard' })
-                              : t('simulation.loadingUpdating', { ns: 'dashboard' })}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {Math.round(simulationProgress)}%
-                        </Typography>
-                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>
+                        {simulationJobState === 'queued'
+                          ? t('simulation.loadingQueued', { ns: 'dashboard' })
+                          : simulationJobState === 'running'
+                            ? t('simulation.loadingRunning', { ns: 'dashboard' })
+                            : t('simulation.loadingUpdating', { ns: 'dashboard' })}
+                      </Typography>
                       <LinearProgress
                         variant="determinate"
                         value={Math.min(100, Math.max(0, simulationProgress))}
@@ -2539,67 +2552,73 @@ const Simulation = () => {
                     </Box>
                   ) : (
                     <>
-                      <ProfileUpdateRecommendation
-                        category="nextSteps"
-                        profileCompletion={profileCompletion}
-                        onUpdateProfile={handleUpdateProfile}
-                        onDismiss={handleDismissRecommendation}
-                        isVisible={showProfileRecommendation && recommendationCategory === 'nextSteps'}
-                      />
-                      <SimulationCategoryEvaluation
-                        title={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
-                        categoryKey="nextSteps"
-                        roles={safeSimResults.evaluationFlow.nextSteps}
-                        phase={safeSimResults.evaluationFlow.phases?.nextSteps || 'eval'}
-                        rankedRows={safeSimResults.evaluationFlow.ranked?.nextSteps}
-                        hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.nextSteps}
-                        onEvaluate={(stepId, evaluation) =>
-                          handleEvaluationCommit('nextSteps', stepId, evaluation)
-                        }
-                        onSeeRanking={() => handleSeeRoleRanking('nextSteps')}
-                        onEditRatings={() => handleEditRoleRanking('nextSteps')}
-                        onReorderRankedRoles={(rows) => handleReorderRankedRoles('nextSteps', rows)}
-                        isStepSaved={(role) => isStepSaved(role)}
-                        isStepSaving={(role) => isStepSaving(role)}
-                        onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
-                        guardedNavigate={guardedNavigate}
-                        isViewingSavedSimulation={isViewingSavedSimulation}
-                        savedSimulationId={selectedSimulation?.id}
-                        simulationIdForCards={
-                          selectedSimulation?.id || safeSimResults?.simulationId || 'local'
-                        }
-                      />
+                      <ProfileSnapTarget snap>
+                        <ProfileUpdateRecommendation
+                          category="nextSteps"
+                          profileCompletion={profileCompletion}
+                          onUpdateProfile={handleUpdateProfile}
+                          onDismiss={handleDismissRecommendation}
+                          isVisible={showProfileRecommendation && recommendationCategory === 'nextSteps'}
+                        />
+                        <SimulationCategoryEvaluation
+                          title={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
+                          categoryKey="nextSteps"
+                          roles={safeSimResults.evaluationFlow.nextSteps}
+                          phase={safeSimResults.evaluationFlow.phases?.nextSteps || 'eval'}
+                          rankedRows={safeSimResults.evaluationFlow.ranked?.nextSteps}
+                          hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.nextSteps}
+                          onEvaluate={(stepId, evaluation) =>
+                            handleEvaluationCommit('nextSteps', stepId, evaluation)
+                          }
+                          onSeeRanking={() => handleSeeRoleRanking('nextSteps')}
+                          onEditRatings={() => handleEditRoleRanking('nextSteps')}
+                          onReorderRankedRoles={(rows) => handleReorderRankedRoles('nextSteps', rows)}
+                          isStepSaved={(role) => isStepSaved(role)}
+                          isStepSaving={(role) => isStepSaving(role)}
+                          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
+                          guardedNavigate={guardedNavigate}
+                          isViewingSavedSimulation={isViewingSavedSimulation}
+                          savedSimulationId={selectedSimulation?.id}
+                          simulationIdForCards={
+                            selectedSimulation?.id || safeSimResults?.simulationId || 'local'
+                          }
+                          evalNudgeActive={!nextStepsEvalComplete}
+                        />
+                      </ProfileSnapTarget>
                       <Divider sx={{ my: 4 }} />
-                      <ProfileUpdateRecommendation
-                        category="outsideTheBox"
-                        profileCompletion={profileCompletion}
-                        onUpdateProfile={handleUpdateProfile}
-                        onDismiss={handleDismissRecommendation}
-                        isVisible={showProfileRecommendation && recommendationCategory === 'outsideTheBox'}
-                      />
-                      <SimulationCategoryEvaluation
-                        title={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
-                        categoryKey="outsideTheBox"
-                        roles={safeSimResults.evaluationFlow.outsideTheBox}
-                        phase={safeSimResults.evaluationFlow.phases?.outsideTheBox || 'eval'}
-                        rankedRows={safeSimResults.evaluationFlow.ranked?.outsideTheBox}
-                        hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.outsideTheBox}
-                        onEvaluate={(stepId, evaluation) =>
-                          handleEvaluationCommit('outsideTheBox', stepId, evaluation)
-                        }
-                        onSeeRanking={() => handleSeeRoleRanking('outsideTheBox')}
-                        onEditRatings={() => handleEditRoleRanking('outsideTheBox')}
-                        onReorderRankedRoles={(rows) => handleReorderRankedRoles('outsideTheBox', rows)}
-                        isStepSaved={(role) => isStepSaved(role)}
-                        isStepSaving={(role) => isStepSaving(role)}
-                        onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
-                        guardedNavigate={guardedNavigate}
-                        isViewingSavedSimulation={isViewingSavedSimulation}
-                        savedSimulationId={selectedSimulation?.id}
-                        simulationIdForCards={
-                          selectedSimulation?.id || safeSimResults?.simulationId || 'local'
-                        }
-                      />
+                      <ProfileSnapTarget snap>
+                        <ProfileUpdateRecommendation
+                          category="outsideTheBox"
+                          profileCompletion={profileCompletion}
+                          onUpdateProfile={handleUpdateProfile}
+                          onDismiss={handleDismissRecommendation}
+                          isVisible={showProfileRecommendation && recommendationCategory === 'outsideTheBox'}
+                        />
+                        <SimulationCategoryEvaluation
+                          title={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
+                          categoryKey="outsideTheBox"
+                          roles={safeSimResults.evaluationFlow.outsideTheBox}
+                          phase={safeSimResults.evaluationFlow.phases?.outsideTheBox || 'eval'}
+                          rankedRows={safeSimResults.evaluationFlow.ranked?.outsideTheBox}
+                          hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.outsideTheBox}
+                          onEvaluate={(stepId, evaluation) =>
+                            handleEvaluationCommit('outsideTheBox', stepId, evaluation)
+                          }
+                          onSeeRanking={() => handleSeeRoleRanking('outsideTheBox')}
+                          onEditRatings={() => handleEditRoleRanking('outsideTheBox')}
+                          onReorderRankedRoles={(rows) => handleReorderRankedRoles('outsideTheBox', rows)}
+                          isStepSaved={(role) => isStepSaved(role)}
+                          isStepSaving={(role) => isStepSaving(role)}
+                          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
+                          guardedNavigate={guardedNavigate}
+                          isViewingSavedSimulation={isViewingSavedSimulation}
+                          savedSimulationId={selectedSimulation?.id}
+                          simulationIdForCards={
+                            selectedSimulation?.id || safeSimResults?.simulationId || 'local'
+                          }
+                          evalNudgeActive={nextStepsEvalComplete && !outsideEvalComplete}
+                        />
+                      </ProfileSnapTarget>
                     </>
                   )}
                 </Box>
@@ -2668,19 +2687,21 @@ const Simulation = () => {
   };
   
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      {renderWithErrorBoundary()}
-      
-      {/* Save Changes Dialog */}
-      <SaveChangesDialog
-        open={saveChangesDialogOpen}
-        onClose={handleSaveChangesCancel}
-        onConfirm={handleSaveChangesConfirm}
-        loading={savingChanges}
-        changeSummary={getChangeSummary()}
-        simulationName={selectedSimulation?.name || t('simulation.defaultName', { ns: 'dashboard' })}
-      />
-    </Box>
+    <ProfileMobileSnapContext.Provider value={mobileSnapActive}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+        {renderWithErrorBoundary()}
+
+        {/* Save Changes Dialog */}
+        <SaveChangesDialog
+          open={saveChangesDialogOpen}
+          onClose={handleSaveChangesCancel}
+          onConfirm={handleSaveChangesConfirm}
+          loading={savingChanges}
+          changeSummary={getChangeSummary()}
+          simulationName={selectedSimulation?.name || t('simulation.defaultName', { ns: 'dashboard' })}
+        />
+      </Box>
+    </ProfileMobileSnapContext.Provider>
   );
 };
 

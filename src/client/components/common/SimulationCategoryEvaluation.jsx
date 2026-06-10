@@ -50,6 +50,7 @@ import { getRoleTitleForLocale, getRoleTitleEnglishForMatch } from '../../utils/
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
 import CareerStepCardWithReplacement from './CareerStepCardWithReplacement';
 import localizedContentService from '../../utils/localizedContentService';
+import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
 
 const ACTION_BUTTON_SX = {
   width: '100% !important',
@@ -121,6 +122,9 @@ function RoleEvaluationCard({
   isStepSaved,
   savingStep,
   guardedNavigate,
+  showEvalNudge = false,
+  getButtonNudgeSx,
+  nudgeInteractionHandlers,
 }) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('dashboard');
@@ -129,6 +133,11 @@ function RoleEvaluationCard({
   const roleDescription = localizedContentService.getLocalizedWithFallback(role.description, uiLang, '');
   const pct = getCareerStepMatchScorePercent(role);
   const roleTestId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title) || 'role';
+
+  const nudgeSx = (buttonKey) => (
+    showEvalNudge && typeof getButtonNudgeSx === 'function' ? getButtonNudgeSx(buttonKey) : {}
+  );
+  const nudgeHandlers = showEvalNudge ? nudgeInteractionHandlers : {};
 
   const handleMore = () => {
     const stepId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title);
@@ -205,6 +214,7 @@ function RoleEvaluationCard({
                   color="inherit"
                   size="small"
                   onClick={() => onEvaluate(role.id, 'keep')}
+                  {...nudgeHandlers}
                   sx={{
                     ...ACTION_BUTTON_SX,
                     ...EVAL_BUTTON_BORDER_SX,
@@ -215,6 +225,7 @@ function RoleEvaluationCard({
                       bgcolor:
                         role.userEvaluation === 'keep' ? 'rgba(76, 175, 80, 0.28)' : 'rgba(0, 0, 0, 0.04)',
                     },
+                    ...nudgeSx('keep'),
                   }}
                   aria-pressed={role.userEvaluation === 'keep'}
                 >
@@ -230,6 +241,7 @@ function RoleEvaluationCard({
                   size="small"
                   onClick={() => onEvaluate(role.id, 'skip')}
                   startIcon={<RemoveCircleOutlineIcon sx={{ fontSize: '1rem !important' }} />}
+                  {...nudgeHandlers}
                   sx={(theme) => ({
                     ...ACTION_BUTTON_SX,
                     ...EVAL_BUTTON_BORDER_SX,
@@ -242,6 +254,7 @@ function RoleEvaluationCard({
                       ...EVAL_BUTTON_BORDER_SX['&:hover'],
                       bgcolor: theme.palette.action.hover,
                     },
+                    ...nudgeSx('skip'),
                   })}
                   aria-pressed={role.userEvaluation === 'skip'}
                 >
@@ -256,6 +269,7 @@ function RoleEvaluationCard({
                   color="inherit"
                   size="small"
                   onClick={() => onEvaluate(role.id, 'dislike')}
+                  {...nudgeHandlers}
                   sx={{
                     ...ACTION_BUTTON_SX,
                     ...EVAL_BUTTON_BORDER_SX,
@@ -266,6 +280,7 @@ function RoleEvaluationCard({
                       bgcolor:
                         role.userEvaluation === 'dislike' ? 'rgba(211, 47, 47, 0.22)' : 'rgba(0, 0, 0, 0.04)',
                     },
+                    ...nudgeSx('dislike'),
                   }}
                   aria-pressed={role.userEvaluation === 'dislike'}
                 >
@@ -284,9 +299,11 @@ function RoleEvaluationCard({
                   size="small"
                   startIcon={<ArrowForwardIcon sx={{ fontSize: '1rem' }} />}
                   onClick={handleMore}
+                  {...nudgeHandlers}
                   sx={{
                     width: '100%',
                     ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
+                    ...nudgeSx('more'),
                   }}
                   aria-label={t('simulation.evaluationFlow.tooltips.moreDetails')}
                 >
@@ -1040,6 +1057,7 @@ export default function SimulationCategoryEvaluation({
   savedSimulationId,
   simulationIdForCards,
   onReorderRankedRoles,
+  evalNudgeActive = true,
 }) {
   const { t } = useTranslation('dashboard');
   const theme = useTheme();
@@ -1057,6 +1075,13 @@ export default function SimulationCategoryEvaluation({
   /** All roles rated but user has not opened the ranking yet (`ranked` is only set after "See your ranking"). */
   const awaitingRankingReveal =
     complete && phase === 'eval' && !rankedRows?.length;
+
+  const focusRoleId = useMemo(() => {
+    if (phase !== 'eval' || awaitingRankingReveal || complete) return null;
+    return cardsToShow[0]?.id ?? null;
+  }, [phase, awaitingRankingReveal, complete, cardsToShow]);
+
+  const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) && evalNudgeActive });
 
   if (phase === 'ranked' && Array.isArray(rankedRows) && rankedRows.length) {
     return (
@@ -1224,6 +1249,9 @@ export default function SimulationCategoryEvaluation({
                   isStepSaved={isStepSaved(role)}
                   savingStep={isStepSaving(role)}
                   guardedNavigate={guardedNavigate}
+                  showEvalNudge={role.id === focusRoleId}
+                  getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+                  nudgeInteractionHandlers={evalNudge.interactionHandlers}
                 />
               </Grid>
             ))}

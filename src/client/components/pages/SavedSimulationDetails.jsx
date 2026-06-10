@@ -59,6 +59,9 @@ import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import { findMatchingSavedCareerStep } from '../../utils/savedCareerStepIdentity';
 import { resolveSimulationRoleStepIdForSave } from '../../utils/resolveSimulationRoleStepIdForSave';
 import localizedContentService from '../../utils/localizedContentService';
+import ProfileSnapTarget from '../profile/ProfileSnapTarget';
+import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
+import { ProfileMobileSnapContext } from '../../contexts/ProfileMobileSnapContext';
 
 /** DD.MM.YYYY — aligned with saved simulation career step detail */
 const formatSimulationDateShort = (timestamp) => {
@@ -107,6 +110,25 @@ const SavedSimulationDetails = () => {
     (field, missing = '[MISSING]') => localizedContentService.getLocalizedWithFallback(field, requestLang, missing),
     [requestLang]
   );
+
+  const showSimulationResultsSnap = useMemo(() => {
+    if (loading || !simulation?.results) return false;
+    const results = simulation.results;
+    const evaluationFlow = results.evaluationFlow;
+    const resultsSimKey = results.simulationId ?? simulation.id;
+    const evaluationFlowMatchesResults =
+      evaluationFlow &&
+      (evaluationFlow.simulationId ?? resultsSimKey) === resultsSimKey;
+    if (evaluationFlowMatchesResults) {
+      const hasNext = Array.isArray(evaluationFlow.nextSteps) && evaluationFlow.nextSteps.length > 0;
+      const hasOutside = Array.isArray(evaluationFlow.outsideTheBox) && evaluationFlow.outsideTheBox.length > 0;
+      return hasNext || hasOutside;
+    }
+    const hasLegacyNext = Array.isArray(results.nextSteps) && results.nextSteps.length > 0;
+    const hasLegacyOutside = Array.isArray(results.outsideTheBox) && results.outsideTheBox.length > 0;
+    return hasLegacyNext || hasLegacyOutside;
+  }, [loading, simulation]);
+  const mobileSnapActive = useProfileMobileScrollSnap(showSimulationResultsSnap);
 
   // Load simulation data
   useEffect(() => {
@@ -698,9 +720,18 @@ const SavedSimulationDetails = () => {
     Array.isArray(evaluationFlow?.outsideTheBox) &&
     evaluationFlow.outsideTheBox.length > 0;
 
+  const nextStepsEvalComplete = evaluationFlowMatchesResults
+    ? isEvaluationComplete(evaluationFlow.nextSteps)
+    : true;
+  const outsideEvalComplete = evaluationFlowMatchesResults
+    ? isEvaluationComplete(evaluationFlow.outsideTheBox)
+    : true;
+
   return (
+    <ProfileMobileSnapContext.Provider value={mobileSnapActive}>
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {/* Header — aligned with career step detail (primary header band) */}
+      <ProfileSnapTarget snap>
       <Paper
         sx={{
           mb: 3,
@@ -822,6 +853,7 @@ const SavedSimulationDetails = () => {
           </Grid>
         </Box>
       </Paper>
+      </ProfileSnapTarget>
 
       {/* Career Goal */}
       {localizeAiText(simulation.careerGoal, '') && (
@@ -861,6 +893,7 @@ const SavedSimulationDetails = () => {
 
       {/* Next Career Roles — saved ranking (evaluationFlow) or legacy grid order */}
       {results?.nextSteps && results.nextSteps.length > 0 && (
+        <ProfileSnapTarget snap>
         <Box sx={{ mb: 4 }}>
           {savedNextUsesEvaluationUi ? (
             <SimulationCategoryEvaluation
@@ -883,6 +916,7 @@ const SavedSimulationDetails = () => {
               isViewingSavedSimulation
               savedSimulationId={simulation.id}
               simulationIdForCards={simulation.id}
+              evalNudgeActive={!nextStepsEvalComplete}
             />
           ) : (
             <>
@@ -923,10 +957,12 @@ const SavedSimulationDetails = () => {
             </>
           )}
         </Box>
+        </ProfileSnapTarget>
       )}
 
       {/* Outside-the-Box — saved ranking or legacy grid */}
       {results?.outsideTheBox && results.outsideTheBox.length > 0 && (
+        <ProfileSnapTarget snap>
         <Box sx={{ mb: 4 }}>
           {savedOutsideUsesEvaluationUi ? (
             <SimulationCategoryEvaluation
@@ -949,6 +985,7 @@ const SavedSimulationDetails = () => {
               isViewingSavedSimulation
               savedSimulationId={simulation.id}
               simulationIdForCards={simulation.id}
+              evalNudgeActive={nextStepsEvalComplete && !outsideEvalComplete}
             />
           ) : (
             <>
@@ -989,6 +1026,7 @@ const SavedSimulationDetails = () => {
             </>
           )}
         </Box>
+        </ProfileSnapTarget>
       )}
 
       {/* Edit Dialog */}
@@ -1091,6 +1129,7 @@ const SavedSimulationDetails = () => {
         </Alert>
       </Snackbar>
     </Box>
+    </ProfileMobileSnapContext.Provider>
   );
 };
 
