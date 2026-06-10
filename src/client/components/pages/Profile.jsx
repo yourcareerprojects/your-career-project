@@ -45,6 +45,7 @@ import UserIdentityTextForm from '../profile/UserIdentityTextForm';
 import SeniorityForm from '../profile/SeniorityForm';
 import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import ProfileDocumentList from '../profile/ProfileDocumentList';
+import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 
@@ -1230,6 +1231,41 @@ const Profile = ({
     );
   };
 
+  const profilePageActions =
+    completion && completion.overall < MIN_PROFILE_COMPLETION_REQUIRED
+      ? [
+          {
+            key: 'complete-profile',
+            label: t('profilePagePrompts.incomplete.cta'),
+            shortLabel: t('profilePagePrompts.incomplete.ctaShort'),
+            href: '/profile/fill?mode=full-update',
+            variant: 'contained',
+            startIcon: <ArrowForwardIcon />,
+          },
+        ]
+      : [
+          ...(completion && completion.overall >= MIN_PROFILE_COMPLETION_REQUIRED
+            ? [
+                {
+                  key: 'go-to-simulation',
+                  label: t('profilePagePrompts.goToSimulationCta'),
+                  shortLabel: t('profilePagePrompts.goToSimulationCtaShort'),
+                  href: goToSimulationHref,
+                  variant: 'contained',
+                  startIcon: <PuzzlePieceIcon />,
+                },
+              ]
+            : []),
+          {
+            key: 'full-profile-update',
+            label: t('profilePagePrompts.fullUpdateCta'),
+            shortLabel: t('profilePagePrompts.fullUpdateCtaShort'),
+            href: '/profile/fill?mode=full-update',
+            variant: 'outlined',
+            startIcon: <ArrowForwardIcon />,
+          },
+        ];
+
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {/* Prompt to complete profile if below threshold */}
@@ -1241,86 +1277,10 @@ const Profile = ({
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
             {t('profilePagePrompts.incomplete.description')}
           </Typography>
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 2,
-              mb: 4,
-              flexWrap: 'wrap',
-              width: '100%',
-            }}
-          >
-            <Button
-              variant="contained"
-              color="primary"
-              size="medium"
-              startIcon={<ArrowForwardIcon />}
-              href="/profile/fill?mode=full-update"
-              sx={{
-                fontWeight: 600,
-                px: 3,
-                py: 1.5,
-                fontSize: '1rem',
-                width: { xs: '100%', sm: 'auto' },
-              }}
-            >
-              {t('profilePagePrompts.incomplete.cta')}
-            </Button>
-          </Box>
+          <ProfilePageActionBar actions={profilePageActions} />
         </>
       ) : (
-        <>
-          {/* Go to simulation + Full profile update — centered row / stacked */}
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              justifyContent: 'center',
-              alignItems: { xs: 'stretch', sm: 'center' },
-              gap: 2,
-              mb: 4,
-              width: '100%',
-              maxWidth: 1200,
-              mx: 'auto',
-            }}
-          >
-            {completion && completion.overall >= MIN_PROFILE_COMPLETION_REQUIRED && (
-              <Button
-                variant="contained"
-                color="primary"
-                size="medium"
-                startIcon={<PuzzlePieceIcon />}
-                href={goToSimulationHref}
-                sx={{
-                  fontWeight: 600,
-                  px: 3,
-                  py: 1.5,
-                  fontSize: '1rem',
-                  width: { xs: '100%', sm: 'auto' },
-                }}
-              >
-                {t('profilePagePrompts.goToSimulationCta')}
-              </Button>
-            )}
-            <Button
-              variant="outlined"
-              color="primary"
-              size="medium"
-              startIcon={<ArrowForwardIcon />}
-              href="/profile/fill?mode=full-update"
-              sx={{
-                fontWeight: 600,
-                px: 3,
-                py: 1.5,
-                fontSize: '1rem',
-                width: { xs: '100%', sm: 'auto' },
-              }}
-            >
-              {t('profilePagePrompts.fullUpdateCta')}
-            </Button>
-          </Box>
-        </>
+        <ProfilePageActionBar actions={profilePageActions} />
       )}
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, mb: 4 }} elevation={3}>

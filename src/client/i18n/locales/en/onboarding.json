@@ -112,10 +112,13 @@
     "incomplete": {
       "title": "Complete Your Profile",
       "description": "Complete more of your profile to unlock personalized simulations.",
-      "cta": "Fill your profile"
+      "cta": "Fill your profile",
+      "ctaShort": "Fill profile"
     },
     "goToSimulationCta": "Go to Simulation",
-    "fullUpdateCta": "Full profile update"
+    "goToSimulationCtaShort": "Simulation",
+    "fullUpdateCta": "Full profile update",
+    "fullUpdateCtaShort": "Full update"
   },
   "loginSecurity": {
     "title": "Login & Security",

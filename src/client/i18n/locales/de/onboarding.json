@@ -112,10 +112,13 @@
     "incomplete": {
       "title": "Vervollständige dein Profil",
       "description": "Vervollständige mehr von deinem Profil, um personalisierte Simulationen freizuschalten.",
-      "cta": "Profil ausfüllen"
+      "cta": "Profil ausfüllen",
+      "ctaShort": "Ausfüllen"
     },
     "goToSimulationCta": "Zur Simulation",
-    "fullUpdateCta": "Profil vollständig aktualisieren"
+    "goToSimulationCtaShort": "Simulation",
+    "fullUpdateCta": "Profil vollständig aktualisieren",
+    "fullUpdateCtaShort": "Aktualisieren"
   },
   "loginSecurity": {
     "title": "Login & Sicherheit",
