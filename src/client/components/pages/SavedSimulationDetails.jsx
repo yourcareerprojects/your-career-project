@@ -46,7 +46,6 @@ import {
   isEvaluationComplete,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
-import SimulationRankingsCompleteCelebration from '../common/SimulationRankingsCompleteCelebration';
 import {
   invalidateSavedSimulationsListQuery,
   useSavedCareerStepsListQuery,
@@ -110,9 +109,7 @@ const SavedSimulationDetails = () => {
     [requestLang]
   );
 
-  const rankingsCelebration = useSimulationRankingsCompleteCelebration(
-    simulation?.results?.evaluationFlow
-  );
+  useSimulationRankingsCompleteCelebration(simulation?.results?.evaluationFlow);
 
   // Load simulation data
   useEffect(() => {
@@ -1097,10 +1094,6 @@ const SavedSimulationDetails = () => {
         </Alert>
       </Snackbar>
 
-      <SimulationRankingsCompleteCelebration
-        open={rankingsCelebration.open}
-        onClose={rankingsCelebration.close}
-      />
     </Box>
   );
 };

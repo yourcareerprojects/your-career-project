@@ -26,6 +26,17 @@ function getConfetti() {
 const CONFETTI_Z_INDEX = 9999;
 /** Side-stream confetti duration (ms); initial burst is separate. */
 const CELEBRATION_DURATION_MS = 1000;
+/** Side-stream star burst when both simulation rankings are complete. */
+const STAR_BURST_SIDE_STREAM_MS = 900;
+
+const BRAND_CELEBRATION_COLORS = [
+  '#1c662a',
+  '#3aa34e',
+  '#52bb64',
+  '#4caf50',
+  '#e5c20a',
+  '#fce897',
+];
 
 function prefersReducedMotion() {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -64,6 +75,59 @@ export function fireProfileCreatedConfetti() {
       spread: 62,
       origin: { x: 1, y: 0.62 },
       zIndex: CONFETTI_Z_INDEX,
+    });
+
+    if (Date.now() < end) {
+      requestAnimationFrame(sideStream);
+    }
+  };
+
+  requestAnimationFrame(sideStream);
+}
+
+/**
+ * Star burst when both simulation role rankings are complete (non-blocking).
+ */
+export function fireStarBurstConfetti() {
+  const confetti = getConfetti();
+  if (!confetti) return;
+  if (prefersReducedMotion()) return;
+
+  const colors = BRAND_CELEBRATION_COLORS;
+  const starBurst = (options) =>
+    confetti({
+      shapes: ['star'],
+      colors,
+      zIndex: CONFETTI_Z_INDEX,
+      ...options,
+    });
+
+  starBurst({
+    particleCount: 48,
+    spread: 110,
+    startVelocity: 32,
+    decay: 0.93,
+    origin: { x: 0.5, y: 0.55 },
+  });
+
+  const end = Date.now() + STAR_BURST_SIDE_STREAM_MS;
+
+  const sideStream = () => {
+    starBurst({
+      particleCount: 2,
+      angle: 60,
+      spread: 62,
+      startVelocity: 36,
+      decay: 0.94,
+      origin: { x: 0, y: 0.55 },
+    });
+    starBurst({
+      particleCount: 2,
+      angle: 120,
+      spread: 62,
+      startVelocity: 36,
+      decay: 0.94,
+      origin: { x: 1, y: 0.55 },
     });
 
     if (Date.now() < end) {

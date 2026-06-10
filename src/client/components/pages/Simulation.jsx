@@ -55,7 +55,6 @@ import {
   mergeEvaluationFlowFromResults,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
-import SimulationRankingsCompleteCelebration from '../common/SimulationRankingsCompleteCelebration';
 import SaveChangesButton from '../common/SaveChangesButton';
 import SaveChangesDialog from '../common/SaveChangesDialog';
 import UnsavedChangesIndicator from '../common/UnsavedChangesIndicator';
@@ -501,9 +500,7 @@ const Simulation = () => {
   // Note: navigate will be replaced by navigationGuard.navigate below
   const location = useLocation();
 
-  const rankingsCelebration = useSimulationRankingsCompleteCelebration(
-    simResults?.evaluationFlow
-  );
+  useSimulationRankingsCompleteCelebration(simResults?.evaluationFlow);
 
   // State update queue to prevent conflicts
   const stateUpdateQueueRef = useRef([]);
@@ -2685,10 +2682,6 @@ const Simulation = () => {
         simulationName={selectedSimulation?.name || t('simulation.defaultName', { ns: 'dashboard' })}
       />
 
-      <SimulationRankingsCompleteCelebration
-        open={rankingsCelebration.open}
-        onClose={rankingsCelebration.close}
-      />
     </Box>
   );
 };

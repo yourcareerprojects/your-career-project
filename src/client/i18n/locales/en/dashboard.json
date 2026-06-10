@@ -109,11 +109,6 @@
         "saveToSavedList": "Save this role to your saved list"
       }
     },
-    "rankingsComplete": {
-      "title": "You did it!",
-      "message": "You've ranked every role in both categories. Your personalized career picture is ready — save your simulation when you're happy with your rankings.",
-      "continue": "Continue"
-    },
     "sloganTitle": "Your Slogan",
     "preparingRoleEvaluation": "Preparing role evaluation...",
     "categories": {
