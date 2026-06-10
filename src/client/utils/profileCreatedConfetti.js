@@ -30,12 +30,15 @@ const CELEBRATION_DURATION_MS = 1000;
 const STAR_BURST_SIDE_STREAM_MS = 900;
 
 const BRAND_CELEBRATION_COLORS = [
-  '#1c662a',
-  '#3aa34e',
-  '#52bb64',
-  '#4caf50',
-  '#e5c20a',
-  '#fce897',
+  '#90CAF9',
+  '#64B5F6',
+  '#B3E5FC',
+  '#FFD54F',
+  '#FFCA28',
+  '#FFC107',
+  '#D32F2F',
+  '#E53935',
+  '#C62828',
 ];
 
 function prefersReducedMotion() {
