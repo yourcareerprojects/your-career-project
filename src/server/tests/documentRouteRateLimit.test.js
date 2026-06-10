@@ -4,6 +4,7 @@ const {
   DOCUMENT_ROUTE_IP_MAX,
   DOCUMENT_ROUTE_IP_WINDOW_MS,
   isCvExtractionStatusPollRequest,
+  isDocumentHighFrequencyPollRequest,
   createDocumentRouteIpLimiter,
 } = require('../middleware/documentRouteRateLimit');
 const { getAdaptivePollDelayMs, getExtractionPollMaxDurationMs } = require('../../constants/cvExtractionTiming');
@@ -41,12 +42,52 @@ describe('documentRouteRateLimit', () => {
     });
   });
 
+  describe('isDocumentHighFrequencyPollRequest', () => {
+    const docId = '507f1f77bcf86cd799439011';
+
+    test('matches narrative-cache-status GET and POST', () => {
+      expect(
+        isDocumentHighFrequencyPollRequest({
+          method: 'GET',
+          originalUrl: `/api/documents/${docId}/narrative-cache-status?lang=en`,
+        })
+      ).toBe(true);
+      expect(
+        isDocumentHighFrequencyPollRequest({
+          method: 'POST',
+          originalUrl: `/api/documents/${docId}/narrative-cache-status`,
+        })
+      ).toBe(true);
+    });
+
+    test('does not match uploads or other mutating routes', () => {
+      expect(
+        isDocumentHighFrequencyPollRequest({
+          method: 'POST',
+          originalUrl: '/api/documents/upload',
+        })
+      ).toBe(false);
+      expect(
+        isDocumentHighFrequencyPollRequest({
+          method: 'POST',
+          originalUrl: `/api/documents/${docId}/retry-extraction`,
+        })
+      ).toBe(false);
+    });
+  });
+
   describe('createDocumentRouteIpLimiter', () => {
     function buildApp() {
       const app = express();
       app.set('trust proxy', 1);
       app.use('/api/documents', createDocumentRouteIpLimiter());
       app.get('/api/documents/:documentId/extraction-status', (req, res) => {
+        res.json({ ok: true });
+      });
+      app.get('/api/documents/:documentId/narrative-cache-status', (req, res) => {
+        res.json({ ok: true });
+      });
+      app.post('/api/documents/:documentId/narrative-cache-status', (req, res) => {
         res.json({ ok: true });
       });
       app.post('/api/documents/upload', (req, res) => {
@@ -61,6 +102,19 @@ describe('documentRouteRateLimit', () => {
       for (let i = 0; i < DOCUMENT_ROUTE_IP_MAX + 5; i += 1) {
         const res = await request(app).get(`/api/documents/${docId}/extraction-status`);
         expect(res.status).toBe(200);
+      }
+    });
+
+    test('does not count narrative-cache-status polls toward the IP cap', async () => {
+      const app = buildApp();
+      const docId = '507f1f77bcf86cd799439011';
+      for (let i = 0; i < DOCUMENT_ROUTE_IP_MAX + 5; i += 1) {
+        const getRes = await request(app).get(`/api/documents/${docId}/narrative-cache-status`);
+        expect(getRes.status).toBe(200);
+        const postRes = await request(app)
+          .post(`/api/documents/${docId}/narrative-cache-status`)
+          .send({});
+        expect(postRes.status).toBe(200);
       }
     });
 
@@ -90,9 +144,16 @@ describe('documentRouteRateLimit', () => {
       return polls;
     }
 
-    test('a full 15-minute poll session exceeds the document IP cap without skip', () => {
+    test('a full 15-minute extraction poll session exceeds the document IP cap without skip', () => {
       const maxDurationMs = getExtractionPollMaxDurationMs();
       const pollCount = estimatePollCountForSession(maxDurationMs);
+      expect(pollCount).toBeGreaterThan(DOCUMENT_ROUTE_IP_MAX);
+    });
+
+    test('profile review-save narrative polling exceeds the document IP cap without skip', () => {
+      const pollIntervalMs = 500;
+      const inflightPollMs = 45_000;
+      const pollCount = Math.ceil(inflightPollMs / pollIntervalMs);
       expect(pollCount).toBeGreaterThan(DOCUMENT_ROUTE_IP_MAX);
     });
 

@@ -61,6 +61,11 @@ function createAiHeavyRouteLimiter() {
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Behind reverse proxies (Render, nginx, etc.) so per-IP rate limits use the client IP.
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // Connect to MongoDB
 connectDB();
 
