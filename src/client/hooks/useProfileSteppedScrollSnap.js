@@ -2,12 +2,16 @@ import { useEffect } from 'react';
 import {
   PROFILE_SCROLL_PADDING_TOP_PX,
   PROFILE_SNAP_ATTR,
+  PROFILE_SNAP_ANIMATION_MS,
+  animateProfileScrollTo,
   isProfileSteppedScrollLocked,
 } from '../utils/profileSnapScroll';
 
-const SETTLE_MS = 130;
-const ALIGN_THRESHOLD_PX = 16;
-const GESTURE_MIN_DELTA_PX = 28;
+/** Minimum finger travel (px) to count as a deliberate swipe. */
+const SWIPE_DISTANCE_PX = 32;
+/** Quick flick can count with less distance when velocity is high (px/ms). */
+const FLICK_VELOCITY_PX_MS = 0.35;
+const FLICK_DISTANCE_PX = 12;
 
 function getSnapTops() {
   const selector = `[${PROFILE_SNAP_ATTR}="true"]`;
@@ -20,19 +24,23 @@ function getSnapTops() {
     .sort((a, b) => a - b);
 }
 
-function findCurrentIndex(scrollY, tops) {
-  let idx = 0;
+function findNearestIndex(scrollY, tops) {
+  if (!tops.length) return 0;
+  let bestIdx = 0;
+  let bestDist = Infinity;
   for (let i = 0; i < tops.length; i += 1) {
-    if (scrollY + ALIGN_THRESHOLD_PX >= tops[i]) {
-      idx = i;
+    const dist = Math.abs(tops[i] - scrollY);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
     }
   }
-  return idx;
+  return bestIdx;
 }
 
 /**
- * Mobile stepped scrolling: after each gesture, land on the next/previous snap point.
- * Uses touch + scroll settle (works when CSS scroll-snap on document is unavailable).
+ * Mobile stepped scrolling driven by swipe gestures:
+ * swipe up → next sub-section, swipe down → previous sub-section.
  */
 export function useProfileSteppedScrollSnap(active) {
   useEffect(() => {
@@ -40,71 +48,89 @@ export function useProfileSteppedScrollSnap(active) {
       return undefined;
     }
 
-    let settleTimer = null;
     let isProgrammatic = false;
-    let gestureStartScrollY = window.scrollY;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let touchStartIndex = 0;
+    let cancelAnimation = null;
 
     const snapTo = (top) => {
+      cancelAnimation?.();
       isProgrammatic = true;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-      window.setTimeout(() => {
-        isProgrammatic = false;
-        gestureStartScrollY = window.scrollY;
-      }, 480);
+      // Halt touch momentum before the slide animation starts.
+      window.scrollTo(0, window.scrollY);
+
+      cancelAnimation = animateProfileScrollTo(top, {
+        durationMs: PROFILE_SNAP_ANIMATION_MS,
+        onComplete: () => {
+          isProgrammatic = false;
+          cancelAnimation = null;
+        },
+      });
     };
 
-    const settleScroll = () => {
+    const onTouchStart = (event) => {
+      if (isProgrammatic || isProfileSteppedScrollLocked()) {
+        return;
+      }
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      touchStartY = touch.clientY;
+      touchStartTime = Date.now();
+      const tops = getSnapTops();
+      touchStartIndex = findNearestIndex(window.scrollY, tops);
+    };
+
+    const onTouchEnd = (event) => {
       if (isProgrammatic || isProfileSteppedScrollLocked()) {
         return;
       }
 
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+
       const tops = getSnapTops();
-      if (!tops.length) {
-        return;
+      if (!tops.length) return;
+
+      const fingerDelta = touchStartY - touch.clientY;
+      const elapsedMs = Math.max(Date.now() - touchStartTime, 1);
+      const velocity = fingerDelta / elapsedMs;
+
+      const isSwipeUp =
+        fingerDelta > SWIPE_DISTANCE_PX
+        || (fingerDelta > FLICK_DISTANCE_PX && velocity > FLICK_VELOCITY_PX_MS);
+      const isSwipeDown =
+        fingerDelta < -SWIPE_DISTANCE_PX
+        || (fingerDelta < -FLICK_DISTANCE_PX && velocity < -FLICK_VELOCITY_PX_MS);
+
+      let targetIndex = touchStartIndex;
+      if (isSwipeUp) {
+        targetIndex = Math.min(touchStartIndex + 1, tops.length - 1);
+      } else if (isSwipeDown) {
+        targetIndex = Math.max(touchStartIndex - 1, 0);
       }
 
-      const endY = window.scrollY;
-      const delta = endY - gestureStartScrollY;
-      const currentIdx = findCurrentIndex(endY, tops);
-      const aligned = Math.abs(endY - tops[currentIdx]) <= ALIGN_THRESHOLD_PX;
-
-      if (Math.abs(delta) < GESTURE_MIN_DELTA_PX) {
-        if (!aligned) {
-          snapTo(tops[currentIdx]);
-        }
-        return;
-      }
-
-      const nextIdx = delta > 0
-        ? Math.min(currentIdx + 1, tops.length - 1)
-        : Math.max(currentIdx - 1, 0);
-
-      if (nextIdx !== currentIdx || !aligned) {
-        snapTo(tops[nextIdx]);
-      }
-    };
-
-    const onTouchStart = () => {
-      if (!isProgrammatic) {
-        gestureStartScrollY = window.scrollY;
+      const targetTop = tops[targetIndex];
+      if (Math.abs(window.scrollY - targetTop) > 2) {
+        snapTo(targetTop);
       }
     };
 
-    const onScroll = () => {
-      if (isProgrammatic) {
-        return;
-      }
-      window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(settleScroll, SETTLE_MS);
+    const onTouchCancel = () => {
+      touchStartY = 0;
+      touchStartTime = 0;
     };
 
     window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchCancel, { passive: true });
 
     return () => {
       window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('scroll', onScroll);
-      window.clearTimeout(settleTimer);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchCancel);
+      cancelAnimation?.();
     };
   }, [active]);
 }
