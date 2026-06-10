@@ -92,6 +92,8 @@ import useChangeDetection from '../../hooks/useChangeDetection';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
 import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
+import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
+import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 
 /** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
 const Simulation = () => {
@@ -105,6 +107,7 @@ const Simulation = () => {
   // State for simulation
   const [simLoading, setSimLoading] = useState(false);
   const [simulationJobState, setSimulationJobState] = useState('idle'); // idle | queued | running
+  const [simulationProgress, setSimulationProgress] = useState(0);
   const [simResults, setSimResults] = useState(null);
   const [loadingLast, setLoadingLast] = useState(true);
   const [backendGoal, setBackendGoal] = useState('');
@@ -113,6 +116,7 @@ const Simulation = () => {
   const [simulationDate, setSimulationDate] = useState(null);
 
   const simulationRunAbortRef = useRef(null);
+  const simulationCelebrationHandledKeyRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -1030,6 +1034,7 @@ const Simulation = () => {
 
     setSimLoading(true);
     setSimulationJobState('queued');
+    setSimulationProgress(0);
     setSimResults(null);
     setSimError('');
     setHasUnsavedChanges(false);
@@ -1110,9 +1115,17 @@ const Simulation = () => {
         token,
         lang: requestLang,
         signal: runAbort.signal,
-        onJobPhase: (phase) => {
-          if (phase === 'queued') setSimulationJobState('queued');
-          else if (phase === 'running') setSimulationJobState('running');
+        onJobUpdate: ({ status, progress }) => {
+          if (status === 'queued' || status === 'pending') {
+            setSimulationJobState('queued');
+          } else if (status === 'running') {
+            setSimulationJobState('running');
+          } else if (status === 'completed') {
+            setSimulationProgress(100);
+          }
+          if (Number.isFinite(progress)) {
+            setSimulationProgress((prev) => Math.max(prev, progress));
+          }
         },
       });
 
@@ -1210,7 +1223,7 @@ const Simulation = () => {
         }
 
         // Show generated results on dedicated results screen.
-        navigate('/simulation/results');
+        navigate('/simulation/results', { state: { celebrateSimulationCompleted: true } });
       } else {
         const errorMsg =
           (data && data.message) ||
@@ -1227,6 +1240,7 @@ const Simulation = () => {
       setSimError(t('simulation.messages.failedCheckConnection', { ns: 'dashboard' }));
     } finally {
       setSimulationJobState('idle');
+      setSimulationProgress(0);
       setSimLoading(false);
     }
   };
@@ -1518,6 +1532,22 @@ const Simulation = () => {
     setSnackbar({ open: true, message, severity, linkTo, linkLabel });
   }, []);
 
+  /** Confetti once after a successful simulation run (navigate state from handleSimulate). */
+  useEffect(() => {
+    if (simulationCelebrationHandledKeyRef.current === location.key) return;
+    if (!location.state?.celebrateSimulationCompleted) return;
+
+    simulationCelebrationHandledKeyRef.current = location.key;
+    fireProfileCreatedConfetti();
+
+    const prev = location.state || {};
+    const { celebrateSimulationCompleted: _drop, ...rest } = prev;
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: Object.keys(rest).length ? rest : undefined }
+    );
+  }, [location.key, location.pathname, location.search, location.hash, navigate]);
+
   /**
    * Saving clears results and navigates to `/simulation`. That route swap remounts this
    * component, which would wipe an in-memory snackbar set in the same handler. Toast
@@ -1558,6 +1588,57 @@ const Simulation = () => {
   const handleUpdateProfile = () => {
     guardedNavigate('/profile/fill?mode=full-update');
   };
+
+  const simulationResultsPageActions = useMemo(() => {
+    if (!simResults) return [];
+
+    const actions = [];
+
+    if (!isViewingSavedSimulation) {
+      actions.push({
+        key: 'save-results',
+        label: t('simulation.actions.saveResults', { ns: 'dashboard' }),
+        shortLabel: t('simulation.actions.saveResultsShort', { ns: 'dashboard' }),
+        variant: 'contained',
+        startIcon: <SaveIcon />,
+        onClick: handleSaveSimulation,
+        disabled: saving,
+        ariaLabel: t('simulation.aria.saveResults', { ns: 'dashboard' }),
+      });
+    }
+
+    actions.push({
+      key: 'clear-restart',
+      label: t('simulation.actions.clearAndRestart', { ns: 'dashboard' }),
+      shortLabel: t('simulation.actions.clearAndRestartShort', { ns: 'dashboard' }),
+      variant: 'outlined',
+      startIcon: <ArrowForwardIcon />,
+      onClick: handleStartSimulation,
+      ariaLabel: t('simulation.aria.clearAndRestart', { ns: 'dashboard' }),
+    });
+
+    if (!(profileSimulationGate.ready && profileSimulationGate.belowMin)) {
+      actions.push({
+        key: 'go-to-profile',
+        label: t('simulation.actions.goToProfile', { ns: 'dashboard' }),
+        shortLabel: t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
+        variant: 'outlined',
+        startIcon: <ArrowForwardIcon />,
+        onClick: () => guardedNavigate('/profile'),
+        ariaLabel: t('simulation.aria.goToProfile', { ns: 'dashboard' }),
+      });
+    }
+
+    return actions;
+  }, [
+    simResults,
+    isViewingSavedSimulation,
+    saving,
+    profileSimulationGate.ready,
+    profileSimulationGate.belowMin,
+    t,
+    guardedNavigate,
+  ]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString();
@@ -1990,11 +2071,26 @@ const Simulation = () => {
           
           // State consistency tracking (removed verbose logging)
           
+          const resultsHeaderOrder = simResults
+            ? { title: { xs: 1, sm: 0 }, subtitle: { xs: 2, sm: 1 }, profileGate: { xs: 3, sm: 2 }, info: { xs: 4, sm: 3 }, actions: { xs: 0, sm: 5 } }
+            : { title: 0, subtitle: 1, profileGate: 2, info: 3, actions: 3 };
+
           return (
             <>
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+              {!(loadingLast || simLoading) && simResults && (
+                <Box sx={{ order: resultsHeaderOrder.actions }}>
+                  <ProfilePageActionBar
+                    actions={simulationResultsPageActions}
+                    sx={{ mb: { xs: 2, sm: 4 }, px: { xs: 0.5, sm: 0 } }}
+                  />
+                </Box>
+              )}
+
               <Typography
                 variant="h4"
                 sx={{
+                  order: resultsHeaderOrder.title,
                   mb: 3,
                   fontWeight: 700,
                   textAlign: 'center',
@@ -2007,7 +2103,15 @@ const Simulation = () => {
                   ? t('simulation.resultsTitle', { ns: 'dashboard' })
                   : t('simulation.pageTitle', { ns: 'dashboard' })}
               </Typography>
-              <Typography variant="body1" sx={{ mb: 4, textAlign: 'center', px: { xs: 1, sm: 0 } }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  order: resultsHeaderOrder.subtitle,
+                  mb: 4,
+                  textAlign: 'center',
+                  px: { xs: 1, sm: 0 },
+                }}
+              >
                 {simResults
                   ? t('simulation.subtitle.hasResults', { ns: 'dashboard' })
                   : t('simulation.subtitle.empty', { ns: 'dashboard' })}
@@ -2018,6 +2122,7 @@ const Simulation = () => {
                   severity="warning"
                   variant="outlined"
                   sx={{
+                    order: resultsHeaderOrder.profileGate,
                     mb: 3,
                     maxWidth: 680,
                     mx: 'auto',
@@ -2043,15 +2148,19 @@ const Simulation = () => {
               )}
 
               {simResults && (
-                <Alert severity="info" sx={{ mb: 3, maxWidth: 860, mx: 'auto' }}>
+                <Alert
+                  severity="info"
+                  sx={{ order: resultsHeaderOrder.info, mb: 3, maxWidth: 860, mx: 'auto' }}
+                >
                   {t('simulation.info.updateProfileHint', { ns: 'dashboard' })}
                 </Alert>
               )}
 
-              {/* Action Buttons */}
-              {!(loadingLast || simLoading) && (
+              {/* Action Buttons (pre-simulation only; finished results use ProfilePageActionBar above) */}
+              {!(loadingLast || simLoading) && !simResults && (
                 <Box
                   sx={{
+                    order: resultsHeaderOrder.actions,
                     display: 'flex',
                     flexDirection: { xs: 'column', sm: 'row' },
                     justifyContent: 'center',
@@ -2147,51 +2256,6 @@ const Simulation = () => {
                     </span>
                   </Tooltip>
                 )}
-                {simResults && !isViewingSavedSimulation && (
-                  <Tooltip title={t('simulation.tooltips.saveResults', { ns: 'dashboard' })} arrow>
-                    <span>
-                      <Button
-                        aria-label={t('simulation.aria.saveResults', { ns: 'dashboard' })}
-                        variant="contained"
-                        color="primary"
-                        size="medium"
-                        startIcon={<SaveIcon />}
-                        onClick={handleSaveSimulation}
-                        sx={{
-                          fontWeight: 600,
-                          px: 3,
-                          py: 1.5,
-                          fontSize: '1rem',
-                        }}
-                        disabled={saving}
-                      >
-                        {t('simulation.actions.saveResults', { ns: 'dashboard' })}
-                      </Button>
-                    </span>
-                  </Tooltip>
-                )}
-                {simResults && (
-                  <Tooltip title={t('simulation.tooltips.clearAndRestart', { ns: 'dashboard' })} arrow>
-                    <span>
-                      <Button
-                        aria-label={t('simulation.aria.clearAndRestart', { ns: 'dashboard' })}
-                        variant="outlined"
-                        color="primary"
-                        size="medium"
-                        startIcon={<ArrowForwardIcon />}
-                        onClick={handleStartSimulation}
-                        sx={{
-                          fontWeight: 600,
-                          px: 3,
-                          py: 1.5,
-                          fontSize: '1rem',
-                        }}
-                      >
-                        {t('simulation.actions.clearAndRestart', { ns: 'dashboard' })}
-                      </Button>
-                    </span>
-                  </Tooltip>
-                )}
                 {!(profileSimulationGate.ready && profileSimulationGate.belowMin) && (
                   <Tooltip title={t('simulation.tooltips.updateProfile', { ns: 'dashboard' })} arrow>
                     <span>
@@ -2216,6 +2280,7 @@ const Simulation = () => {
                 )}
                 </Box>
               )}
+              </Box>
 
               {/* Save Dialog */}
               <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose}>
@@ -2344,27 +2409,30 @@ const Simulation = () => {
               {/* Loading State */}
               {loadingLast || simLoading ? (
                 <Box sx={{ textAlign: 'center', mt: 6 }}>
-                  <CircularProgress size={30} />
+                  {loadingLast && !simLoading && <CircularProgress size={30} />}
                   {simLoading && (
-                    <Box sx={{ maxWidth: 440, mx: 'auto', mt: 2 }}>
+                    <Box sx={{ maxWidth: 440, mx: 'auto' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {simulationJobState === 'queued'
+                            ? t('simulation.loadingQueued', { ns: 'dashboard' })
+                            : simulationJobState === 'running'
+                              ? t('simulation.loadingRunning', { ns: 'dashboard' })
+                              : t('simulation.loadingUpdating', { ns: 'dashboard' })}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {Math.round(simulationProgress)}%
+                        </Typography>
+                      </Box>
                       <LinearProgress
-                        variant="indeterminate"
+                        variant="determinate"
+                        value={Math.min(100, Math.max(0, simulationProgress))}
                         sx={{
-                          height: 6,
+                          height: 8,
                           borderRadius: 999,
-                          mb: 1.25,
                         }}
                       />
                     </Box>
-                  )}
-                  {simLoading && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      {simulationJobState === 'queued'
-                        ? t('simulation.loadingQueued', { ns: 'dashboard' })
-                        : simulationJobState === 'running'
-                          ? t('simulation.loadingRunning', { ns: 'dashboard' })
-                          : t('simulation.loadingUpdating', { ns: 'dashboard' })}
-                    </Typography>
                   )}
                 </Box>
               ) : simResults && (

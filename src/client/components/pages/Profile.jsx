@@ -124,6 +124,7 @@ function getWhoAreYouNarratives(whoAreYou, lang) {
  */
 function getWhoAreYouDisplayStrings(whoAreYou, userIdentity, lang) {
   const narratives = getWhoAreYouNarratives(whoAreYou, lang);
+  const narrativesArePlaceholders = narratives.every((line) => !line);
   const storedAnswers = Array.isArray(whoAreYou?.raw_answers)
     ? whoAreYou.raw_answers.map((v) => String(v || '').trim())
     : [];
@@ -132,8 +133,10 @@ function getWhoAreYouDisplayStrings(whoAreYou, userIdentity, lang) {
     storedAnswers.length === USER_IDENTITY_FIELDS.length
     && storedAnswers.every((value, idx) => value === identityAnswers[idx]);
   return USER_IDENTITY_FIELDS.map(({ key }, idx) => {
-    const n = answersAligned ? String(narratives[idx] ?? '').trim() : '';
     const direct = String(userIdentity?.[key] ?? '').trim();
+    const n = answersAligned && !narrativesArePlaceholders
+      ? String(narratives[idx] ?? '').trim()
+      : '';
     return n || direct;
   });
 }
@@ -862,12 +865,26 @@ const Profile = ({
         workEnvironmentFit: data.workEnvironmentFit,
         workingLifeAchievement: data.workingLifeAchievement
       });
+      const savedIdentityAnswers = USER_IDENTITY_FIELDS.reduce((acc, { key }) => {
+        acc[key] = String(data[key] || '').trim();
+        return acc;
+      }, {});
       setProfile(prev => ({
         ...prev,
         profile: {
           ...prev.profile,
-          userIdentity: res.data?.userIdentity ?? prev.profile.userIdentity,
-          who_are_you: res.data?.who_are_you ?? prev.profile.who_are_you,
+          userIdentity: res.data?.userIdentity ?? {
+            ...(prev.profile.userIdentity || {}),
+            ...savedIdentityAnswers,
+          },
+          userIdentityAnswers: {
+            ...(prev.profile.userIdentityAnswers || {}),
+            ...savedIdentityAnswers,
+          },
+          who_are_you: {
+            ...(res.data?.who_are_you ?? prev.profile.who_are_you ?? {}),
+            raw_answers: USER_IDENTITY_FIELDS.map(({ key }) => savedIdentityAnswers[key]),
+          },
           careerSimulationInputs: res.data?.careerSimulationInputs ?? prev.profile.careerSimulationInputs
         }
       }));

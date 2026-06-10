@@ -48,6 +48,9 @@ const ProfilePageActionBar = ({ actions, sx }) => {
       size={compact ? 'small' : 'medium'}
       startIcon={action.startIcon}
       href={action.href}
+      onClick={action.onClick}
+      disabled={action.disabled}
+      aria-label={action.ariaLabel || action.label}
       {...(action.nudge ? nudgeInteractionHandlers : {})}
       sx={{
         fontWeight: 600,

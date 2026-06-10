@@ -37,6 +37,7 @@ const {
   fetchSeniorityAwareFallbackCareerPaths,
 } = require('./seniorityAwareCandidatePool');
 const { mergeSimulationPoolFilter } = require('./simulationCareerPathPoolFilter');
+const { reportSimulationJobProgress } = require('./simulationJobProgressReporter');
 
 const CACHE_SCOPE_FULL = 'full';
 const CACHE_SCOPE_FINAL_NEXT = 'finalNext';
@@ -150,6 +151,7 @@ async function executeCareerSimulation(reqLike, resLike, options = {}) {
     await runCareerSimulationImpl(reqLike, resLike, deps, {
       isForkChild,
       abortSignal: options.abortSignal || null,
+      jobId,
     });
     logStructured('[simulation-engine]', { jobId, event: 'simulation_invoke_completed', context: ctx });
   } catch (err) {
@@ -165,6 +167,8 @@ async function executeCareerSimulation(reqLike, resLike, options = {}) {
 
 
 async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {}) {
+  const jobId = runtimeOpts.jobId ?? null;
+  const touchProgress = (progress) => reportSimulationJobProgress(jobId, progress);
   const {
     computeProfileCompletion,
     MIN_SIMULATION_PROFILE_COMPLETION_PCT,
@@ -296,6 +300,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     }
     console.timeEnd('STEP_1_load');
     step1Started = false;
+    touchProgress(20);
     logMemory('after_profile_load', {
       userId: String(userId),
       profileCompletionPct: completionBreakdown.overall,
@@ -641,6 +646,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const userProfileForHybrid = buildUserProfileForHybrid(userProfileForScoring);
     console.timeEnd('STEP_2_enrichment');
     step2Started = false;
+    touchProgress(30);
     logMemory('after_hybrid_profile_enrichment', {
       userId: String(userId),
       candidatePoolSize: picked.length,
@@ -805,7 +811,9 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     }
 
     const scoredPaths = [];
-    const totalChunks = Math.ceil(pathIds.length / SCORE_CHUNK_SIZE);
+    const totalChunks = Math.max(1, Math.ceil(pathIds.length / SCORE_CHUNK_SIZE));
+    const scoringProgressStart = 30;
+    const scoringProgressEnd = 85;
     for (let i = 0; i < pathIds.length; i += SCORE_CHUNK_SIZE) {
       assertNotAborted();
       const chunkIndex = Math.floor(i / SCORE_CHUNK_SIZE);
@@ -870,6 +878,10 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         scoredPathsCount: scoredPaths.length,
         vectorRunDedupSize: vectorRunDedup.size,
       });
+      const scoringSpan = scoringProgressEnd - scoringProgressStart;
+      touchProgress(
+        scoringProgressStart + Math.round(((chunkIndex + 1) / totalChunks) * scoringSpan)
+      );
     }
 
     assertNotAborted();
@@ -926,6 +938,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     } finally {
       vectorRunDedup.clear();
     }
+    touchProgress(92);
     logMemory('after_scoring_complete', {
       userId: String(userId),
       scoredPathsCount: scoredPaths.length,
@@ -937,6 +950,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     console.time('STEP_4_response');
     step4Started = true;
+    touchProgress(97);
     // Attach deterministic server-generated step IDs (stable across saves/removals)
     const prioritizedLists = attachDeterministicStepIdsToPrioritizedLists(prioritizedListsRaw, simulationId);
 

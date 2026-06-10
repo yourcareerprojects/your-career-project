@@ -39,13 +39,11 @@ export async function fetchSimulationJobStatus(jobId, token, lang) {
   return { statusRes, statusData };
 }
 
-function applySnapshotToUi(onJobPhase, partial) {
+function applySnapshotToUi(onJobUpdate, partial) {
+  if (!onJobUpdate) return;
   const jobStatus = partial?.status;
-  if (jobStatus === 'queued' || jobStatus === 'pending') {
-    onJobPhase?.('queued');
-  } else if (jobStatus === 'running') {
-    onJobPhase?.('running');
-  }
+  const progress = Math.min(100, Math.max(0, Number(partial?.progress ?? 0)));
+  onJobUpdate({ status: jobStatus, progress });
 }
 
 /**
@@ -62,7 +60,7 @@ export async function waitForSimulationJobCompletion({
   token,
   lang,
   signal,
-  onJobPhase,
+  onJobUpdate,
   maxWaitMs = DEFAULT_MAX_WAIT_MS,
 }) {
   const deadlineMs = Date.now() + maxWaitMs;
@@ -91,7 +89,7 @@ export async function waitForSimulationJobCompletion({
       const jobStatus = job?.status;
       const progress = Number(job?.progress ?? 0);
 
-      applySnapshotToUi(onJobPhase, { status: jobStatus, progress });
+      applySnapshotToUi(onJobUpdate, { status: jobStatus, progress });
 
       if (jobStatus === 'completed') return { kind: 'completed' };
       if (jobStatus === 'failed') {
@@ -205,7 +203,7 @@ export async function waitForSimulationJobCompletion({
         const { statusRes, statusData } = await fetchSimulationJobStatus(jobId, token, lang);
         if (!statusRes.ok || done) return;
         const jobStatus = statusData?.job?.status;
-        applySnapshotToUi(onJobPhase, {
+        applySnapshotToUi(onJobUpdate, {
           status: jobStatus,
           progress: Number(statusData?.job?.progress ?? 0),
         });
@@ -243,7 +241,7 @@ export async function waitForSimulationJobCompletion({
         return;
       }
 
-      applySnapshotToUi(onJobPhase, data);
+      applySnapshotToUi(onJobUpdate, data);
 
       if (data.status === 'completed') {
         finalize({ kind: 'completed' });

@@ -77,6 +77,9 @@ const {
   isWhoAreYouNarrativeReady,
 } = require('../services/profile/profileNarrativeReadinessService');
 const { meetsWhoAreYouNarrativesQuality } = require('../services/profile/narrativeQualityGate');
+const {
+  classifyIdentityAnswerChanges,
+} = require('../services/profile/identityAnswerChangeClassifier');
 const { schedulePostProfileReviewSaveWork } = require('../services/profile/profilePostReviewSaveService');
 const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
@@ -540,12 +543,23 @@ async function ensureBilingualSummaryField(existingField, canonicalText, canonic
   return field;
 }
 
+function isWhoAreYouPlaceholderSummaryJson(summaryText = '') {
+  const parsed = parseWhoAreYouNarratives(summaryText);
+  return parsed.length === 5 && parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER);
+}
+
 async function ensureBilingualWhoAreYouSummaryField(existingField, canonicalSummaryText, canonicalLanguage, localizedMap = {}) {
   const canonicalLang = normalizeLangCode(canonicalLanguage, 'en');
   const canonicalArray = parseWhoAreYouNarratives(canonicalSummaryText);
-  let field = hydrateLocalizedSummaryField(existingField, canonicalSummaryText, canonicalLang, localizedMap);
+  const invalidateStaleTranslations = isWhoAreYouPlaceholderSummaryJson(canonicalSummaryText);
+  const baseField = invalidateStaleTranslations ? undefined : existingField;
+  let field = hydrateLocalizedSummaryField(baseField, canonicalSummaryText, canonicalLang, localizedMap);
   for (const lang of SUPPORTED_NARRATIVE_LANGS) {
     if (lang === canonicalLang) continue;
+    if (invalidateStaleTranslations) {
+      field = localizedContentService.set(field, lang, canonicalSummaryText);
+      continue;
+    }
     const existingRaw = String(localizedContentService.get(field, lang) || '').trim();
     if (existingRaw) continue;
     try {
@@ -606,7 +620,11 @@ function structuredUserInfoHasPersistedNarratives(structured = {}, language = 'e
   return STRUCTURED_DIMENSIONS.every(({ key }) => hasNarrativeDimensionShape(structured[key], lang));
 }
 
-function profileWhoAreYouNeedsNarrativeWork(profile = {}, sourceLang = 'en') {
+function profileWhoAreYouNeedsNarrativeWork(
+  profile = {},
+  sourceLang = 'en',
+  identityChangeClass = null
+) {
   const lang = normalizeLangCode(sourceLang, 'en');
   const rawAnswers = buildWhoAreYouRawAnswersFromIdentity(profile.userIdentityAnswers || {});
   if (!rawAnswers.some(Boolean)) return false;
@@ -617,9 +635,13 @@ function profileWhoAreYouNeedsNarrativeWork(profile = {}, sourceLang = 'en') {
   const storedRaw = Array.isArray(who.raw_answers)
     ? who.raw_answers.map((value) => String(value || '').trim())
     : [];
-  const changedRaw = JSON.stringify(storedRaw) !== JSON.stringify(rawAnswers);
-  const narrativesStale = changedRaw || !meetsWhoAreYouNarrativesQuality(parsed, rawAnswers);
-  return currentSummaryIsPlaceholder || narrativesStale;
+  const changeClass = identityChangeClass || classifyIdentityAnswerChanges(storedRaw, rawAnswers);
+  if (currentSummaryIsPlaceholder) return true;
+  if (changeClass.onlyMinorChanges) return false;
+  if (!changeClass.hasChanges) {
+    return !meetsWhoAreYouNarrativesQuality(parsed, rawAnswers);
+  }
+  return changeClass.hasMajorChange;
 }
 
 function schedulePendingProfileNarrativesIfNeeded(userId, profile = {}, language = 'en') {
@@ -774,7 +796,13 @@ function parseWhoAreYouNarratives(summaryText = '') {
 
 async function normalizeWhoAreYouForStorage(
   profile = {},
-  { forceRegenerate = false, deferLlm = false, language = 'en', sourceLanguage = 'en' } = {}
+  {
+    forceRegenerate = false,
+    deferLlm = false,
+    language = 'en',
+    sourceLanguage = 'en',
+    identityChangeClass = null,
+  } = {}
 ) {
   const targetLang = normalizeLangCode(language, 'en');
   const sourceLang = normalizeLangCode(sourceLanguage, 'en');
@@ -806,12 +834,29 @@ async function normalizeWhoAreYouForStorage(
     const narrativesStaleForAnswers =
       changedRaw
       || !meetsWhoAreYouNarrativesQuality(parsedForQuality, rawAnswers);
-    const needsGeneration = !deferLlm && (
+    const onlyMinorChanges = identityChangeClass?.onlyMinorChanges === true;
+    const needsGeneration = !deferLlm && !onlyMinorChanges && (
       forceRegenerate
       || currentSummaryIsPlaceholder
       || narrativesStaleForAnswers
     );
-    if (needsGeneration) {
+    if (
+      onlyMinorChanges
+      && changedRaw
+      && !currentSummaryIsPlaceholder
+      && !deferLlm
+      && !forceRegenerate
+    ) {
+      const patched = [...parsedForQuality];
+      for (const idx of identityChangeClass.minorIndices) {
+        patched[idx] = String(rawAnswers[idx] || '').trim() || WHO_ARE_YOU_PLACEHOLDER;
+      }
+      summaryText = JSON.stringify(patched);
+      localizedSummaryMap = Object.fromEntries(
+        SUPPORTED_NARRATIVE_LANGS.map((langCode) => [langCode, summaryText])
+      );
+      changed = true;
+    } else if (needsGeneration) {
       const generated = await generateWhoAreYouNarratives(rawAnswers, {
         lang: targetLang,
         sourceLang,
@@ -2679,6 +2724,12 @@ exports.updateUserIdentity = async (req, res) => {
     if (!user.profile.userIdentityAnswers || typeof user.profile.userIdentityAnswers !== 'object') {
       user.profile.userIdentityAnswers = {};
     }
+    const previousRawAnswers = buildWhoAreYouRawAnswersFromIdentity(user.profile.userIdentityAnswers || {});
+    const storedWhoRaw = Array.isArray(user.profile.who_are_you?.raw_answers)
+      ? user.profile.who_are_you.raw_answers.map((value) => String(value || '').trim())
+      : [];
+    const baselineRawAnswers = storedWhoRaw.some(Boolean) ? storedWhoRaw : previousRawAnswers;
+
     Object.assign(user.profile.userIdentityAnswers, nextAnswers);
     user.markModified('profile.userIdentityAnswers');
 
@@ -2688,7 +2739,13 @@ exports.updateUserIdentity = async (req, res) => {
       }
     }
     const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
-    const deferWhoAreYouNarrative = profileWhoAreYouNeedsNarrativeWork(user.profile || {}, narrativeSourceLanguage);
+    const nextRawAnswers = buildWhoAreYouRawAnswersFromIdentity(user.profile.userIdentityAnswers || {});
+    const identityChangeClass = classifyIdentityAnswerChanges(baselineRawAnswers, nextRawAnswers);
+    const deferWhoAreYouNarrative = profileWhoAreYouNeedsNarrativeWork(
+      user.profile || {},
+      narrativeSourceLanguage,
+      identityChangeClass
+    );
     const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
       user.profile || {},
       {
@@ -2696,6 +2753,7 @@ exports.updateUserIdentity = async (req, res) => {
         deferLlm: deferWhoAreYouNarrative,
         language: req.language,
         sourceLanguage: narrativeSourceLanguage,
+        identityChangeClass,
       }
     );
     user.profile.who_are_you = normalizedWhoAreYou;
@@ -2746,7 +2804,7 @@ exports.updateUserIdentity = async (req, res) => {
       user.profile,
       req.language
     );
-    if (narrativeStatus.narrativesReady) {
+    if (narrativeStatus.narrativesReady && identityChangeClass.hasMajorChange) {
       scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
     }
 
@@ -2759,6 +2817,7 @@ exports.updateUserIdentity = async (req, res) => {
       success: true,
       narrativesReady: narrativeStatus.narrativesReady,
       narrativePending: narrativeStatus.narrativePending,
+      identityEditMagnitude: identityChangeClass.hasMajorChange ? 'major' : (identityChangeClass.onlyMinorChanges ? 'minor' : 'none'),
       userIdentity: overlayIdentityAnswersWithCvLocalization(
         normalizeUserIdentityAnswers(user.profile.userIdentityAnswers || {}),
         user.profile.cvExtractLocalization?.userIdentity,

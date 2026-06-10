@@ -44,8 +44,11 @@
     "actions": {
       "start": "Simulation starten",
       "saveResults": "Ergebnisse speichern",
+      "saveResultsShort": "Speichern",
       "clearAndRestart": "Ergebnisse löschen und neue Simulation starten",
+      "clearAndRestartShort": "Neu starten",
       "goToProfile": "Zu meinem Profil",
+      "goToProfileShort": "Profil",
       "startNew": "Neue Simulation starten",
       "openSavedSimulation": "Gespeicherte Simulation öffnen",
       "open": "Öffnen"

@@ -8,6 +8,7 @@ const { filterIndustryDomainRawItems } = require('../../constants/industryDomain
 const { PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY } = require('../../../constants/profileReviewFieldLimits');
 const { normalizeStructuredListItemLabel, normalizeStructuredListItemLabels } = require('../../../constants/structuredListItemLabel');
 const { meetsDimensionSummaryQuality } = require('./narrativeQualityGate');
+const { isMinorStructuredListEdit } = require('./identityAnswerChangeClassifier');
 
 function mergeUniqueStrings(a = [], b = []) {
   return [...new Set(
@@ -272,6 +273,16 @@ function buildMergedStructuredPayloadForNormalization(
       key === 'domains' ? filterIndustryDomainRawItems(getRawItems(existingDim)) : getRawItems(existingDim);
     if (
       structuredRawListsEqual(mergedComparable, existingComparable)
+      && canReuseDimensionNarrative(existingDim)
+    ) {
+      out[key] = {
+        raw_items: mergedRaw,
+        summary_text: existingDim.summary_text,
+      };
+      continue;
+    }
+    if (
+      isMinorStructuredListEdit(existingComparable, mergedComparable)
       && canReuseDimensionNarrative(existingDim)
     ) {
       out[key] = {

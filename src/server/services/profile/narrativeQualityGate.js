@@ -77,6 +77,7 @@ function meetsWhoAreYouLineQuality(narrativeLine, rawAnswer = '') {
   if (!raw) return true;
   const line = String(narrativeLine || '').trim();
   if (!line || line === WHO_ARE_YOU_PLACEHOLDER) return false;
+  if (line === raw) return true;
   if (isDeterministicWhoAreYouLine(line, raw)) return false;
   if (raw.length >= 15 && line.length < 80) return false;
   if (countSentences(line) < 2 && line.length < 120) return false;
