@@ -109,6 +109,11 @@
         "saveToSavedList": "Diese Rolle in deiner gespeicherten Liste speichern"
       }
     },
+    "rankingsComplete": {
+      "title": "Geschafft!",
+      "message": "Du hast alle Rollen in beiden Kategorien eingestuft. Dein persönliches Karrierebild steht — speichere deine Simulation, wenn du mit deinen Rankings zufrieden bist.",
+      "continue": "Weiter"
+    },
     "sloganTitle": "Dein Slogan",
     "preparingRoleEvaluation": "Rollenbewertung wird vorbereitet...",
     "categories": {

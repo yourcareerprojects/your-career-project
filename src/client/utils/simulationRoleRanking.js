@@ -354,3 +354,19 @@ export function applyUserEvaluationToEvaluationFlow(flow, step, nextEval) {
 
   return { nextFlow: next, matched };
 }
+
+/**
+ * True when the user has opened ranked views for both Next Roles and Outside-the-Box.
+ * @param {object | null | undefined} evaluationFlow
+ */
+export function areBothSimulationRankingsComplete(evaluationFlow) {
+  if (!evaluationFlow) return false;
+  return (
+    evaluationFlow.phases?.nextSteps === 'ranked'
+    && evaluationFlow.phases?.outsideTheBox === 'ranked'
+    && Array.isArray(evaluationFlow.ranked?.nextSteps)
+    && evaluationFlow.ranked.nextSteps.length > 0
+    && Array.isArray(evaluationFlow.ranked?.outsideTheBox)
+    && evaluationFlow.ranked.outsideTheBox.length > 0
+  );
+}

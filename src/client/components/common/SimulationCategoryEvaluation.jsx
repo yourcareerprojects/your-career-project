@@ -51,6 +51,7 @@ import { storeSimulationResultDetails } from '../../utils/simulationResultSessio
 import CareerStepCardWithReplacement from './CareerStepCardWithReplacement';
 import localizedContentService from '../../utils/localizedContentService';
 import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
+import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
 
 const ACTION_BUTTON_SX = {
   width: '100% !important',
@@ -1057,7 +1058,6 @@ export default function SimulationCategoryEvaluation({
   savedSimulationId,
   simulationIdForCards,
   onReorderRankedRoles,
-  evalNudgeActive = true,
 }) {
   const { t } = useTranslation('dashboard');
   const theme = useTheme();
@@ -1081,7 +1081,8 @@ export default function SimulationCategoryEvaluation({
     return cardsToShow[0]?.id ?? null;
   }, [phase, awaitingRankingReveal, complete, cardsToShow]);
 
-  const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) && evalNudgeActive });
+  const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) });
+  const rankingRevealNudge = useCtaNudgeAnimation({ enabled: awaitingRankingReveal });
 
   if (phase === 'ranked' && Array.isArray(rankedRows) && rankedRows.length) {
     return (
@@ -1216,11 +1217,13 @@ export default function SimulationCategoryEvaluation({
             size="medium"
             startIcon={<ThumbUpAltOutlinedIcon />}
             onClick={onSeeRanking}
+            {...rankingRevealNudge.nudgeInteractionHandlers}
             sx={{
               fontWeight: 600,
               px: 3,
               py: 1.5,
               fontSize: '1rem',
+              ...rankingRevealNudge.nudgeSx,
             }}
           >
             {t('simulation.evaluationFlow.seeYourRanking')}
