@@ -6,15 +6,26 @@ export const PROFILE_MOBILE_SNAP_CLASS = 'profile-mobile-scroll-snap';
 /** Fixed header + mobile profile action bar (px). */
 export const PROFILE_SCROLL_PADDING_TOP_PX = 120;
 
-/** Duration of the swipe transition between profile sub-sections (ms). */
-export const PROFILE_SNAP_ANIMATION_MS = 300;
+/** Default duration of the swipe transition between profile sub-sections (ms). */
+export const PROFILE_SNAP_ANIMATION_MS = 260;
 
-function easeOutCubic(progress) {
-  return 1 - (1 - progress) ** 3;
+function easeInOutCubic(progress) {
+  return progress < 0.5
+    ? 4 * progress ** 3
+    : 1 - ((-2 * progress + 2) ** 3) / 2;
 }
 
 /**
- * Smoothly scroll the window to `top` over a short fixed duration.
+ * Duration scales with travel distance and finger velocity so fast swipes feel snappy.
+ */
+export function computeProfileSnapDuration(distancePx, velocityPxMs = 0) {
+  const byDistance = Math.min(300, Math.max(200, Math.abs(distancePx) * 0.4));
+  const velocityShortening = Math.min(90, Math.abs(velocityPxMs) * 70);
+  return Math.max(180, byDistance - velocityShortening);
+}
+
+/**
+ * Smoothly scroll the window to `top` over a short eased duration.
  * @returns {() => void} cancel function
  */
 export function animateProfileScrollTo(top, {
@@ -32,13 +43,18 @@ export function animateProfileScrollTo(top, {
 
   const startTime = performance.now();
   let frameId = null;
+  let cancelled = false;
 
   const step = (now) => {
+    if (cancelled) {
+      return;
+    }
     const progress = Math.min((now - startTime) / durationMs, 1);
-    window.scrollTo(0, startY + distance * easeOutCubic(progress));
+    window.scrollTo(0, startY + distance * easeInOutCubic(progress));
     if (progress < 1) {
       frameId = requestAnimationFrame(step);
     } else {
+      window.scrollTo(0, targetY);
       onComplete?.();
     }
   };
@@ -46,6 +62,7 @@ export function animateProfileScrollTo(top, {
   frameId = requestAnimationFrame(step);
 
   return () => {
+    cancelled = true;
     if (frameId != null) {
       cancelAnimationFrame(frameId);
     }

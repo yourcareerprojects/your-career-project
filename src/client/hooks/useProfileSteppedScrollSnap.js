@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import {
   PROFILE_SCROLL_PADDING_TOP_PX,
   PROFILE_SNAP_ATTR,
-  PROFILE_SNAP_ANIMATION_MS,
   animateProfileScrollTo,
+  computeProfileSnapDuration,
   isProfileSteppedScrollLocked,
 } from '../utils/profileSnapScroll';
 
@@ -38,6 +38,11 @@ function findNearestIndex(scrollY, tops) {
   return bestIdx;
 }
 
+function haltScrollMomentum() {
+  const y = window.scrollY;
+  window.scrollTo(0, y);
+}
+
 /**
  * Mobile stepped scrolling driven by swipe gestures:
  * swipe up → next sub-section, swipe down → previous sub-section.
@@ -48,29 +53,49 @@ export function useProfileSteppedScrollSnap(active) {
       return undefined;
     }
 
-    let isProgrammatic = false;
     let touchStartY = 0;
     let touchStartTime = 0;
     let touchStartIndex = 0;
+    /** Logical snap index (stable while animating so fast chained swipes work). */
+    let activeSnapIndex = null;
     let cancelAnimation = null;
 
-    const snapTo = (top) => {
+    const snapToTop = (top, velocityPxMs = 0) => {
       cancelAnimation?.();
-      isProgrammatic = true;
-      // Halt touch momentum before the slide animation starts.
-      window.scrollTo(0, window.scrollY);
 
-      cancelAnimation = animateProfileScrollTo(top, {
-        durationMs: PROFILE_SNAP_ANIMATION_MS,
-        onComplete: () => {
-          isProgrammatic = false;
-          cancelAnimation = null;
-        },
+      haltScrollMomentum();
+
+      const beginAnimation = () => {
+        const fromY = window.scrollY;
+        const durationMs = computeProfileSnapDuration(top - fromY, velocityPxMs);
+
+        cancelAnimation = animateProfileScrollTo(top, {
+          durationMs,
+          onComplete: () => {
+            cancelAnimation = null;
+          },
+        });
+      };
+
+      // Two frames after halting momentum so the slide starts from a stable position.
+      requestAnimationFrame(() => {
+        haltScrollMomentum();
+        requestAnimationFrame(beginAnimation);
       });
     };
 
+    const snapToIndex = (index, tops, velocityPxMs = 0) => {
+      if (!tops.length) return;
+      const clamped = Math.max(0, Math.min(index, tops.length - 1));
+      activeSnapIndex = clamped;
+      const targetTop = tops[clamped];
+      if (Math.abs(window.scrollY - targetTop) > 2) {
+        snapToTop(targetTop, velocityPxMs);
+      }
+    };
+
     const onTouchStart = (event) => {
-      if (isProgrammatic || isProfileSteppedScrollLocked()) {
+      if (isProfileSteppedScrollLocked()) {
         return;
       }
       const touch = event.touches[0];
@@ -79,11 +104,11 @@ export function useProfileSteppedScrollSnap(active) {
       touchStartY = touch.clientY;
       touchStartTime = Date.now();
       const tops = getSnapTops();
-      touchStartIndex = findNearestIndex(window.scrollY, tops);
+      touchStartIndex = activeSnapIndex ?? findNearestIndex(window.scrollY, tops);
     };
 
     const onTouchEnd = (event) => {
-      if (isProgrammatic || isProfileSteppedScrollLocked()) {
+      if (isProfileSteppedScrollLocked()) {
         return;
       }
 
@@ -111,10 +136,7 @@ export function useProfileSteppedScrollSnap(active) {
         targetIndex = Math.max(touchStartIndex - 1, 0);
       }
 
-      const targetTop = tops[targetIndex];
-      if (Math.abs(window.scrollY - targetTop) > 2) {
-        snapTo(targetTop);
-      }
+      snapToIndex(targetIndex, tops, velocity);
     };
 
     const onTouchCancel = () => {
@@ -131,6 +153,7 @@ export function useProfileSteppedScrollSnap(active) {
       window.removeEventListener('touchend', onTouchEnd);
       window.removeEventListener('touchcancel', onTouchCancel);
       cancelAnimation?.();
+      activeSnapIndex = null;
     };
   }, [active]);
 }

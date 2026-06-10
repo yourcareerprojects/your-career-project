@@ -1356,7 +1356,6 @@ const Profile = ({
       )}
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, mb: 4 }} elevation={3}>
-        <ProfileSnapTarget snap>
         <Grid container spacing={3} alignItems="center">
           <Grid item xs={12} sm={3} md={2}>
             <Box
@@ -1450,7 +1449,6 @@ const Profile = ({
             </Box>
           </Grid>
         </Grid>
-        </ProfileSnapTarget>
       </Paper>
 
       {/* Who are you? (five identity prompts → embedding text) */}
@@ -1786,8 +1784,8 @@ const Profile = ({
           />
         ) : (
           <>
-            {seniorityDisplayFields.map((field, fieldIdx) => (
-              <ProfileSnapTarget key={field.key} snap={fieldIdx > 0}>
+            {seniorityDisplayFields.map((field) => (
+              <React.Fragment key={field.key}>
                 {renderField(
                   field.label,
                   field.value,
@@ -1796,7 +1794,7 @@ const Profile = ({
                   { xs: 12, sm: 5, md: 4 },
                   { xs: 12, sm: 7, md: 8 }
                 )}
-              </ProfileSnapTarget>
+              </React.Fragment>
             ))}
             <Button
               variant="outlined"
