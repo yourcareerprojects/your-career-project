@@ -1604,6 +1604,7 @@ const Simulation = () => {
         onClick: handleSaveSimulation,
         disabled: saving,
         ariaLabel: t('simulation.aria.saveResults', { ns: 'dashboard' }),
+        compactOrder: 2,
       });
     }
 
@@ -1615,6 +1616,7 @@ const Simulation = () => {
       startIcon: <ArrowForwardIcon />,
       onClick: handleStartSimulation,
       ariaLabel: t('simulation.aria.clearAndRestart', { ns: 'dashboard' }),
+      compactOrder: 1,
     });
 
     if (!(profileSimulationGate.ready && profileSimulationGate.belowMin)) {
@@ -1626,6 +1628,7 @@ const Simulation = () => {
         startIcon: <ArrowForwardIcon />,
         onClick: () => guardedNavigate('/profile'),
         ariaLabel: t('simulation.aria.goToProfile', { ns: 'dashboard' }),
+        compactOrder: 0,
       });
     }
 
@@ -2150,7 +2153,12 @@ const Simulation = () => {
               {simResults && (
                 <Alert
                   severity="info"
-                  sx={{ order: resultsHeaderOrder.info, mb: 3, maxWidth: 860, mx: 'auto' }}
+                  sx={{
+                    order: resultsHeaderOrder.info,
+                    mb: { xs: 1.5, sm: 3 },
+                    maxWidth: 860,
+                    mx: 'auto',
+                  }}
                 >
                   {t('simulation.info.updateProfileHint', { ns: 'dashboard' })}
                 </Alert>
@@ -2436,7 +2444,7 @@ const Simulation = () => {
                   )}
                 </Box>
               ) : simResults && (
-                <Box sx={{ mt: 6 }}>
+                <Box sx={{ mt: { xs: 0, sm: 6 } }}>
                   {selectedSimulation && (
                     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -2453,7 +2461,7 @@ const Simulation = () => {
                       </Box>
                     </Box>
                   )}
-                  {!selectedSimulation && (
+                  {!selectedSimulation && hasUnsavedChanges && (
                     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
                       <UnsavedChangesIndicator
                         hasChanges={hasUnsavedChanges}
@@ -2497,7 +2505,7 @@ const Simulation = () => {
                       sx={{
                         display: 'flex',
                         justifyContent: 'center',
-                        mb: 4,
+                        mb: { xs: 3, sm: 4 },
                         px: { xs: 1, sm: 0 },
                         width: '100%',
                         boxSizing: 'border-box',

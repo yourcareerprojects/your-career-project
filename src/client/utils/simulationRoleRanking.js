@@ -9,7 +9,14 @@ import { getHybridRawForStep } from './careerStepMatchScore';
 import { getRoleTitleEnglishForMatch } from './roleTitleDisplay';
 
 export const EVALUATION_ROLES_TARGET = 10;
-export const EVALUATION_VISIBLE_SLOTS = 3;
+export const EVALUATION_VISIBLE_SLOTS_DESKTOP = 3;
+export const EVALUATION_VISIBLE_SLOTS_MOBILE = 1;
+/** @deprecated Prefer {@link getEvaluationVisibleSlotCount} for responsive UI. */
+export const EVALUATION_VISIBLE_SLOTS = EVALUATION_VISIBLE_SLOTS_DESKTOP;
+
+export function getEvaluationVisibleSlotCount(isMobileViewport) {
+  return isMobileViewport ? EVALUATION_VISIBLE_SLOTS_MOBILE : EVALUATION_VISIBLE_SLOTS_DESKTOP;
+}
 
 export const evaluationPriority = {
   keep: 0,

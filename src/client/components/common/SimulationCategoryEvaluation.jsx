@@ -10,6 +10,8 @@ import {
   Tooltip,
   Divider,
   CircularProgress,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ThumbUpAltOutlinedIcon from '@mui/icons-material/ThumbUpAltOutlined';
@@ -39,7 +41,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  EVALUATION_VISIBLE_SLOTS,
+  getEvaluationVisibleSlotCount,
   countEvaluatedRoles,
   isEvaluationComplete,
 } from '../../utils/simulationRoleRanking';
@@ -1040,11 +1042,14 @@ export default function SimulationCategoryEvaluation({
   onReorderRankedRoles,
 }) {
   const { t } = useTranslation('dashboard');
+  const theme = useTheme();
+  const isMobileViewport = useMediaQuery(theme.breakpoints.down('sm'));
+  const visibleSlotCount = getEvaluationVisibleSlotCount(isMobileViewport);
   const pending = useMemo(() => roles.filter((r) => r.userEvaluation == null), [roles]);
   const cardsToShow = useMemo(() => {
     if (isEvaluationComplete(roles)) return roles;
-    return pending.slice(0, EVALUATION_VISIBLE_SLOTS);
-  }, [roles, pending]);
+    return pending.slice(0, visibleSlotCount);
+  }, [roles, pending, visibleSlotCount]);
 
   const evaluated = countEvaluatedRoles(roles);
   const total = roles.length;

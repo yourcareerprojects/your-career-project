@@ -74,6 +74,16 @@ const ProfilePageActionBar = ({ actions, sx }) => {
 
   if (!actions?.length) return null;
 
+  const compactActions = actions
+    .map((action, index) => ({ action, index }))
+    .sort((a, b) => {
+      const orderA = a.action.compactOrder ?? a.index;
+      const orderB = b.action.compactOrder ?? b.index;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.index - b.index;
+    })
+    .map(({ action }) => action);
+
   return (
     <>
       <Box
@@ -123,7 +133,7 @@ const ProfilePageActionBar = ({ actions, sx }) => {
               }),
             }}
           >
-            {actions.map((action) => renderButton(action, true))}
+            {compactActions.map((action) => renderButton(action, true))}
           </Box>
         </Portal>
       )}
