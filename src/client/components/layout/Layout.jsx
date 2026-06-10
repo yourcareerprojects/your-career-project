@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import StarIcon from '@mui/icons-material/Star';
+import SearchIcon from '@mui/icons-material/Search';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
@@ -98,6 +99,7 @@ const Layout = ({ children }) => {
           { text: t('navigation.profile', { ns: 'common' }), icon: <PersonIcon />, path: '/profile' },
           ...(canAccessSavedPages
             ? [
+                { text: t('roleSearch.menuLabel', { ns: 'dashboard' }), icon: <SearchIcon />, path: '/explore-roles' },
                 { text: t('saved.simulations', { ns: 'dashboard' }), icon: <EditIcon />, path: '/simulations' },
                 { text: t('saved.careerSteps', { ns: 'dashboard' }), icon: <StarIcon />, path: '/saved-steps' },
               ]
@@ -111,6 +113,12 @@ const Layout = ({ children }) => {
     }
     if (location.pathname === '/simulation/results') {
       return t('simulation.resultsTitle', { ns: 'dashboard' });
+    }
+    if (location.pathname === '/explore-roles') {
+      return t('roleSearch.pageTitle', { ns: 'dashboard' });
+    }
+    if (location.pathname.startsWith('/role/')) {
+      return t('roleSearch.detailPageTitle', { ns: 'dashboard' });
     }
     const match = menuItems.find((item) =>
       item.isCareerSimulation
@@ -148,18 +156,22 @@ const Layout = ({ children }) => {
   );
 
   return (
-    <Box sx={{ display: 'flex' }} className="app-layout print-layout">
+    <Box
+      sx={{ display: 'flex', width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}
+      className="app-layout print-layout"
+    >
       <CssBaseline />
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
+          maxWidth: '100vw',
           ml: { sm: `${drawerWidth}px` },
           bgcolor: 'var(--color-header-brand-bg)',
           color: 'var(--color-header-brand-fg)',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ overflow: 'hidden', minWidth: 0, gap: 0.5, px: { xs: 1, sm: 2 } }}>
           <IconButton
             color="inherit"
             aria-label={t('navigation.openDrawer', { ns: 'common', defaultValue: 'open drawer' })}
@@ -173,7 +185,11 @@ const Layout = ({ children }) => {
             variant="h6"
             noWrap
             component="div"
-            sx={{ flexGrow: 1, color: 'var(--color-header-brand-headline)' }}
+            sx={{
+              flexGrow: 1,
+              minWidth: 0,
+              color: 'var(--color-header-brand-headline)',
+            }}
           >
             {derivedPageTitle}
           </Typography>
@@ -197,24 +213,36 @@ const Layout = ({ children }) => {
               {mode === 'dark' ? <LightModeOutlined /> : <DarkModeOutlined />}
             </IconButton>
           </Tooltip>
-          <LanguageSwitcher />
+          <LanguageSwitcher compact={isMobile} />
           {isAuthenticated ? (
             <Button
               color="inherit"
-              startIcon={<LogoutIcon />}
+              size="small"
+              startIcon={isMobile ? undefined : <LogoutIcon />}
               onClick={() => {
                 logout();
                 guardedNavigate('/login');
               }}
+              sx={{ flexShrink: 0, minWidth: 0, px: { xs: 1, sm: 2 } }}
             >
               {t('auth.logout', { ns: 'common' })}
             </Button>
           ) : (
-            <Box>
-              <Button color="inherit" onClick={() => handleNavigation('/login')}>
+            <Box sx={{ display: 'flex', flexShrink: 0, gap: { xs: 0, sm: 0.5 } }}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => handleNavigation('/login')}
+                sx={{ minWidth: 0, px: { xs: 1, sm: 2 } }}
+              >
                 {t('auth.login', { ns: 'common' })}
               </Button>
-              <Button color="inherit" onClick={() => handleNavigation('/register')}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => handleNavigation('/register')}
+                sx={{ minWidth: 0, px: { xs: 1, sm: 2 } }}
+              >
                 {t('auth.register', { ns: 'common' })}
               </Button>
             </Box>
@@ -244,17 +272,40 @@ const Layout = ({ children }) => {
       </Box>
       <Box
         component="main"
+        className="app-main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          minWidth: 0,
+          maxWidth: '100%',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
+          p: { xs: 2, sm: 3 },
+          width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
           mt: '64px', // Height of AppBar
         }}
       >
         {isAuthenticated && user && !user.isVerified && (
           <Alert
             severity="info"
-            sx={{ mb: 2 }}
+            sx={{
+              mb: 2,
+              width: '100%',
+              maxWidth: '100%',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              flexDirection: { xs: 'column', sm: 'row' },
+              '& .MuiAlert-message': {
+                overflowWrap: 'break-word',
+                wordBreak: 'break-word',
+                width: '100%',
+              },
+              '& .MuiAlert-action': {
+                pt: { xs: 1, sm: 0 },
+                pl: { xs: 0, sm: 2 },
+                m: 0,
+                alignSelf: { xs: 'stretch', sm: 'center' },
+                '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } },
+              },
+            }}
             action={
               <Button color="inherit" size="small" onClick={handleResend}>
                 {t('emailVerification.resendCta', { ns: 'common' })}

@@ -310,5 +310,36 @@
         "bulkRemoveMessage": "This will remove the selected career steps from your saved career steps. This action cannot be undone."
       }
     }
+  },
+  "roleSearch": {
+    "menuLabel": "Explore Roles",
+    "pageTitle": "Explore Roles",
+    "detailPageTitle": "Role Details",
+    "subtitle": "Search for a role you have in mind. We will suggest matching occupations from our database, including alternative titles you may have meant.",
+    "searchPlaceholder": "Search roles by title or synonym…",
+    "minLengthHint": "Type at least 2 characters to search.",
+    "resultsFound": "{{count}} possible role found",
+    "resultsFound_other": "{{count}} possible roles found",
+    "emptyTitle": "No matching roles found",
+    "emptySubtitle": "Try a different spelling, a shorter keyword, or an alternative job title.",
+    "matchedVia": "Matched via {{field}}: {{value}}",
+    "matchedFields": {
+      "title": "title",
+      "altTitles": "alternative title",
+      "hiddenTitles": "related title"
+    },
+    "labels": {
+      "iscoGroup": "ISCO group",
+      "roleId": "Role ID"
+    },
+    "actions": {
+      "backToSearch": "Back to role search",
+      "viewSavedDetail": "Open saved career step"
+    },
+    "errors": {
+      "searchFailed": "Role search failed. Please try again.",
+      "roleNotFound": "Role not found.",
+      "loadFailed": "Failed to load role details. Please try again."
+    }
   }
 }

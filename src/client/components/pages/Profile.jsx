@@ -199,6 +199,8 @@ const Profile = ({
   const [savingCvReview, setSavingCvReview] = useState(false);
   const [cvReviewError, setCvReviewError] = useState(null);
   const prevProfileUiLangRef = useRef(null);
+  /** Prevents double-fire (Strict Mode) and ties celebration to one history entry. */
+  const profileCelebrationHandledKeyRef = useRef(null);
   const hasSimulationSession = hasActiveCareerSimulationSession();
   const lastSimulationQuery = useLastSimulationQuery({
     enabled:
@@ -274,11 +276,12 @@ const Profile = ({
 
   /** Confetti once after profile creation or full update (ProfileCreation navigate + session fallback). */
   useEffect(() => {
+    if (profileCelebrationHandledKeyRef.current === location.key) return;
     if (!shouldCelebrateProfileSave(location.state)) return;
 
-    const frame = requestAnimationFrame(() => {
-      fireProfileCreatedConfetti();
-    });
+    profileCelebrationHandledKeyRef.current = location.key;
+    // Fire synchronously — deferring via rAF races with replace-state navigate cleanup on slower devices.
+    fireProfileCreatedConfetti();
 
     const prev = location.state || {};
     const {
@@ -290,9 +293,7 @@ const Profile = ({
       { pathname: location.pathname, search: location.search, hash: location.hash },
       { replace: true, state: Object.keys(rest).length ? rest : undefined }
     );
-
-    return () => cancelAnimationFrame(frame);
-  }, [location.key, location.pathname, location.search, location.hash, navigate, location.state]);
+  }, [location.key, location.pathname, location.search, location.hash, navigate]);
 
   useEffect(() => {
     if (loginSecurity?.data?.email && loginSecurity.data.email !== user?.email) {
@@ -1240,7 +1241,16 @@ const Profile = ({
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
             {t('profilePagePrompts.incomplete.description')}
           </Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 2,
+              mb: 4,
+              flexWrap: 'wrap',
+              width: '100%',
+            }}
+          >
             <Button
               variant="contained"
               color="primary"
@@ -1252,6 +1262,7 @@ const Profile = ({
                 px: 3,
                 py: 1.5,
                 fontSize: '1rem',
+                width: { xs: '100%', sm: 'auto' },
               }}
             >
               {t('profilePagePrompts.incomplete.cta')}
@@ -1266,7 +1277,7 @@ const Profile = ({
               display: 'flex',
               flexDirection: { xs: 'column', sm: 'row' },
               justifyContent: 'center',
-              alignItems: 'center',
+              alignItems: { xs: 'stretch', sm: 'center' },
               gap: 2,
               mb: 4,
               width: '100%',
@@ -1286,6 +1297,7 @@ const Profile = ({
                   px: 3,
                   py: 1.5,
                   fontSize: '1rem',
+                  width: { xs: '100%', sm: 'auto' },
                 }}
               >
                 {t('profilePagePrompts.goToSimulationCta')}
@@ -1302,6 +1314,7 @@ const Profile = ({
                 px: 3,
                 py: 1.5,
                 fontSize: '1rem',
+                width: { xs: '100%', sm: 'auto' },
               }}
             >
               {t('profilePagePrompts.fullUpdateCta')}
@@ -2066,7 +2079,10 @@ const Profile = ({
       )}
 
       {/* Documents */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 4 }} elevation={1}>
+      <Paper
+        sx={{ p: { xs: 2, sm: 3 }, mb: 4, width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+        elevation={1}
+      >
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
           <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
           {t('profilePage.documents.title')}

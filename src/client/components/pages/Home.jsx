@@ -39,17 +39,29 @@ const Home = () => {
     {
       title: t('home.features.understand.title'),
       description: t('home.features.understand.description'),
-      icon: <PersonIcon sx={{ fontSize: 60, color: 'var(--color-header-brand-headline)' }} />,
+      icon: (
+        <PersonIcon
+          sx={{ fontSize: { xs: 48, sm: 60 }, color: 'var(--color-header-brand-headline)' }}
+        />
+      ),
     },
     {
       title: t('home.features.simulate.title'),
       description: t('home.features.simulate.description'),
-      icon: <SchoolIcon sx={{ fontSize: 60, color: 'var(--color-header-brand-headline)' }} />,
+      icon: (
+        <SchoolIcon
+          sx={{ fontSize: { xs: 48, sm: 60 }, color: 'var(--color-header-brand-headline)' }}
+        />
+      ),
     },
     {
       title: t('home.features.find.title'),
       description: t('home.features.find.description'),
-      icon: <WorkIcon sx={{ fontSize: 60, color: 'var(--color-header-brand-headline)' }} />,
+      icon: (
+        <WorkIcon
+          sx={{ fontSize: { xs: 48, sm: 60 }, color: 'var(--color-header-brand-headline)' }}
+        />
+      ),
     },
   ];
 
@@ -65,8 +77,22 @@ const Home = () => {
   };
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: { xs: 3, md: 8 }, mb: { xs: 3, md: 6 }, textAlign: 'center' }}>
+    <Container
+      maxWidth="lg"
+      disableGutters
+      sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden', px: { xs: 0, sm: 2 } }}
+    >
+      <Box
+        sx={{
+          mt: { xs: 3, md: 8 },
+          mb: { xs: 3, md: 6 },
+          textAlign: 'center',
+          width: '100%',
+          maxWidth: '100%',
+          px: { xs: 0.5, sm: 0 },
+          boxSizing: 'border-box',
+        }}
+      >
         <Typography
           component="h1"
           variant="h2"
@@ -75,6 +101,8 @@ const Home = () => {
           sx={{
             fontWeight: 'bold',
             fontSize: { xs: '1.75rem', sm: '2.125rem', md: '3.75rem' },
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
             ...(isAuthenticated ? { color: 'var(--color-header-brand-headline)' } : {}),
           }}
         >
@@ -88,6 +116,8 @@ const Home = () => {
             fontSize: { xs: '1rem', md: '1.5rem' },
             mb: { xs: 2, md: 3 },
             px: { xs: 0.5, sm: 2 },
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
           }}
         >
           {t('home.subtitle')}
@@ -100,6 +130,11 @@ const Home = () => {
             gap: 2,
             justifyContent: 'center',
             flexWrap: 'wrap',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: 'stretch',
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
           }}
         >
           <HomeGetStartedButton onClick={handleGetStarted}>

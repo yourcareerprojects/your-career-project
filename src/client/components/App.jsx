@@ -17,6 +17,8 @@ import SavedSimulationDetails from './pages/SavedSimulationDetails';
 import SavedSimulationCareerStepDetails from './pages/SavedSimulationCareerStepDetails';
 import SavedCareerSteps from './pages/SavedCareerSteps';
 import SavedCareerStepDetails from './pages/SavedCareerStepDetails';
+import RoleSearch from './pages/RoleSearch';
+import RoleDetails from './pages/RoleDetails';
 import SimulationResultDetails from './pages/SimulationResultDetails';
 import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
@@ -168,6 +170,8 @@ const App = () => {
                     path="/saved-simulation/:simulationId/career-step/:stepId"
                     element={<SavedSimulationCareerStepDetails />}
                   />
+                  <Route path="/explore-roles" element={<RoleSearch />} />
+                  <Route path="/role/:escoId" element={<RoleDetails />} />
                   <Route path="/saved-steps" element={<SavedCareerSteps />} />
                   <Route path="/saved-career-step/:stepId" element={<SavedCareerStepDetails />} />
                 </Route>

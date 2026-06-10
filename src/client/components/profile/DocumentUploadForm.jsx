@@ -44,6 +44,7 @@ import {
   warmReviewNarrativeCacheForStep,
   fetchDocumentNarrativeCacheStatus,
   computeNarrativeWarmProgressEstimate,
+  WIZARD_NARRATIVE_WARM_SLOW_WARNING_MS,
 } from '../../utils/profileReviewSaveFlow';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import {
@@ -502,6 +503,7 @@ const DocumentUploadForm = ({
   /** idle | warming | ready | failed — gates Save on step 5 until warm completes or times out. */
   const [step5NarrativeWarmStatus, setStep5NarrativeWarmStatus] = useState('idle');
   const [step5NarrativeWarmProgress, setStep5NarrativeWarmProgress] = useState(0);
+  const [step5NarrativeWarmSlow, setStep5NarrativeWarmSlow] = useState(false);
   const [acceptedFields, setAcceptedFields] = useState({});
   const [savingReview, setSavingReview] = useState(false);
   const savingReviewActive = savingReview || parentSavingReview;
@@ -2144,8 +2146,6 @@ const DocumentUploadForm = ({
     t,
   ]);
 
-  const STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS = 60000;
-
   const step5NarrativeBlocksSave = reviewStep === 5
     && pendingUploadedDocId
     && step5NarrativeWarmStatus === 'warming';
@@ -2154,6 +2154,7 @@ const DocumentUploadForm = ({
     if (reviewStep !== 5) {
       setStep5NarrativeWarmStatus('idle');
       setStep5NarrativeWarmProgress(0);
+      setStep5NarrativeWarmSlow(false);
     }
   }, [reviewStep]);
 
@@ -2176,7 +2177,8 @@ const DocumentUploadForm = ({
     }
 
     let cancelled = false;
-    let fallbackTimer;
+    let progressTimer;
+    let slowWarningTimer;
     const warmStartedAt = Date.now();
 
     const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
@@ -2197,65 +2199,78 @@ const DocumentUploadForm = ({
 
     setStep5NarrativeWarmStatus('warming');
     setStep5NarrativeWarmProgress(8);
+    setStep5NarrativeWarmSlow(false);
 
-    fallbackTimer = setTimeout(() => {
-      if (!cancelled) {
-        setStep5NarrativeWarmStatus((prev) => (prev === 'warming' ? 'failed' : prev));
+    const markReadyIfStatusMatches = (status) => {
+      if (status?.ready === true && status?.fingerprintMatches === true) {
+        setStep5NarrativeWarmProgress(100);
+        setStep5NarrativeWarmStatus('ready');
+        return true;
       }
-    }, STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS);
+      return false;
+    };
 
-    void warmReviewNarrativeCacheForStep({
-      documentId: pendingUploadedDocId,
-      reviewProfile: profileForWarm,
-      acceptedFields,
-      step: 4,
-      langQuery,
-      translate: t,
-      awaitReady: true,
-    });
-
-    const pollUntilReady = async () => {
-      const deadline = Date.now() + STEP5_NARRATIVE_WARM_SAVE_FALLBACK_MS;
-      while (!cancelled && Date.now() < deadline) {
+    const scheduleProgressTick = () => {
+      progressTimer = setTimeout(async () => {
+        if (cancelled) return;
         try {
           const status = await fetchDocumentNarrativeCacheStatus(cacheStatusParams);
           if (!cancelled) {
             const elapsedMs = Date.now() - warmStartedAt;
             const nextProgress = computeNarrativeWarmProgressEstimate(status, elapsedMs);
             setStep5NarrativeWarmProgress((prev) => Math.max(prev, nextProgress));
-          }
-          if (status?.ready === true && status?.fingerprintMatches === true) {
-            if (!cancelled) {
-              setStep5NarrativeWarmProgress(100);
-              setStep5NarrativeWarmStatus('ready');
-            }
-            return;
+            if (markReadyIfStatusMatches(status)) return;
           }
         } catch {
-          // Keep polling; warm work may still complete server-side.
+          // Warm may still complete server-side.
         }
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        if (!cancelled) scheduleProgressTick();
+      }, 400);
+    };
+
+    scheduleProgressTick();
+
+    slowWarningTimer = setTimeout(() => {
+      if (!cancelled) setStep5NarrativeWarmSlow(true);
+    }, WIZARD_NARRATIVE_WARM_SLOW_WARNING_MS);
+
+    void (async () => {
+      try {
+        await warmReviewNarrativeCacheForStep({
+          documentId: pendingUploadedDocId,
+          reviewProfile: profileForWarm,
+          acceptedFields,
+          step: 4,
+          langQuery,
+          translate: t,
+          awaitReady: true,
+        });
+      } catch {
+        // Non-fatal; save will poll or warm once more.
+      }
+      if (cancelled) return;
+      try {
+        const status = await fetchDocumentNarrativeCacheStatus(cacheStatusParams);
+        if (markReadyIfStatusMatches(status)) return;
+      } catch {
+        // Fall through to failed state.
       }
       if (!cancelled) {
         setStep5NarrativeWarmStatus((prev) => (prev === 'warming' ? 'failed' : prev));
       }
-    };
-
-    void pollUntilReady();
+    })();
 
     return () => {
       cancelled = true;
-      clearTimeout(fallbackTimer);
+      clearTimeout(progressTimer);
+      clearTimeout(slowWarningTimer);
     };
+    // seniorityNarrativeWarmKey captures identity + structured inputs only; seniority edits must not restart warm.
   }, [
     reviewDialogOpen,
     reviewStep,
     pendingUploadedDocId,
     seniorityNarrativeWarmKey,
-    reviewProfile,
-    step3FollowUps,
-    step3FollowUpAnswers,
-    acceptedFields,
     t,
   ]);
 
@@ -3367,6 +3382,11 @@ const DocumentUploadForm = ({
                       <Alert severity="info">
                         {t('documentUpload.review.step5PreparingProfile')}
                       </Alert>
+                      {step5NarrativeWarmSlow && (
+                        <Alert severity="warning" sx={{ mt: 1.5 }}>
+                          {t('documentUpload.review.step5PrepareSlow')}
+                        </Alert>
+                      )}
                       <LinearProgress
                         variant="determinate"
                         value={step5NarrativeWarmProgress}

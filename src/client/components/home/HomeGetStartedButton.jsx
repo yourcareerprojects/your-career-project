@@ -36,6 +36,8 @@ const HomeGetStartedButton = ({ children, onClick, ...buttonProps }) => {
         px: 3,
         py: 1.5,
         fontSize: '1rem',
+        width: { xs: '100%', sm: 'auto' },
+        maxWidth: '100%',
         willChange: 'transform',
         '@keyframes homeCtaNudge': {
           '0%, 100%': { transform: 'translateY(0) scale(1)' },

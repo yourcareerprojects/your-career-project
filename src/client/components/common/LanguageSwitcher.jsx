@@ -17,7 +17,7 @@ const SELECTED_LANGUAGE_SX = {
   },
 };
 
-const LanguageSwitcher = () => {
+const LanguageSwitcher = ({ compact = false }) => {
   const { i18n, t } = useTranslation('common');
   const resolvedLanguage = String(i18n.resolvedLanguage || i18n.language || DEFAULT_UI_LANGUAGE)
     .toLowerCase()
@@ -31,10 +31,12 @@ const LanguageSwitcher = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Typography variant="body2" component="span" color="inherit">
-        {t('language.switchLabel')}
-      </Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: compact ? 0.5 : 1, flexShrink: 0 }}>
+      {!compact && (
+        <Typography variant="body2" component="span" color="inherit">
+          {t('language.switchLabel')}
+        </Typography>
+      )}
       <ButtonGroup
         size="small"
         variant="outlined"

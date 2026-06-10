@@ -14,7 +14,6 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemSecondaryAction,
   ListItemText,
   TextField,
   Tooltip,
@@ -72,6 +71,16 @@ function documentToPollSnapshot(doc) {
     0
   );
 }
+
+const wrappingChipSx = {
+  maxWidth: '100%',
+  height: 'auto',
+  '& .MuiChip-label': {
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    py: 0.25,
+  },
+};
 
 function staticExtractionStatusLabel(doc, t) {
   if (!isCvDocument(doc) || !isActiveCvExtractionDocument(doc)) return null;
@@ -179,7 +188,7 @@ const ProfileDocumentList = ({
   }
 
   return (
-    <Box>
+    <Box sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
       {actionError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError('')}>
           {actionError}
@@ -191,6 +200,10 @@ const ProfileDocumentList = ({
           const processingLabel = staticExtractionStatusLabel(doc, t);
           const showReview = canOpenCvReview(doc);
 
+          const reviewLabel = isActiveCvExtractionDocument(doc)
+            ? t('profilePage.documents.continueExtractionCta')
+            : t('profilePage.documents.reviewCta');
+
           return (
             <ListItem
               key={doc.id}
@@ -200,100 +213,176 @@ const ProfileDocumentList = ({
                 borderRadius: 1,
                 border: 1,
                 borderColor: 'divider',
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                alignItems: { xs: 'stretch', md: 'center' },
+                gap: { xs: 1.5, md: 2 },
+                px: { xs: 1.5, sm: 2 },
+                py: { xs: 1.5, sm: 2 },
                 '&:hover': {
                   bgcolor: 'action.hover',
                 },
               }}
             >
-              <DescriptionIcon sx={{ mr: 2, color: 'primary.main' }} />
-              <ListItemText
-                secondaryTypographyProps={{ component: 'div' }}
-                primary={
-                  editingDocId === doc.id ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                      <TextField
-                        value={editingDescription}
-                        onChange={(e) => setEditingDescription(e.target.value)}
-                        size="small"
-                        autoFocus
-                        disabled={renameLoading || disabled}
-                        sx={{ minWidth: 180 }}
-                      />
-                      <Button
-                        onClick={() => handleRename(doc.id)}
-                        disabled={renameLoading || disabled || !editingDescription.trim()}
-                        size="small"
-                        variant="contained"
-                      >
-                        {t('documentUpload.documents.rename.saveCta')}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setEditingDocId(null);
-                          setEditingDescription('');
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: { xs: 1.5, sm: 2 },
+                  minWidth: 0,
+                  width: '100%',
+                  flex: 1,
+                }}
+              >
+                <DescriptionIcon
+                  sx={{ color: 'primary.main', flexShrink: 0, mt: 0.25, fontSize: { xs: 28, sm: 32 } }}
+                />
+                <ListItemText
+                  sx={{ minWidth: 0, m: 0, flex: 1 }}
+                  secondaryTypographyProps={{ component: 'div' }}
+                  primary={
+                    editingDocId === doc.id ? (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: { xs: 'column', sm: 'row' },
+                          alignItems: { xs: 'stretch', sm: 'center' },
+                          gap: 1,
+                          width: '100%',
                         }}
-                        disabled={renameLoading}
-                        size="small"
                       >
-                        {t('documentUpload.common.cancel')}
-                      </Button>
-                    </Box>
-                  ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                      <Typography variant="body1">
-                        {doc.description || doc.name || doc.originalName || t('documentUpload.documents.noTitle')}
-                      </Typography>
-                      <Tooltip title={t('documentUpload.documents.tooltips.edit')} placement="bottom">
-                        <Box component="span" sx={{ display: 'inline-flex' }}>
-                          <IconButton
+                        <TextField
+                          value={editingDescription}
+                          onChange={(e) => setEditingDescription(e.target.value)}
+                          size="small"
+                          autoFocus
+                          disabled={renameLoading || disabled}
+                          sx={{ minWidth: 0, flex: 1, width: '100%' }}
+                        />
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button
+                            onClick={() => handleRename(doc.id)}
+                            disabled={renameLoading || disabled || !editingDescription.trim()}
                             size="small"
-                            disabled={disabled}
-                            onClick={() => {
-                              setEditingDocId(doc.id);
-                              setEditingDescription(doc.description || '');
-                            }}
-                            aria-label={t('documentUpload.documents.tooltips.edit')}
+                            variant="contained"
                           >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
+                            {t('documentUpload.documents.rename.saveCta')}
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setEditingDocId(null);
+                              setEditingDescription('');
+                            }}
+                            disabled={renameLoading}
+                            size="small"
+                          >
+                            {t('documentUpload.common.cancel')}
+                          </Button>
                         </Box>
-                      </Tooltip>
+                      </Box>
+                    ) : (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 0.5,
+                          width: '100%',
+                          minWidth: 0,
+                        }}
+                      >
+                        <Typography
+                          variant="body1"
+                          sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word', flex: 1, minWidth: 0 }}
+                        >
+                          {doc.description || doc.name || doc.originalName || t('documentUpload.documents.noTitle')}
+                        </Typography>
+                        <Tooltip title={t('documentUpload.documents.tooltips.edit')} placement="bottom">
+                          <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>
+                            <IconButton
+                              size="small"
+                              disabled={disabled}
+                              onClick={() => {
+                                setEditingDocId(doc.id);
+                                setEditingDescription(doc.description || '');
+                              }}
+                              aria-label={t('documentUpload.documents.tooltips.edit')}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </Tooltip>
+                      </Box>
+                    )
+                  }
+                  secondary={
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        mt: 0.5,
+                        flexWrap: 'wrap',
+                        width: '100%',
+                      }}
+                    >
+                      <Chip
+                        size="small"
+                        label={documentTypeChipLabel(doc, t)}
+                        color="primary"
+                        variant="outlined"
+                        sx={wrappingChipSx}
+                      />
+                      {processingLabel && (
+                        <Chip
+                          size="small"
+                          label={processingLabel}
+                          color="warning"
+                          variant="outlined"
+                          sx={wrappingChipSx}
+                        />
+                      )}
+                      {doc.uploadDate && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                        >
+                          {t('documentUpload.documents.uploadedOn', {
+                            date: new Date(doc.uploadDate).toLocaleDateString(),
+                          })}
+                        </Typography>
+                      )}
                     </Box>
-                  )
-                }
-                secondary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-                    <Chip
-                      size="small"
-                      label={documentTypeChipLabel(doc, t)}
-                      color="primary"
-                      variant="outlined"
-                    />
-                    {processingLabel && (
-                      <Chip size="small" label={processingLabel} color="warning" variant="outlined" />
-                    )}
-                    {doc.uploadDate && (
-                      <Typography variant="caption" color="text.secondary">
-                        {t('documentUpload.documents.uploadedOn', {
-                          date: new Date(doc.uploadDate).toLocaleDateString(),
-                        })}
-                      </Typography>
-                    )}
-                  </Box>
-                }
-              />
-              <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  }
+                />
+              </Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  width: { xs: '100%', md: 'auto' },
+                  pl: { xs: 5, md: 0 },
+                  flexShrink: 0,
+                }}
+              >
                 {showReview && (
                   <Button
                     size="small"
                     variant="outlined"
                     disabled={disabled}
                     onClick={() => onOpenReview?.(doc.id)}
-                    sx={{ mr: 0.5 }}
+                    sx={{
+                      flex: { xs: '1 1 100%', sm: '1 1 auto' },
+                      minWidth: 0,
+                      whiteSpace: 'normal',
+                      textAlign: 'center',
+                      lineHeight: 1.3,
+                      py: 0.75,
+                    }}
                   >
-                    {isActiveCvExtractionDocument(doc)
-                      ? t('profilePage.documents.continueExtractionCta')
-                      : t('profilePage.documents.reviewCta')}
+                    {reviewLabel}
                   </Button>
                 )}
                 <Tooltip title={t('documentUpload.documents.tooltips.download')} placement="bottom">
@@ -321,7 +410,7 @@ const ProfileDocumentList = ({
                     </IconButton>
                   </Box>
                 </Tooltip>
-              </ListItemSecondaryAction>
+              </Box>
             </ListItem>
           );
         })}

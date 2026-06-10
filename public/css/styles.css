@@ -109,8 +109,8 @@ nav a.active {
     color: white;
 }
 
-/* Main content styles */
-main {
+/* Main content styles (legacy static pages only — React shell uses .app-main) */
+main:not(.app-main) {
     max-width: 1200px;
     margin: 2rem auto;
     padding: 0 1rem;

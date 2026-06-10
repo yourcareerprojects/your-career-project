@@ -9,11 +9,19 @@ function resolveConfettiExport(mod) {
 }
 
 const confettiExport = resolveConfettiExport(confettiImport);
-/** Main-thread only — avoids blob: workers blocked by Helmet CSP on staging/production. */
-const confetti =
-  confettiExport?.create != null
-    ? confettiExport.create(null, { useWorker: false, resize: true })
-    : confettiExport;
+
+/** Lazily create on first fire so the canvas is always attached after the document is ready. */
+let confettiInstance = null;
+
+function getConfetti() {
+  if (confettiInstance) return confettiInstance;
+  if (!confettiExport) return null;
+  confettiInstance =
+    confettiExport.create != null
+      ? confettiExport.create(null, { useWorker: false, resize: true })
+      : confettiExport;
+  return confettiInstance;
+}
 
 const CONFETTI_Z_INDEX = 9999;
 /** Side-stream confetti duration (ms); initial burst is separate. */
@@ -28,6 +36,7 @@ function prefersReducedMotion() {
  * Full-viewport confetti burst when the user completes profile creation or a full profile update.
  */
 export function fireProfileCreatedConfetti() {
+  const confetti = getConfetti();
   if (!confetti) return;
   if (prefersReducedMotion()) return;
 

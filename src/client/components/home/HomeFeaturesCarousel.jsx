@@ -45,17 +45,18 @@ const HomeFeaturesCarousel = ({ features }) => {
       component="section"
       aria-roledescription="carousel"
       aria-label={t('home.features.carousel.region')}
+      sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}
     >
       <Box
         ref={scrollRef}
         sx={{
           display: 'flex',
+          width: '100%',
+          maxWidth: '100%',
           overflowX: 'auto',
           scrollSnapType: 'x mandatory',
           scrollBehavior: 'smooth',
           WebkitOverflowScrolling: 'touch',
-          mx: -1,
-          px: 1,
           scrollbarWidth: 'none',
           '&::-webkit-scrollbar': { display: 'none' },
         }}
@@ -73,10 +74,12 @@ const HomeFeaturesCarousel = ({ features }) => {
             aria-hidden={index !== activeIndex}
             sx={{
               flex: '0 0 100%',
-              scrollSnapAlign: 'center',
+              width: '100%',
+              minWidth: 0,
+              maxWidth: '100%',
+              scrollSnapAlign: 'start',
               scrollSnapStop: 'always',
               boxSizing: 'border-box',
-              px: 0.5,
             }}
           >
             <HomeFeatureCard {...feature} />

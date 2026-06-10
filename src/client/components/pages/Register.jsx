@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,6 +16,10 @@ import {
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  handlePasswordVisibilityMouseDown,
+  syncControlledPasswordInput,
+} from '../../utils/passwordVisibility';
 
 /** Mirrors server `src/server/routes/auth.js` passwordValidation rules */
 function validatePasswordPolicy(password, t) {
@@ -47,6 +51,16 @@ const Register = () => {
     password: false,
     confirmPassword: false,
   });
+  const passwordRef = useRef(null);
+  const confirmPasswordRef = useRef(null);
+
+  const togglePasswordVisibility = useCallback((field, inputRef) => {
+    const el = inputRef.current;
+    if (el) {
+      syncControlledPasswordInput(field, el.value, setFormData);
+    }
+    setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }));
+  }, []);
 
   const validateForm = () => {
     const newErrors = {};
@@ -90,6 +104,11 @@ const Register = () => {
         [name]: '',
       }));
     }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => (prev[name] === value ? prev : { ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -189,8 +208,11 @@ const Register = () => {
               type={showPasswords.password ? 'text' : 'password'}
               id="password"
               autoComplete="new-password"
+              inputRef={passwordRef}
               value={formData.password}
               onChange={handleChange}
+              onInput={handleChange}
+              onBlur={handleBlur}
               error={!!errors.password}
               helperText={errors.password || t('register.passwordPolicyHint')}
               disabled={loading}
@@ -201,9 +223,8 @@ const Register = () => {
                       type="button"
                       aria-label={showPasswords.password ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                       aria-pressed={showPasswords.password}
-                      onClick={() =>
-                        setShowPasswords((prev) => ({ ...prev, password: !prev.password }))
-                      }
+                      onClick={() => togglePasswordVisibility('password', passwordRef)}
+                      onMouseDown={handlePasswordVisibilityMouseDown}
                       edge="end"
                       disabled={loading}
                     >
@@ -222,8 +243,11 @@ const Register = () => {
               type={showPasswords.confirmPassword ? 'text' : 'password'}
               id="confirmPassword"
               autoComplete="new-password"
+              inputRef={confirmPasswordRef}
               value={formData.confirmPassword}
               onChange={handleChange}
+              onInput={handleChange}
+              onBlur={handleBlur}
               error={!!errors.confirmPassword}
               helperText={errors.confirmPassword}
               disabled={loading}
@@ -234,12 +258,8 @@ const Register = () => {
                       type="button"
                       aria-label={showPasswords.confirmPassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                       aria-pressed={showPasswords.confirmPassword}
-                      onClick={() =>
-                        setShowPasswords((prev) => ({
-                          ...prev,
-                          confirmPassword: !prev.confirmPassword,
-                        }))
-                      }
+                      onClick={() => togglePasswordVisibility('confirmPassword', confirmPasswordRef)}
+                      onMouseDown={handlePasswordVisibilityMouseDown}
                       edge="end"
                       disabled={loading}
                     >
@@ -249,7 +269,16 @@ const Register = () => {
                 ),
               }}
             />
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2, width: '100%' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                mt: 3,
+                width: '100%',
+              }}
+            >
               <Button
                 type="submit"
                 variant="contained"
@@ -261,18 +290,24 @@ const Register = () => {
                   px: 3,
                   py: 1.5,
                   fontSize: '1rem',
+                  width: { xs: '100%', sm: 'auto' },
                 }}
                 disabled={loading}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : t('register.submitCta')}
               </Button>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
               <Button
                 component={RouterLink}
                 to="/login"
                 variant="outlined"
-                size="large"
+                size="medium"
+                sx={{
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  fontSize: '1rem',
+                  width: { xs: '100%', sm: 'auto' },
+                }}
               >
                 {t('register.loginPrompt')}
               </Button>

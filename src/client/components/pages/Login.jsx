@@ -170,7 +170,16 @@ const Login = () => {
                 {t('login.forgotPasswordLink')}
               </Button>
             </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2, width: '100%' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                mt: 3,
+                width: '100%',
+              }}
+            >
               <Button
                 type="submit"
                 variant="contained"
@@ -182,18 +191,24 @@ const Login = () => {
                   px: 3,
                   py: 1.5,
                   fontSize: '1rem',
+                  width: { xs: '100%', sm: 'auto' },
                 }}
                 disabled={loading}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : t('login.submitCta')}
               </Button>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
               <Button
                 component={RouterLink}
                 to="/register"
                 variant="outlined"
-                size="large"
+                size="medium"
+                sx={{
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  fontSize: '1rem',
+                  width: { xs: '100%', sm: 'auto' },
+                }}
               >
                 {t('login.registerPrompt')}
               </Button>

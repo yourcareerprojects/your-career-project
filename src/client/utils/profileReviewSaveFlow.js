@@ -22,6 +22,8 @@ const DOCUMENT_CACHE_POLL_MAX_ATTEMPTS = 240;
 const DOCUMENT_CACHE_PRE_SAVE_POLL_MS = 1500;
 /** Wait for step-5 / server in-flight narrative work before starting a duplicate warm. */
 const DOCUMENT_CACHE_INFLIGHT_POLL_MS = 45000;
+/** Step-5 UI may show a slow warning after this; warm itself is not cut off at this mark. */
+const WIZARD_NARRATIVE_WARM_SLOW_WARNING_MS = 60_000;
 
 /** @type {Map<string, Promise<unknown>>} */
 const narrativeWarmInflightByKey = new Map();
@@ -62,6 +64,14 @@ async function awaitRegisteredNarrativeWarm(registryKey) {
 
 function isNarrativeCacheStatusReady(status) {
   return status?.ready === true && status?.fingerprintMatches === true;
+}
+
+/** No enrichment persisted yet — safe to start (or restart) warm after a brief poll. */
+function isNarrativeCacheAbsent(status) {
+  if (status?.ready === true || status?.inFlight === true) return false;
+  const pending = Array.isArray(status?.pending) ? status.pending : [];
+  if (pending.length === 0) return true;
+  return pending.length === 1 && pending[0] === 'narrativeEnrichment';
 }
 
 /** Narrative sections we can detect as complete via narrative-cache-status `pending`. */
@@ -368,7 +378,7 @@ async function saveExtractedProfileReview({
   prefetchProfile = false,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
-  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_PRE_SAVE_POLL_MS,
+  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_INFLIGHT_POLL_MS,
   fetchFullProfileImpl,
   queryClientImpl,
 }) {
@@ -638,7 +648,9 @@ async function runEnsureReviewNarrativeCacheBeforeSave({
   } else {
     const pollDeadlineMs = status?.inFlight
       ? DOCUMENT_CACHE_INFLIGHT_POLL_MS
-      : documentCacheWarmTimeoutMs;
+      : (isNarrativeCacheAbsent(status)
+        ? DOCUMENT_CACHE_PRE_SAVE_POLL_MS
+        : documentCacheWarmTimeoutMs);
     const polled = await pollReviewNarrativeCacheReady({
       ...cacheParams,
       deadlineMs: pollDeadlineMs,
@@ -830,9 +842,11 @@ async function warmReviewNarrativeCacheForStep({
     if (isNarrativeCacheStatusReady(status)) return status;
 
     if (status?.ready !== true || status?.fingerprintMatches !== false) {
-      const pollDeadlineMs = status?.inFlight
-        ? DOCUMENT_CACHE_INFLIGHT_POLL_MS
-        : DOCUMENT_CACHE_PRE_SAVE_POLL_MS;
+      const pollDeadlineMs =
+        status?.inFlight
+        || (awaitReady && !isNarrativeCacheAbsent(status))
+          ? DOCUMENT_CACHE_INFLIGHT_POLL_MS
+          : DOCUMENT_CACHE_PRE_SAVE_POLL_MS;
       const polled = await pollReviewNarrativeCacheReady({
         ...cacheParams,
         deadlineMs: pollDeadlineMs,
@@ -900,6 +914,7 @@ module.exports = {
   fetchDocumentNarrativeCacheStatus,
   flushNarrativeWarmRegistryForTests,
   computeNarrativeWarmProgressEstimate,
+  WIZARD_NARRATIVE_WARM_SLOW_WARNING_MS,
   mergeStructuredUserInfoForProfileSeed,
   waitForDocumentNarrativeCache,
   waitForProfileNarrativesReady,

@@ -310,5 +310,36 @@
         "bulkRemoveMessage": "Dadurch werden die ausgewählten Berufsempfehlungen aus deinen gespeicherten Berufsschritten entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
       }
     }
+  },
+  "roleSearch": {
+    "menuLabel": "Rollen erkunden",
+    "pageTitle": "Rollen erkunden",
+    "detailPageTitle": "Rollendetails",
+    "subtitle": "Suche nach einer Rolle, die du im Sinn hast. Wir schlagen passende Berufe aus unserer Datenbank vor – auch alternative Bezeichnungen, die du vielleicht meintest.",
+    "searchPlaceholder": "Rollen nach Titel oder Synonym suchen…",
+    "minLengthHint": "Gib mindestens 2 Zeichen ein, um zu suchen.",
+    "resultsFound": "{{count}} mögliche Rolle gefunden",
+    "resultsFound_other": "{{count}} mögliche Rollen gefunden",
+    "emptyTitle": "Keine passenden Rollen gefunden",
+    "emptySubtitle": "Probiere eine andere Schreibweise, ein kürzeres Stichwort oder einen alternativen Berufstitel.",
+    "matchedVia": "Treffer über {{field}}: {{value}}",
+    "matchedFields": {
+      "title": "Titel",
+      "altTitles": "alternativer Titel",
+      "hiddenTitles": "verwandter Titel"
+    },
+    "labels": {
+      "iscoGroup": "ISCO-Gruppe",
+      "roleId": "Rollen-ID"
+    },
+    "actions": {
+      "backToSearch": "Zurück zur Rollensuche",
+      "viewSavedDetail": "Gespeicherten Berufsschritt öffnen"
+    },
+    "errors": {
+      "searchFailed": "Rollensuche fehlgeschlagen. Bitte versuche es erneut.",
+      "roleNotFound": "Rolle nicht gefunden.",
+      "loadFailed": "Rollendetails konnten nicht geladen werden. Bitte versuche es erneut."
+    }
   }
 }
