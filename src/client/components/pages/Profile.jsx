@@ -48,6 +48,7 @@ import ProfileDocumentList from '../profile/ProfileDocumentList';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import ProfileSnapTarget from '../profile/ProfileSnapTarget';
 import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
+import { ProfileMobileSnapContext } from '../../contexts/ProfileMobileSnapContext';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 
@@ -215,7 +216,7 @@ const Profile = ({
   const careerInputsSectionRef = useRef(null);
   const [sectionScrollTarget, setSectionScrollTarget] = useState(null);
   const isProfileReadOnlyView = !editSection && !editStructuredInfo && !editCareerInputs;
-  useProfileMobileScrollSnap(isProfileReadOnlyView);
+  const mobileSnapActive = useProfileMobileScrollSnap(isProfileReadOnlyView);
   const hasSimulationSession = hasActiveCareerSimulationSession();
   const lastSimulationQuery = useLastSimulationQuery({
     enabled:
@@ -1335,6 +1336,7 @@ const Profile = ({
   ];
 
   return (
+    <ProfileMobileSnapContext.Provider value={mobileSnapActive}>
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {/* Prompt to complete profile if below threshold */}
       {completion && completion.overall < MIN_PROFILE_COMPLETION_REQUIRED ? (
@@ -2263,6 +2265,7 @@ const Profile = ({
         }}
       />
     </Box>
+    </ProfileMobileSnapContext.Provider>
   );
 };
 

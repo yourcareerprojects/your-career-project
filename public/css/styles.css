@@ -687,6 +687,11 @@ footer {
 /* Profile page: stepped scroll on mobile (category + subcategory snap points). */
 @media (max-width: 599.95px) {
     html.profile-mobile-scroll-snap {
-        scroll-snap-type: y mandatory;
+        scroll-snap-type: y proximity;
+        scroll-padding-top: 7.5rem;
+    }
+
+    html.profile-mobile-scroll-snap body {
+        scroll-snap-type: y proximity;
     }
 }
