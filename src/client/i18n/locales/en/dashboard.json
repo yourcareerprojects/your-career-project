@@ -21,11 +21,17 @@
       "title": "Profile completion required",
       "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to start a career simulation."
     },
+    "emailVerificationGate": {
+      "title": "Verify your email first",
+      "description": "Only then can you start the career simulation.",
+      "cta": "Check your inbox"
+    },
     "info": {
       "updateProfileHint": "If you are not happy with your simulation results, go back to your profile page and update your information there."
     },
     "tooltips": {
       "completeProfileFirst": "Complete at least {{min}}% of your profile first",
+      "verifyEmailFirst": "Verify your email address first",
       "startSimulation": "Choose a goal and generate new career role suggestions",
       "savedSimulations": "View and manage your saved simulations",
       "saveResults": "Save this simulation to your saved simulations list",
@@ -118,6 +124,7 @@
     "messages": {
       "loadFailed": "Failed to load simulation",
       "profileCompletionRequired": "Your profile must be at least {{min}}% complete to run a simulation. Update your profile and try again.",
+      "emailVerificationRequired": "Please verify your email address before running a simulation.",
       "completeProfileToRun": "Complete at least {{min}}% of your profile to run a simulation.",
       "failedTryAgain": "Simulation failed. Please try again.",
       "failedCheckConnection": "Simulation failed. Please check your connection and try again.",

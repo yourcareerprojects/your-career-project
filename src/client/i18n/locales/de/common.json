@@ -62,7 +62,8 @@
   },
   "emailVerification": {
     "resendCta": "E-Mail erneut senden",
-    "notice": "Bitte bestätige deine E-Mail, um Speicher-, Freigabe- und Wiederherstellungsfunktionen freizuschalten.",
+    "notice": "Bitte bestätige deine E-Mail, um dein Profil zu bearbeiten und Dokumente hochzuladen.",
+    "resendNotice": "Falls deine E-Mail-Adresse stimmt, wurde eine Bestätigungs-E-Mail gesendet.",
     "resendSuccessFallback": "Bestätigungs-E-Mail wurde gesendet.",
     "resendErrorFallback": "Erneutes Senden nicht möglich."
   },

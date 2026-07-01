@@ -134,12 +134,16 @@ describe('profileController narrative layer', () => {
     expect(profileStructured.keyResponsibilities.raw_items).toEqual(['Built reporting pipelines']);
     expect(csiStructured.skills.raw_items).toEqual(['Python']);
     expect(generateDimensionSummary).not.toHaveBeenCalled();
-    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
-      String(created._id),
-      expect.objectContaining({
-        dimensionKeys: expect.arrayContaining(['skills', 'keyResponsibilities', 'domains']),
-        language: 'de',
-      })
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledTimes(1);
+    const [scheduledUserId, scheduledOptions] = scheduleDeferredProfileNarrativesForUser.mock.calls[0];
+    expect(String(scheduledUserId)).toBe(String(created._id));
+    expect(scheduledOptions).toMatchObject({
+      deferWhoAreYou: false,
+      language: 'de',
+      sourceLanguage: 'en',
+    });
+    expect(scheduledOptions.dimensionKeys).toEqual(
+      expect.arrayContaining(['skills', 'keyResponsibilities', 'domains'])
     );
 
     const persisted = await User.findById(created._id).lean();
@@ -602,7 +606,8 @@ describe('profileController narrative layer', () => {
     expect(doc.name).toBe('cv.pdf');
     expect(doc.description).toBe('My CV');
     expect(doc.extractionStatus).toBe('complete');
-    expect(doc.extractedProfileData).toEqual({ userIdentity: { q1: 'answer' } });
+    expect(doc.extractedProfileData).toBeUndefined();
+    expect(doc.reviewReady).toBe(true);
     expect(doc.narrativeEnrichmentStatus).toBe('complete');
     expect(doc.narrativeEnrichment).toBeUndefined();
     expect(doc.identityEnrichmentStatus).toBeUndefined();

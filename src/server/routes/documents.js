@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const documentController = require('../controllers/documentController');
 const auth = require('../middleware/auth');
+const requireVerifiedEmail = require('../middleware/requireVerifiedEmail');
 const { persistValidatedDocumentUpload } = require('../middleware/persistValidatedDocumentUpload');
 const { DOCUMENT_TYPE_UPLOAD_API_VALUES } = require('../../constants/documentTypes');
 const { enforceDocumentUploadLimits } = require('../middleware/documentUploadRateLimit');
@@ -40,6 +41,7 @@ const documentStatusValidation = [
 // Routes
 router.post('/upload',
   auth,
+  requireVerifiedEmail,
   upload.single('document'),
   attachCvUploadTempCleanup,
   enforceDocumentUploadLimits,
@@ -60,11 +62,13 @@ router.get('/:documentId/extraction-status',
 
 router.post('/:documentId/ensure-semantic-enrichment',
   auth,
+  requireVerifiedEmail,
   documentController.ensureDocumentCvStructuredSemantic
 );
 
 router.post('/:documentId/ensure-localization',
   auth,
+  requireVerifiedEmail,
   documentController.ensureDocumentCvExtractLocalization
 );
 
@@ -80,6 +84,7 @@ router.post('/:documentId/narrative-cache-status',
 
 router.post('/:documentId/retry-extraction',
   auth,
+  requireVerifiedEmail,
   documentController.retryDocumentExtraction
 );
 
@@ -95,17 +100,20 @@ router.get('/:documentId/download',
 
 router.delete('/:documentId',
   auth,
+  requireVerifiedEmail,
   documentController.deleteDocument
 );
 
 router.patch('/:documentId/status',
   auth,
+  requireVerifiedEmail,
   documentStatusValidation,
   documentController.updateDocumentStatus
 );
 
 router.patch('/:documentId/rename',
   auth,
+  requireVerifiedEmail,
   documentController.renameDocument
 );
 

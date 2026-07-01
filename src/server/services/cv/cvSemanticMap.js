@@ -13,6 +13,7 @@ const {
   normalizeString,
   bulletsToText,
 } = require('./cvExtractionTextUtils');
+const { normalizeGermanCvResponsibilityList } = require('../../../constants/normalizeGermanCvResponsibilities');
 
 function profileHasAnyExtractable(profile) {
   const sui = profile?.structuredUserInfo || {};
@@ -117,10 +118,18 @@ function identitySemanticHasSignals(identitySemantic) {
   return Boolean(identitySemantic?.userIdentity);
 }
 
-function mapSemanticExtractionToProfile(semantic) {
+function mapSemanticExtractionToProfile(semantic, options = {}) {
+  const documentLanguage = options.documentLanguage === 'de' ? 'de' : 'en';
   const s = semantic?.structuredProfile || {};
   const u = semantic?.userIdentity || {};
   const n = semantic?.seniority || {};
+
+  const rawKeyResponsibilities = (Array.isArray(s?.responsibilities) ? s.responsibilities : [])
+    .map((item) => normalizeString(item?.description || item?.name || '', 220))
+    .filter(Boolean);
+  const keyResponsibilities = documentLanguage === 'de'
+    ? normalizeGermanCvResponsibilityList(rawKeyResponsibilities, { force: true })
+    : rawKeyResponsibilities;
 
   const profile = {
     personalInfo: {},
@@ -159,9 +168,7 @@ function mapSemanticExtractionToProfile(semantic) {
         .map((item) => normalizeString(item?.name || '', 100))
         .filter(Boolean),
       certifications: [],
-      keyResponsibilities: (Array.isArray(s?.responsibilities) ? s.responsibilities : [])
-        .map((item) => normalizeString(item?.description || item?.name || '', 220))
-        .filter(Boolean),
+      keyResponsibilities,
       domains: (Array.isArray(s?.domains) ? s.domains : [])
         .map((item) => normalizeString(item?.name || '', 100))
         .filter(Boolean)

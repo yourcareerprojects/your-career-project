@@ -5,7 +5,7 @@ const {
   clearAllCvReviewDrafts,
 } = require('../utils/cvReviewDraftStorage');
 
-function createSessionStorageMock() {
+function createLocalStorageMock() {
   const store = {};
   return {
     getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
@@ -23,11 +23,11 @@ function createSessionStorageMock() {
 }
 
 describe('cvReviewDraftStorage', () => {
-  let sessionStorageMock;
+  let localStorageMock;
 
   beforeEach(() => {
-    sessionStorageMock = createSessionStorageMock();
-    global.window = { sessionStorage: sessionStorageMock };
+    localStorageMock = createLocalStorageMock();
+    global.window = { localStorage: localStorageMock };
   });
 
   it('saves and loads a draft for a user', () => {
@@ -47,12 +47,12 @@ describe('cvReviewDraftStorage', () => {
   it('clearAllCvReviewDrafts removes every cv review draft key', () => {
     saveCvReviewDraft('user-1', { pendingUploadedDocId: 'doc-1' });
     saveCvReviewDraft('user-2', { pendingUploadedDocId: 'doc-2' });
-    sessionStorageMock.setItem('unrelated:key', 'keep');
+    localStorageMock.setItem('unrelated:key', 'keep');
 
     clearAllCvReviewDrafts();
 
     expect(loadCvReviewDraft('user-1')).toBeNull();
     expect(loadCvReviewDraft('user-2')).toBeNull();
-    expect(sessionStorageMock.getItem('unrelated:key')).toBe('keep');
+    expect(localStorageMock.getItem('unrelated:key')).toBe('keep');
   });
 });

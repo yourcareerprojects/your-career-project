@@ -98,41 +98,10 @@ function normalizeResponsibilityItem(item) {
   };
 }
 
-const { isBlockedNonIndustryDomain } = require('../../constants/industryDomainFilters');
-
-const DOMAIN_SYNONYMS = new Map([
-  ['financial services', 'Finance'],
-  ['fintech', 'Finance'],
-  ['health tech', 'Healthcare'],
-  ['healthcare technology', 'Healthcare'],
-  ['life sciences', 'Life Sciences'],
-  ['biotech', 'Life Sciences'],
-  ['biotechnology', 'Life Sciences'],
-  ['pharma', 'Pharmaceuticals'],
-  ['pharmaceutical', 'Pharmaceuticals'],
-  ['medtech', 'MedTech'],
-  ['med tech', 'MedTech'],
-  ['e commerce', 'E-commerce'],
-  ['ecommerce', 'E-commerce'],
-  ['manufacturing', 'Manufacturing'],
-  ['education', 'Education'],
-  ['edtech', 'Education'],
-  ['ai', 'Artificial Intelligence'],
-  ['artificial intelligence', 'Artificial Intelligence']
-]);
-
-function toTitleCase(raw) {
-  const s = safeString(raw).toLowerCase();
-  if (!s) return '';
-  return s.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
+const { normalizeIndustryLabel } = require('../../../constants/industries');
 
 function normalizeDomainName(raw) {
-  const key = safeString(raw).toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!key) return '';
-  if (isBlockedNonIndustryDomain(raw)) return '';
-  if (DOMAIN_SYNONYMS.has(key)) return DOMAIN_SYNONYMS.get(key);
-  return toTitleCase(raw);
+  return normalizeIndustryLabel(raw, { keepUnknown: true }) || '';
 }
 
 function normalizeDomains(items) {

@@ -1,8 +1,14 @@
-const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+/** CV extraction review: persisted in localStorage so users can resume after leaving or logging out. */
+const DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const STORAGE_PREFIX = 'cvReviewDraft:';
 
 function draftKey(userId) {
   return `${STORAGE_PREFIX}${String(userId || 'anon')}`;
+}
+
+function getStorage() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage || null;
 }
 
 /**
@@ -10,9 +16,10 @@ function draftKey(userId) {
  * @param {object} draft
  */
 function saveCvReviewDraft(userId, draft) {
-  if (!userId || typeof window === 'undefined' || !window.sessionStorage) return;
+  const storage = getStorage();
+  if (!userId || !storage) return;
   try {
-    window.sessionStorage.setItem(
+    storage.setItem(
       draftKey(userId),
       JSON.stringify({
         ...draft,
@@ -29,9 +36,10 @@ function saveCvReviewDraft(userId, draft) {
  * @returns {object|null}
  */
 function loadCvReviewDraft(userId) {
-  if (!userId || typeof window === 'undefined' || !window.sessionStorage) return null;
+  const storage = getStorage();
+  if (!userId || !storage) return null;
   try {
-    const raw = window.sessionStorage.getItem(draftKey(userId));
+    const raw = storage.getItem(draftKey(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -49,32 +57,35 @@ function loadCvReviewDraft(userId) {
  * @param {string|undefined|null} userId
  */
 function clearCvReviewDraft(userId) {
-  if (!userId || typeof window === 'undefined' || !window.sessionStorage) return;
+  const storage = getStorage();
+  if (!userId || !storage) return;
   try {
-    window.sessionStorage.removeItem(draftKey(userId));
+    storage.removeItem(draftKey(userId));
   } catch {
     /* ignore */
   }
 }
 
-/** Remove every persisted CV review draft (e.g. on logout so flows do not resume unexpectedly). */
+/** Remove every persisted CV review draft (bulk cleanup; drafts survive logout). */
 function clearAllCvReviewDrafts() {
-  if (typeof window === 'undefined' || !window.sessionStorage) return;
+  const storage = getStorage();
+  if (!storage) return;
   try {
     const keysToRemove = [];
-    for (let i = 0; i < window.sessionStorage.length; i += 1) {
-      const key = window.sessionStorage.key(i);
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
       if (key && key.startsWith(STORAGE_PREFIX)) {
         keysToRemove.push(key);
       }
     }
-    keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+    keysToRemove.forEach((key) => storage.removeItem(key));
   } catch {
     /* ignore */
   }
 }
 
 module.exports = {
+  DRAFT_TTL_MS,
   saveCvReviewDraft,
   loadCvReviewDraft,
   clearCvReviewDraft,

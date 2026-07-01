@@ -125,7 +125,7 @@ const Register = () => {
       const result = await register({ name: name.trim(), email, password });
 
       if (result.success) {
-        navigate('/');
+        navigate('/check-email');
       } else {
         setSubmitError(result.error);
       }

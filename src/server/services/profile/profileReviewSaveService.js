@@ -5,7 +5,8 @@ const {
 const localizedContentService = require('../localization/localizedContentService');
 const { EMPTY_PLACEHOLDER } = require('../jobAnalysis/dimensionSummaryGenerator');
 const { filterIndustryDomainRawItems } = require('../../constants/industryDomainFilters');
-const { PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY } = require('../../../constants/profileReviewFieldLimits');
+const { normalizeIndustryDomains } = require('../../../constants/industries');
+const { getProfileStructuredListMaxItems } = require('../../../constants/profileReviewFieldLimits');
 const { normalizeStructuredListItemLabel, normalizeStructuredListItemLabels } = require('../../../constants/structuredListItemLabel');
 const { meetsDimensionSummaryQuality } = require('./narrativeQualityGate');
 const { isMinorStructuredListEdit } = require('./identityAnswerChangeClassifier');
@@ -52,7 +53,10 @@ function structuredRawListsEqual(left = [], right = []) {
 function comparableRawListForDimension(key, rawList = []) {
   const list = Array.isArray(rawList) ? rawList : [];
   if (key === 'domains') {
-    return filterIndustryDomainRawItems(normalizeStructuredListItemLabels(list));
+    return normalizeIndustryDomains(
+      filterIndustryDomainRawItems(normalizeStructuredListItemLabels(list)),
+      { keepUnknown: true }
+    );
   }
   return normalizeStructuredListItemLabels(list);
 }
@@ -72,9 +76,10 @@ function isAcceptedField(acceptedFields, fieldKey) {
 function buildStructuredBaselineFromExtraction(extractedProfileData = {}, acceptedFields = {}) {
   const structuredUserInfo = extractedProfileData?.structuredUserInfo || {};
   const pickStrings = (key) => {
+    const maxItems = getProfileStructuredListMaxItems(key);
     const items = structuredUserInfo[key] || [];
     const out = [];
-    for (let i = 0; i < items.length && out.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
+    for (let i = 0; i < items.length && out.length < maxItems; i += 1) {
       if (!isAcceptedField(acceptedFields, `structuredUserInfo.${key}.${i}`)) continue;
       const v = normalizeStructuredListItemLabel(items[i]);
       if (v) out.push(v);
@@ -84,7 +89,8 @@ function buildStructuredBaselineFromExtraction(extractedProfileData = {}, accept
 
   const skillItems = structuredUserInfo.skills || [];
   const skillsOut = [];
-  for (let i = 0; i < skillItems.length && skillsOut.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
+  const skillsMax = getProfileStructuredListMaxItems('skills');
+  for (let i = 0; i < skillItems.length && skillsOut.length < skillsMax; i += 1) {
     if (!isAcceptedField(acceptedFields, `structuredUserInfo.skills.${i}`)) continue;
     const v = normalizeStructuredListItemLabel(skillItems[i]);
     if (v) skillsOut.push(v);

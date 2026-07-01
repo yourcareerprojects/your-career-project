@@ -7,6 +7,10 @@ const { HIGHEST_DEGREE_ALLOWED } = require('../../constants/highestDegree');
 const profileController = require('../controllers/profileController');
 const auth = require('../middleware/auth');
 const requireVerifiedEmail = require('../middleware/requireVerifiedEmail');
+const requireCompletedProfile = require('../middleware/requireCompletedProfile');
+
+const requireVerifiedProfile = [requireVerifiedEmail];
+const requireSimulationAccess = [requireVerifiedEmail, requireCompletedProfile];
 
 const router = express.Router();
 
@@ -240,47 +244,64 @@ const reviewSaveValidation = [
 router.get('/', auth, profileController.getProfile);
 router.get('/completion', auth, profileController.getProfileCompletion);
 
-router.post('/input-quality-diagnosis', auth, profileController.diagnoseProfileInputQuality);
-router.post('/role-fit-explanation', auth, profileController.postRoleFitExplanation);
+router.post('/input-quality-diagnosis', auth, ...requireVerifiedProfile, profileController.diagnoseProfileInputQuality);
+router.post('/work-enjoy-coaching', auth, ...requireVerifiedProfile, profileController.postWorkEnjoyCoaching);
+router.post('/topics-industries-coaching', auth, ...requireVerifiedProfile, profileController.postTopicsIndustriesCoaching);
+router.post('/naturally-good-at-coaching', auth, ...requireVerifiedProfile, profileController.postNaturallyGoodAtCoaching);
+router.post('/work-environment-coaching', auth, ...requireVerifiedProfile, profileController.postWorkEnvironmentCoaching);
+router.post('/working-life-achievement-coaching', auth, ...requireVerifiedProfile, profileController.postWorkingLifeAchievementCoaching);
+router.get('/role-skills', auth, ...requireVerifiedProfile, profileController.getRoleSkillsForSelection);
+router.post('/role-skills/search', auth, ...requireVerifiedProfile, profileController.searchRoleSkillsForSelection);
+router.post('/role-skills/resolve', auth, ...requireVerifiedProfile, profileController.resolveRoleSkillsForSelection);
+router.get('/role-skill-domains', auth, ...requireVerifiedProfile, profileController.getRoleSkillDomainsForSelection);
+router.post('/role-skill-domains/search', auth, ...requireVerifiedProfile, profileController.searchRoleSkillDomainsForSelection);
+router.post('/role-fit-explanation', auth, ...requireSimulationAccess, profileController.postRoleFitExplanation);
 
 router.put('/name',
   auth,
+  ...requireVerifiedProfile,
   profileNameValidation,
   profileController.updateProfileName
 );
 
 router.put('/user-identity',
   auth,
+  ...requireVerifiedProfile,
   userIdentityValidation,
   profileController.updateUserIdentity
 );
 
 router.put('/seniority',
   auth,
+  ...requireVerifiedProfile,
   seniorityValidation,
   profileController.updateSeniority
 );
 
 router.put('/preferences',
   auth,
+  ...requireVerifiedProfile,
   preferencesValidation,
   profileController.updatePreferences
 );
 
 router.put('/structured-user-info',
   auth,
+  ...requireVerifiedProfile,
   structuredUserInfoValidation,
   profileController.updateStructuredUserInfo
 );
 
 router.put('/review-save',
   auth,
+  ...requireVerifiedProfile,
   reviewSaveValidation,
   profileController.saveProfileReview
 );
 
 router.put('/review-narrative-cache',
   auth,
+  ...requireVerifiedProfile,
   body('documentId')
     .isString()
     .trim()
@@ -295,77 +316,81 @@ router.put('/review-narrative-cache',
 
 router.get('/narratives-status',
   auth,
+  ...requireVerifiedProfile,
   profileController.getProfileNarrativesStatus
 );
 
 router.put('/profile-picture',
   auth,
+  ...requireVerifiedProfile,
   upload.single('profilePicture'),
   profileController.updateProfilePicture
 );
 
 router.delete('/profile-picture',
   auth,
+  ...requireVerifiedProfile,
   profileController.deleteProfilePicture
 );
 
 // Simulation endpoint (async job start)
-router.post('/simulation', auth, profileController.startSimulation);
-router.post('/simulation/start', auth, profileController.startSimulation);
-router.get('/simulation/jobs/:jobId/status', auth, profileController.getSimulationJobStatus);
+router.post('/simulation', auth, ...requireSimulationAccess, profileController.startSimulation);
+router.post('/simulation/start', auth, ...requireSimulationAccess, profileController.startSimulation);
+router.get('/simulation/jobs/:jobId/status', auth, ...requireSimulationAccess, profileController.getSimulationJobStatus);
 router.get(
   '/simulation/jobs/:jobId/events',
   auth.attachAccessTokenFromQuery,
   auth,
+  ...requireSimulationAccess,
   profileController.streamSimulationJobEvents
 );
-router.get('/simulation/jobs/:jobId/result', auth, profileController.getSimulationJobResult);
+router.get('/simulation/jobs/:jobId/result', auth, ...requireSimulationAccess, profileController.getSimulationJobResult);
 // Get last simulation result endpoint
-router.get('/simulation/last', auth, profileController.getLastSimulationResult);
+router.get('/simulation/last', auth, ...requireSimulationAccess, profileController.getLastSimulationResult);
 
 // Migration endpoint (should be protected by admin auth in production)
 router.post('/migrate-career-inputs', profileController.recalculateAllCareerSimulationInputs);
 
 // New: Update career simulation inputs (manual edit)
-router.put('/career-simulation-inputs', auth, profileController.updateCareerSimulationInputs);
+router.put('/career-simulation-inputs', auth, ...requireVerifiedProfile, profileController.updateCareerSimulationInputs);
 
 // ===== SIMULATION RESULTS MANAGEMENT ROUTES =====
 
 // Save current simulation results
-router.post('/simulation/save', auth, requireVerifiedEmail, profileController.saveSimulationResult);
+router.post('/simulation/save', auth, ...requireSimulationAccess, profileController.saveSimulationResult);
 
 // Get list of saved simulations
-router.get('/simulation/saved', auth, profileController.getSavedSimulations);
+router.get('/simulation/saved', auth, ...requireSimulationAccess, profileController.getSavedSimulations);
 
 // Get specific saved simulation
-router.get('/simulation/saved/:id', auth, profileController.getSavedSimulation);
+router.get('/simulation/saved/:id', auth, ...requireSimulationAccess, profileController.getSavedSimulation);
 
 // Update simulation metadata (name)
-router.put('/simulation/saved/:id', auth, profileController.updateSavedSimulation);
+router.put('/simulation/saved/:id', auth, ...requireSimulationAccess, profileController.updateSavedSimulation);
 
 // Delete saved simulation
-router.delete('/simulation/saved/:id', auth, profileController.deleteSimulationResult);
+router.delete('/simulation/saved/:id', auth, ...requireSimulationAccess, profileController.deleteSimulationResult);
 
 // Archive simulation
-router.put('/simulation/saved/:id/archive', auth, profileController.archiveSavedSimulation);
+router.put('/simulation/saved/:id/archive', auth, ...requireSimulationAccess, profileController.archiveSavedSimulation);
 
 // === SAVE CAREER STEP ROUTES ===
-router.post('/saved-career-steps', auth, requireVerifiedEmail, profileController.saveCareerStep);
-router.patch('/saved-career-steps/:stepId', auth, requireVerifiedEmail, profileController.patchSavedCareerStep);
-router.post('/saved-career-steps/bulk-delete', auth, requireVerifiedEmail, profileController.bulkDeleteSavedCareerSteps);
-router.delete('/saved-career-steps/:stepId', auth, requireVerifiedEmail, profileController.removeCareerStep);
-router.get('/saved-career-steps', auth, profileController.getSavedCareerSteps);
-router.get('/saved-career-steps/:stepId', auth, profileController.getSavedCareerStep);
+router.post('/saved-career-steps', auth, ...requireSimulationAccess, profileController.saveCareerStep);
+router.patch('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.patchSavedCareerStep);
+router.post('/saved-career-steps/bulk-delete', auth, ...requireSimulationAccess, profileController.bulkDeleteSavedCareerSteps);
+router.delete('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.removeCareerStep);
+router.get('/saved-career-steps', auth, ...requireSimulationAccess, profileController.getSavedCareerSteps);
+router.get('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.getSavedCareerStep);
 
 // === REMOVE CAREER STEP FROM SIMULATION RESULTS ===
-router.delete('/simulation-results/:simulationId/career-steps/:stepId', auth, profileController.removeCareerStepFromSimulation);
+router.delete('/simulation-results/:simulationId/career-steps/:stepId', auth, ...requireSimulationAccess, profileController.removeCareerStepFromSimulation);
 
 // === REPLACE CAREER STEP WITH NEXT BEST ALTERNATIVE ===
-router.post('/simulation/:simulationId/replace-career-step/:stepId', auth, profileController.replaceCareerStep);
+router.post('/simulation/:simulationId/replace-career-step/:stepId', auth, ...requireSimulationAccess, profileController.replaceCareerStep);
 
 // === UPDATE EXISTING SIMULATION RESULTS ===
 // Update existing simulation with changes (save changes functionality)
-router.put('/simulation-results/:simulationId', auth, requireVerifiedEmail, profileController.updateSimulationResult);
+router.put('/simulation-results/:simulationId', auth, ...requireSimulationAccess, profileController.updateSimulationResult);
 
 // Debug route to catch unmatched requests
 router.all('/simulation-results/*', (req, res) => {

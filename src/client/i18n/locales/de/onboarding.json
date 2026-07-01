@@ -1,7 +1,7 @@
 {
   "identityQuestions": {
     "workEnjoyMost": "Welche Arbeitstätigkeiten führst du am liebsten aus?",
-    "topicsIndustriesInterest": "Welche Themen oder Branchen interessieren dich am meisten?",
+    "topicsIndustriesInterest": "Welche Themen interessieren dich am meisten?",
     "naturallyGoodAt": "Worin bist du von Natur aus gut oder fühlst dich besonders sicher?",
     "workEnvironmentFit": "Welche Art Arbeitsumfeld oder Arbeitsweise passt am besten zu dir?",
     "workingLifeAchievement": "Was möchtest du in deinem Berufsleben erreichen?"
@@ -55,6 +55,18 @@
       "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
     }
   },
+  "checkEmail": {
+    "greeting": "Hallo {{name}}!",
+    "fallbackName": "du",
+    "message": "Bitte öffne dein E-Mail-Postfach und klicke auf den Bestätigungslink, den wir dir gesendet haben, um deine E-Mail-Adresse zu bestätigen.",
+    "emailSentTo": "Wir haben den Link an {{email}} gesendet.",
+    "resendCta": "Bestätigungs-E-Mail erneut senden",
+    "continueCta": "Weiter zur App",
+    "messages": {
+      "resent": "Bestätigungs-E-Mail wurde gesendet.",
+      "unableToResend": "Bestätigungs-E-Mail konnte nicht erneut gesendet werden."
+    }
+  },
   "register": {
     "title": "Konto erstellen",
     "subtitle": "Registriere dich mit Name, E-Mail und Passwort. Weitere Details kannst du später auf deinem Profil ergänzen.",
@@ -101,14 +113,239 @@
     },
     "default": {
       "title": "Profil ausfüllen",
-      "description": "Lade deinen Lebenslauf hoch, um Erfahrungen, Fähigkeiten und Details auszulesen."
+      "description": "Beantworte ein paar geführte Fragen zu deiner Erfahrung, deinen Fähigkeiten und Interessen. Du kannst unterwegs optional deinen Lebenslauf hochladen."
+    },
+    "manualFill": {
+      "cta": "Profilbearbeitung starten",
+      "resumeDescription": "Du hast gespeicherten Fortschritt ab Schritt {{step}} von {{total}}. Du kannst dort weitermachen, wo du aufgehört hast.",
+      "resumeCta": "Profilbearbeitung fortsetzen",
+      "discardSavedCta": "Gespeicherten Fortschritt verwerfen",
+      "discardConfirm": {
+        "title": "Gespeicherten Fortschritt verwerfen?",
+        "description": "Dein gespeicherter Profil-Fortschritt wird dauerhaft von diesem Gerät gelöscht. Das kann nicht rückgängig gemacht werden.",
+        "keepSavedCta": "Gespeicherten Fortschritt behalten",
+        "confirmCta": "Fortschritt verwerfen"
+      },
+      "startOverConfirm": {
+        "title": "Neue Profilbearbeitung starten?",
+        "description": "Wenn du neu startest, wird dein gespeicherter Fortschritt ersetzt. Das kann nicht rückgängig gemacht werden.",
+        "keepSavedCta": "Gespeicherten Fortschritt behalten",
+        "startFreshCta": "Neu starten"
+      },
+      "optionalCv": {
+        "intro": "Du kannst optional deinen Lebenslauf hochladen. Du kannst diesen Schritt überspringen und ohne Lebenslauf fortfahren.",
+        "introFullUpdate": "Lade einen neuen Lebenslauf hoch, um die Coaching-Fragen zu personalisieren, oder überspringe diesen Schritt.",
+        "skipCta": "Überspringen",
+        "continueCta": "Weiter",
+        "continueWithoutCvCta": "Ohne Lebenslauf fortfahren",
+        "extractionWait": "Wir lesen deinen Lebenslauf. Das kann einen Moment dauern.",
+        "uploadedFile": "Hochgeladener Lebenslauf: {{fileName}}"
+      }
+    },
+    "cvUpload": {
+      "resumeDescription": "Du hast gespeicherten Lebenslauf-Fortschritt ab Schritt {{step}} von {{total}}. Du kannst dort weitermachen, wo du aufgehört hast.",
+      "resumeCta": "Lebenslauf-Setup fortsetzen",
+      "discardSavedCta": "Gespeicherten Fortschritt verwerfen",
+      "discardConfirm": {
+        "title": "Gespeicherten Lebenslauf-Fortschritt verwerfen?",
+        "description": "Dein gespeicherter Lebenslauf-Fortschritt und die hochgeladene Datei werden dauerhaft gelöscht. Das kann nicht rückgängig gemacht werden.",
+        "keepSavedCta": "Gespeicherten Fortschritt behalten",
+        "confirmCta": "Fortschritt verwerfen"
+      },
+      "startOverConfirm": {
+        "title": "Neuen Lebenslauf hochladen?",
+        "description": "Ein neuer Lebenslauf ersetzt deinen gespeicherten Fortschritt. Das kann nicht rückgängig gemacht werden.",
+        "keepSavedCta": "Gespeicherten Fortschritt behalten",
+        "startFreshCta": "Neuen Lebenslauf hochladen"
+      }
     },
     "fullUpdate": {
       "title": "Profil vollständig aktualisieren",
-      "description": "Lade einen neuen Lebenslauf hoch, um dein Profil vollständig zu aktualisieren. Du wirst ausgelesene Inhalte prüfen und Kontextfragen beantworten, bevor bestehende Daten ersetzt werden."
+      "description": "Durchlaufe die geführte Profilbearbeitung erneut. Du kannst optional einen neuen Lebenslauf hochladen, um die Coaching-Fragen zu personalisieren, bevor bestehende Daten ersetzt werden."
+    }
+  },
+  "workEnjoyCoaching": {
+    "chat": {
+      "intro": "Ein kurzes Coaching hilft dir, passende Arbeitstätigkeiten zu finden. Beantworte drei einfache Fragen in deinen eigenen Worten.",
+      "loading": "Erste Frage wird vorbereitet…",
+      "thinking": "Einen Moment…",
+      "inputPlaceholder": "Antwort eingeben…",
+      "sendCta": "Senden"
+    },
+    "summary": {
+      "intro": "Basierend auf deinen Antworten passen diese Tätigkeiten besonders gut zu dir:",
+      "confirmCta": "Mit diesen Tätigkeiten fortfahren"
+    },
+    "errors": {
+      "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
+      "sendFailed": "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      "emptyQuestion": "Es kam eine leere Frage zurück. Bitte versuche es erneut.",
+      "completeCoachingFirst": "Bitte schließe zuerst den Coaching-Chat zu deinen bevorzugten Arbeitstätigkeiten ab."
+    }
+  },
+  "topicsIndustriesCoaching": {
+    "chat": {
+      "intro": "Ein kurzer Coaching-Chat hilft, Themen und Branchen zu finden, die dich interessieren. Beantworte drei einfache Fragen in deinen eigenen Worten.",
+      "loading": "Erste Frage wird vorbereitet…",
+      "thinking": "Einen Moment…",
+      "inputPlaceholder": "Antwort eingeben…",
+      "sendCta": "Senden"
+    },
+    "summary": {
+      "intro": "Basierend auf deinen Antworten passen diese Interessen besonders gut zu dir.",
+      "interestTopicsHeading": "Deine wichtigsten Interessen",
+      "industriesHeading": "Passende Branchen oder Bereiche",
+      "addRow": "Zeile hinzufügen",
+      "confirmCta": "Mit diesen Themen fortfahren"
+    },
+    "errors": {
+      "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
+      "sendFailed": "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      "emptyQuestion": "Es kam eine leere Frage zurück. Bitte versuche es erneut.",
+      "completeCoachingFirst": "Bitte schließe zuerst den Coaching-Chat zu deinen Interessen ab."
+    }
+  },
+  "naturallyGoodAtCoaching": {
+    "chat": {
+      "intro": "Ein kurzer Coaching-Chat hilft herauszufinden, wobei du von Natur aus gut bist oder dich sicher fühlst. Beantworte drei einfache Fragen in deinen eigenen Worten.",
+      "loading": "Erste Frage wird vorbereitet…",
+      "thinking": "Einen Moment…",
+      "inputPlaceholder": "Antwort eingeben…",
+      "sendCta": "Senden"
+    },
+    "summary": {
+      "intro": "Basierend auf deinen Antworten sind das deine natürlichen Stärken:",
+      "strengthsHeading": "Deine natürlichen Stärken",
+      "skillDomainsHeading": "Deine Stärken",
+      "confirmCta": "Mit diesen Stärken fortfahren"
+    },
+    "skillDomainPicker": {
+      "dialogTitle": "Stärken auswählen",
+      "searchPlaceholder": "Stärken suchen…",
+      "searchHint": "Gib mindestens 2 Zeichen ein, um alle Stärken zu durchsuchen, oder wähle aus den Vorschlägen unten.",
+      "searchResultsTitle": "Suchergebnisse",
+      "recommendationsTitle": "Vorschläge für dich",
+      "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
+      "noSearchResults": "Keine passenden Stärken. Versuche einen anderen Suchbegriff.",
+      "noRecommendations": "Noch keine Vorschläge verfügbar. Nutze die Suche, um Stärken zu finden.",
+      "selectedCount": "{{count}} von {{max}} ausgewählt",
+      "addButton": "Stärken hinzufügen",
+      "loading": "Stärken werden geladen…",
+      "errors": {
+        "loadFailed": "Stärken konnten nicht geladen werden. Bitte versuche es erneut."
+      }
+    },
+    "errors": {
+      "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
+      "sendFailed": "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      "emptyQuestion": "Es kam eine leere Frage zurück. Bitte versuche es erneut.",
+      "completeCoachingFirst": "Bitte schließe zuerst den Coaching-Chat zu deinen Stärken ab."
+    }
+  },
+  "workEnvironmentCoaching": {
+    "chat": {
+      "intro": "Ein kurzer Coaching-Chat hilft herauszufinden, wie du am liebsten arbeitest und in welchem Umfeld du dich wohlfühlst. Beantworte drei einfache Fragen in deinen eigenen Worten.",
+      "loading": "Erste Frage wird vorbereitet…",
+      "thinking": "Einen Moment…",
+      "inputPlaceholder": "Antwort eingeben…",
+      "sendCta": "Senden"
+    },
+    "summary": {
+      "intro": "Basierend auf deinen Antworten passt diese Arbeitsweise und dieses Umfeld besonders gut zu dir:",
+      "workStylesHeading": "Deine bevorzugte Arbeitsweise",
+      "workEnvironmentsHeading": "Passendes Arbeitsumfeld",
+      "confirmCta": "Mit dieser Arbeitsweise fortfahren"
+    },
+    "errors": {
+      "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
+      "sendFailed": "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      "emptyQuestion": "Es kam eine leere Frage zurück. Bitte versuche es erneut.",
+      "completeCoachingFirst": "Bitte schließe zuerst den Coaching-Chat zu deiner Arbeitsweise ab."
+    }
+  },
+  "workingLifeAchievementCoaching": {
+    "chat": {
+      "intro": "Ein kurzer Coaching-Chat hilft herauszufinden, was du in deinem Berufsleben wirklich erreichen möchtest. Beantworte drei einfache Fragen in deinen eigenen Worten.",
+      "loading": "Erste Frage wird vorbereitet…",
+      "thinking": "Einen Moment…",
+      "inputPlaceholder": "Antwort eingeben…",
+      "sendCta": "Senden"
+    },
+    "summary": {
+      "intro": "Basierend auf deinen Antworten sind das deine wichtigsten Ziele im Berufsleben:",
+      "careerGoalsHeading": "Deine wichtigsten Ziele im Berufsleben",
+      "prioritiesHeading": "Was dir dabei besonders wichtig ist",
+      "confirmCta": "Mit diesen Zielen fortfahren"
+    },
+    "errors": {
+      "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
+      "sendFailed": "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      "emptyQuestion": "Es kam eine leere Frage zurück. Bitte versuche es erneut.",
+      "completeCoachingFirst": "Bitte schließe zuerst den Coaching-Chat zu deinen Berufszielen ab."
+    }
+  },
+  "skillSelection": {
+    "title": "Deine Fähigkeiten",
+    "dialogTitle": "Fähigkeiten auswählen",
+    "addButton": "Fähigkeit hinzufügen",
+    "intro": "Suche nach Fähigkeiten, die auf dich zutreffen, oder wähle aus den Vorschlägen unten. Deine Auswahl erscheint unter „Deine Fähigkeiten“ in deinem Profil.",
+    "loading": "Fähigkeiten werden geladen…",
+    "searchPlaceholder": "Fähigkeiten suchen…",
+    "searchHint": "Gib mindestens 2 Zeichen ein, um alle Fähigkeiten zu durchsuchen, oder wähle aus den Vorschlägen unten.",
+    "searchResultsTitle": "Suchergebnisse",
+    "recommendationsTitle": "Vorschläge für dich",
+    "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
+    "selectedTitle": "Deine Auswahl",
+    "requiredSkillsTitle": "Notwendige Fähigkeiten",
+    "optionalSkillsTitle": "Optionale Fähigkeiten",
+    "noOptionalSkills": "Keine rein optionalen Fähigkeiten in diesen Vorschlägen.",
+    "noSearchResults": "Keine Fähigkeiten passen zu deiner Suche.",
+    "noRecommendations": "Noch keine Vorschläge verfügbar. Nutze die Suche, um Fähigkeiten zu finden.",
+    "selectedCount": "{{count}} von {{max}} ausgewählt",
+    "errors": {
+      "loadFailed": "Fähigkeiten konnten nicht geladen werden. Bitte versuche es erneut.",
+      "selectAtLeastOne": "Bitte wähle mindestens eine Fähigkeit aus, die auf dich zutrifft."
+    }
+  },
+  "skillsToLearnSelection": {
+    "title": "Fähigkeiten, die du lernen möchtest",
+    "dialogTitle": "Lernziele auswählen",
+    "addButton": "Lernziel hinzufügen",
+    "intro": "Suche nach Fähigkeiten, die du entwickeln möchtest, oder wähle aus den Vorschlägen unten. Fähigkeiten, die du bereits als deine ausgewählt hast, werden ausgeblendet. Deine Auswahl erscheint unter „Deine Lernziele“ in deinem Profil.",
+    "loading": "Fähigkeiten werden geladen…",
+    "searchPlaceholder": "Fähigkeiten suchen…",
+    "searchHint": "Gib mindestens 2 Zeichen ein, um alle Fähigkeiten zu durchsuchen, oder wähle aus den Vorschlägen unten.",
+    "searchResultsTitle": "Suchergebnisse",
+    "recommendationsTitle": "Vorschläge für dich",
+    "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
+    "selectedTitle": "Deine Auswahl",
+    "noSearchResults": "Keine Fähigkeiten passen zu deiner Suche.",
+    "noRecommendations": "Noch keine Vorschläge verfügbar. Nutze die Suche, um Fähigkeiten zu finden.",
+    "selectedCount": "{{count}} von {{max}} ausgewählt",
+    "errors": {
+      "loadFailed": "Fähigkeiten konnten nicht geladen werden. Bitte versuche es erneut.",
+      "selectAtLeastOne": "Bitte wähle mindestens eine Fähigkeit aus, die du lernen möchtest."
+    }
+  },
+  "tasksResponsibilitiesStep": {
+    "title": "Aufgaben & Verantwortungen",
+    "intro": "Liste die wichtigsten Aufgaben und Verantwortungen aus deiner Arbeit auf.",
+    "placeholder": "z. B. Wöchentliche Team-Stand-ups geleitet",
+    "itemLabel": "Verantwortung {{index}}",
+    "addCta": "Weiteren Punkt hinzufügen",
+    "removeItem": "Punkt entfernen",
+    "count": "{{count}} von {{max}} Punkten hinzugefügt",
+    "errors": {
+      "addAtLeastOne": "Bitte füge mindestens eine Aufgabe oder Verantwortung hinzu, bevor du fortfährst."
     }
   },
   "profilePagePrompts": {
+    "verifyEmail": {
+      "title": "E-Mail bestätigen",
+      "description": "Bestätige deine E-Mail-Adresse, um dein Profil zu bearbeiten und deinen Lebenslauf hochzuladen.",
+      "cta": "Posteingang prüfen",
+      "ctaShort": "E-Mail bestätigen"
+    },
     "incomplete": {
       "title": "Vervollständige dein Profil",
       "description": "Vervollständige mehr von deinem Profil, um personalisierte Simulationen freizuschalten.",
@@ -256,6 +493,24 @@
         "passwordMismatch": "Passwörter stimmen nicht überein.",
         "updateFailed": "Passwort konnte nicht aktualisiert werden"
       }
+    },
+    "deleteAccount": {
+      "title": "Konto löschen",
+      "description": "Lösche dein Konto und alle zugehörigen Profildaten dauerhaft.",
+      "dialogTitle": "Konto wirklich löschen?",
+      "warning": "Diese Aktion ist dauerhaft und kann nicht rückgängig gemacht werden.",
+      "reauthDescription": "Gib dein aktuelles Passwort ein, um die Kontolöschung zu bestätigen.",
+      "fields": {
+        "currentPassword": "Aktuelles Passwort"
+      },
+      "actions": {
+        "openDialog": "Konto löschen",
+        "confirmDelete": "Dauerhaft löschen",
+        "deleting": "Löschen..."
+      },
+      "errors": {
+        "deleteFailed": "Konto konnte nicht gelöscht werden"
+      }
     }
   },
   "profileCompletionTooltip": {
@@ -280,7 +535,11 @@
       "saving": "Speichern...",
       "cancel": "Abbrechen",
       "edit": "Bearbeiten",
+      "restartCoachingChat": "Chat neu starten",
       "close": "Schließen"
+    },
+    "identityCoaching": {
+      "backToManualEdit": "Zur manuellen Bearbeitung"
     },
     "notProvided": "Nicht angegeben",
     "errors": {
@@ -354,13 +613,27 @@
         "discardChanges": "Änderungen verwerfen"
       }
     },
+    "identityBullets": {
+      "addBullet": "Punkt hinzufügen",
+      "itemLabel": "Antwort {{index}}",
+      "addWorkStyle": "Arbeitsstil hinzufügen",
+      "addWorkEnvironment": "Arbeitsumfeld hinzufügen",
+      "addCareerGoal": "Karriereziel hinzufügen",
+      "addPriority": "Priorität hinzufügen"
+    },
     "sections": {
       "identity": "Wer bist du?",
       "goodAt": "Was kannst du gut?",
       "experience": "Wie viel Erfahrung hast du?"
     },
+      "displayMode": {
+      "bullets": "Deine Antworten",
+      "narrative": "KI-Zusammenfassung",
+      "narrativeLoading": "Deine KI-Zusammenfassung wird noch erstellt…",
+      "ariaLabel": "Darstellung für diesen Abschnitt wählen"
+    },
     "structuredInfo": {
-      "maxEntriesPerCategory": "Bis zu {{max}} Einträge pro Kategorie.",
+      "maxEntriesPerCategory": "Maximal {{max}} Einträge",
       "emptyEntries": "Noch keine Einträge. Füge deine Ideen hinzu.",
       "strengths": {
         "title": "Deine Stärken",
@@ -371,8 +644,25 @@
       "industrySectors": {
         "title": "Deine Branchen",
         "addCta": "Branche hinzufügen",
-        "helper": "Nutze Branchen wie MedTech, Life Sciences, Fertigung.",
-        "empty": "Noch keine Branchen (z. B. MedTech, Life Sciences, Fertigung). Nutze Branchen, keine Jobfunktionen wie Marketing."
+        "addButton": "Branche hinzufügen",
+        "changeButton": "Branche ändern",
+        "dialogTitle": "Branche auswählen",
+        "dialogSelectionHint": "Deine Auswahl (mit Speichern bestätigen)",
+        "empty": "Noch keine Branchen (z. B. MedTech, Life Sciences, Fertigung). Nutze Branchen, keine Jobfunktionen wie Marketing.",
+        "groups": {
+          "healthLife": "Gesundheit & Life Sciences",
+          "sciences": "Naturwissenschaften & Forschung",
+          "technology": "Technologie & Digital",
+          "financeBusiness": "Finanzen & Business Services",
+          "industryManufacturing": "Industrie & Fertigung",
+          "buildingTrades": "Bau & Handwerk",
+          "mobility": "Mobilität & Verkehr",
+          "agricultureFood": "Landwirtschaft & Lebensmittel",
+          "retailHospitality": "Handel, Gastgewerbe & Tourismus",
+          "mediaCulture": "Medien, Kultur & Sport",
+          "educationSocial": "Bildung & Soziales",
+          "publicDefense": "Öffentlicher Sektor & Sicherheit"
+        }
       },
       "responsibilities": {
         "title": "Deine Aufgaben & Verantwortungen",
@@ -402,8 +692,10 @@
     },
     "seniorityForm": {
       "notSpecified": "Nicht angegeben",
+      "selectPlaceholder": "Auswählen...",
       "errors": {
         "currentStatusRequired": "Aktueller Beschäftigungsstatus ist erforderlich",
+        "yearsRequired": "Jahre Berufserfahrung sind erforderlich",
         "yearsRange": "Jahre müssen zwischen 0 und 50 liegen",
         "highestDegreeRequired": "Höchster Bildungsabschluss ist erforderlich",
         "mostSeniorRequired": "Höchstes Job-Level ist erforderlich"
@@ -622,11 +914,14 @@
         "ariaLabel": "Profil-Einrichtung Schritt {{current}} von {{total}}"
       },
       "step2Intro": "Prüfe und passe deine Antworten zu diesen Identitätsfragen an. Sie helfen uns zu verstehen, was dir bei der Arbeit wichtig ist.",
+      "step2IntroManual": "Beantworte diese Identitätsfragen zu dem, was dir bei der Arbeit wichtig ist. Es gibt keine falschen Antworten — schreib in deinen eigenen Worten.",
       "structuredLoading": "Deine Profil-Insights werden verarbeitet…",
       "step3Intro": "Prüfe Fähigkeiten, Bereiche und Stärken aus deinem Lebenslauf. Behalte die Einträge, die ins Profil sollen, und bearbeite oder ergänze sie.",
+      "step3IntroManual": "Prüfe und vervollständige deine Profil-Stärken. Fähigkeiten, die du zuvor ausgewählt hast, sind vorausgefüllt — bearbeite oder ergänze die anderen Kategorien und speichere anschließend.",
       "step4Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und fahre dann fort.",
       "step4NoFollowUps": "Es sind keine weiteren Fragen nötig. Fahre fort, um dein Erfahrungsniveau zu bestätigen.",
       "step5Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können. Speichere anschließend dein Profil.",
+      "step5IntroManual": "Erzähl uns von deinem Hintergrund, damit wir Simulationen passend zu dir ausrichten können.",
       "step5PreparingProfile": "Dein Profil wird vorbereitet… Du kannst die Felder unten ausfüllen. Speichern ist gleich verfügbar.",
       "step5PrepareSlow": "Die Profilvorbereitung dauert länger als erwartet. Du kannst jetzt speichern — es kann etwas länger dauern.",
       "step3QualityErrorPrefix": "Qualitätsvorschläge konnten nicht geladen werden:",
@@ -647,21 +942,21 @@
         "experience": "Wie viel Erfahrung hast du?"
       },
       "goodAtCategories": {
-        "skillDomains": "Kompetenzbereiche",
+        "skillDomains": "Deine Stärken",
         "domains": "Branchen",
         "keyResponsibilities": "Deine Aufgaben & Verantwortungen",
         "skills": "Deine Fähigkeiten",
         "skillsInDevelopment": "Deine Lernziele"
       },
       "emptyMessages": {
-        "skillDomains": "Keine Kompetenzbereiche ausgelesen. Du kannst eigene hinzufügen.",
+        "skillDomains": "Keine Stärken ausgelesen. Du kannst eigene hinzufügen.",
         "domains": "Keine Branchen ausgelesen. Du kannst eigene hinzufügen.",
         "keyResponsibilities": "Keine Verantwortungen ausgelesen. Du kannst eigene hinzufügen.",
         "skills": "Keine Fähigkeiten ausgelesen. Du kannst eigene hinzufügen.",
         "skillsInDevelopment": "Keine Lernziele ausgelesen. Du kannst eigene hinzufügen."
       },
       "labels": {
-        "skillDomain": "Kompetenzbereich {{index}}",
+        "skillDomain": "Stärke {{index}}",
         "domain": "Branche {{index}}",
         "responsibility": "Verantwortung {{index}}",
         "skill": "Fähigkeit {{index}}",
@@ -676,7 +971,7 @@
         "structuredCategoryRequired": "Bitte füge mindestens einen Eintrag in {{category}} hinzu, bevor du fortfährst."
       },
       "actions": {
-        "addSkillDomain": "Kompetenzbereich hinzufügen",
+        "addSkillDomain": "Stärken hinzufügen",
         "addDomain": "Branchen hinzufügen",
         "addResponsibility": "Verantwortung hinzufügen",
         "addSkill": "Fähigkeit hinzufügen",
@@ -693,8 +988,11 @@
       "cancelConfirm": {
         "title": "Profilbearbeitung verlassen?",
         "description": "Deine Änderungen in diesem Schritt gehen verloren. Du kannst deinen Lebenslauf später erneut hochladen.",
+        "manualFillTitle": "Speichern und Profilbearbeitung verlassen?",
+        "manualFillDescription": "Dein Fortschritt wird auf diesem Gerät gespeichert. Wenn du zurückkehrst, kannst du am gleichen Schritt weitermachen.",
         "stayCta": "Weiter bearbeiten",
-        "discardCta": "Verlassen und verwerfen"
+        "discardCta": "Verlassen und verwerfen",
+        "manualFillLeaveCta": "Speichern und verlassen"
       }
     }
   }

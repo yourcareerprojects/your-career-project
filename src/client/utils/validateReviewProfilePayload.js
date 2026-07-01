@@ -2,7 +2,7 @@ const {
   PROFILE_REVIEW_USER_IDENTITY_MAX,
   PROFILE_REVIEW_STRUCTURED_MAX,
   PROFILE_REVIEW_STRUCTURED_KEYS,
-  PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY,
+  getProfileStructuredListMaxItems,
 } = require('../../constants/profileReviewFieldLimits');
 const { normalizeStructuredListItemLabel } = require('../../constants/structuredListItemLabel');
 
@@ -40,9 +40,10 @@ function buildStructuredGoodAtFromReview(reviewProfile, acceptedFields = {}) {
   const structuredUserInfo = reviewProfile?.structuredUserInfo || {};
 
   const pickStrings = (key) => {
+    const maxItems = getProfileStructuredListMaxItems(key);
     const items = structuredUserInfo[key] || [];
     const out = [];
-    for (let i = 0; i < items.length && out.length < PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY; i += 1) {
+    for (let i = 0; i < items.length && out.length < maxItems; i += 1) {
       if (acceptedFields[`structuredUserInfo.${key}.${i}`] === false) continue;
       const v = normalizeStructuredListItemLabel(items[i]);
       if (v) out.push(v);

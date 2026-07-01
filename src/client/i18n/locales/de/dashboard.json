@@ -21,11 +21,17 @@
       "title": "Vollständiges Profil erforderlich",
       "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um eine Berufssimulation zu starten."
     },
+    "emailVerificationGate": {
+      "title": "Bestätige zuerst deine E-Mail",
+      "description": "Erst dann kannst du die Berufssimulation starten.",
+      "cta": "Posteingang prüfen"
+    },
     "info": {
       "updateProfileHint": "Wenn du mit deinen Simulationsergebnissen nicht zufrieden bist, gehe zu deinem Profil zurück und aktualisiere dort deine Angaben."
     },
     "tooltips": {
       "completeProfileFirst": "Vervollständige zuerst mindestens {{min}}% deines Profils",
+      "verifyEmailFirst": "Bestätige zuerst deine E-Mail-Adresse",
       "startSimulation": "Generiere neue Berufsvorschläge",
       "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
       "saveResults": "Diese Simulation zu deinen gespeicherten Simulationen hinzufügen",
@@ -118,6 +124,7 @@
     "messages": {
       "loadFailed": "Simulation konnte nicht geladen werden",
       "profileCompletionRequired": "Dein Profil muss mindestens zu {{min}}% vollständig sein, um eine Simulation auszuführen. Aktualisiere dein Profil und versuche es erneut.",
+      "emailVerificationRequired": "Bitte bestätige deine E-Mail-Adresse, bevor du eine Simulation startest.",
       "completeProfileToRun": "Vervollständige mindestens {{min}}% deines Profils, um eine Simulation zu starten.",
       "failedTryAgain": "Simulation fehlgeschlagen. Bitte versuche es erneut.",
       "failedCheckConnection": "Simulation fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.",

@@ -1,5 +1,9 @@
 const { validateSeniorityPayload, seniorityPayloadsMatch } = require('./validateSeniorityPayload');
 const {
+  detectPendingNarrativesFromProfile,
+  resolveNarrativePendingFromProfileResponse,
+} = require('./profileNarrativePolling');
+const {
   validateReviewSavePayload,
   validateReviewIdentityStep,
   parseReviewSaveValidationErrors,
@@ -17,6 +21,7 @@ const USER_IDENTITY_KEYS = [
 
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const DEFAULT_POLL_MAX_ATTEMPTS = 24;
+const PROFILE_NARRATIVE_POLL_MAX_ATTEMPTS = 120;
 const DOCUMENT_CACHE_POLL_MAX_ATTEMPTS = 240;
 /** Brief pre-save poll when nothing is in flight on the server. */
 const DOCUMENT_CACHE_PRE_SAVE_POLL_MS = 1500;
@@ -241,7 +246,7 @@ async function waitForProfileNarrativesReady({
   fetchImpl,
   getAuthToken,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
-  pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
+  pollMaxAttempts = PROFILE_NARRATIVE_POLL_MAX_ATTEMPTS,
 }) {
   return pollJsonEndpoint({
     url: `/api/profile/narratives-status?${langQuery}`,
@@ -262,37 +267,82 @@ async function refreshProfileWhenNarrativesReady({
   fetchImpl = fetch,
   getAuthToken = () => localStorage.getItem('token'),
   onReady,
+  onPendingUpdate,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
-  pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
+  pollMaxAttempts = PROFILE_NARRATIVE_POLL_MAX_ATTEMPTS,
 }) {
-  await waitForProfileNarrativesReady({
-    langQuery,
-    fetchImpl,
-    getAuthToken,
-    pollIntervalMs,
-    pollMaxAttempts,
-  });
-  if (typeof onReady === 'function') {
-    await onReady();
+  for (let attempt = 0; attempt < pollMaxAttempts; attempt += 1) {
+    const status = await fetchProfileNarrativesStatus({
+      langQuery,
+      fetchImpl,
+      getAuthToken,
+    });
+    if (status.ready) {
+      if (typeof onPendingUpdate === 'function') {
+        onPendingUpdate([]);
+      }
+      if (typeof onReady === 'function') {
+        await onReady();
+      }
+      return;
+    }
+    if (typeof onPendingUpdate === 'function') {
+      onPendingUpdate(status.pending);
+    }
+    if (attempt < pollMaxAttempts - 1) {
+      await delay(pollIntervalMs);
+    }
   }
+  throw new ProfileReviewSaveError('Narrative readiness timed out', {
+    userMessage: 'Profile narratives are still being prepared. Please try again in a moment.',
+  });
 }
 
 function scheduleProfileNarrativeRefreshAfterSave({
   narrativesReady,
+  narrativePending,
   langQuery,
   onReady,
+  onPendingUpdate,
   fetchImpl = fetch,
   getAuthToken = () => localStorage.getItem('token'),
 }) {
-  if (narrativesReady !== false) return;
+  const pending = Array.isArray(narrativePending) ? narrativePending : [];
+  if (narrativesReady !== false && pending.length === 0) return;
+  if (typeof onPendingUpdate === 'function') {
+    onPendingUpdate(pending);
+  }
   void refreshProfileWhenNarrativesReady({
     langQuery,
     fetchImpl,
     getAuthToken,
     onReady,
+    onPendingUpdate,
   }).catch((err) => {
     console.warn('Background profile narrative refresh failed:', err);
   });
+}
+
+async function fetchProfileNarrativesStatus({
+  langQuery,
+  fetchImpl = fetch,
+  getAuthToken = () => localStorage.getItem('token'),
+} = {}) {
+  const res = await fetchImpl(`/api/profile/narratives-status?${langQuery}`, {
+    headers: {
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || data.message || 'Failed to read narrative status');
+    err.status = res.status;
+    throw err;
+  }
+  return {
+    ready: data.ready === true,
+    pending: Array.isArray(data.pending) ? data.pending : [],
+  };
 }
 
 /**
@@ -364,6 +414,10 @@ function seedProfileCacheFromReviewSave(reviewSaveData, langQuery, queryClientIm
     success: true,
     /** Profile page renders from this immediately; refreshes full GET in the background. */
     _seededFromReviewSave: true,
+    narrativesReady: reviewSaveData?.narrativesReady === true,
+    narrativePending: Array.isArray(reviewSaveData?.narrativePending)
+      ? reviewSaveData.narrativePending
+      : [],
     name: reviewSaveData?.name ?? base.name,
     email: reviewSaveData?.email ?? base.email,
     profile: {
@@ -479,23 +533,6 @@ async function saveExtractedProfileReview({
     profileData?.acceptedFields && typeof profileData.acceptedFields === 'object'
       ? profileData.acceptedFields
       : undefined;
-
-    // Ensure document narrative cache matches the save payload before review-save (fast copy path).
-    // Waits for in-flight extraction narrative or runs warm once — avoids duplicate LLM on save.
-    if (documentId) {
-      emitPhase('narratives');
-      await ensureReviewNarrativeCacheBeforeSave({
-        documentId,
-        userIdentity,
-        structuredUserInfo,
-        acceptedFields: acceptedFields || {},
-        langQuery,
-        fetchImpl,
-        getAuthToken,
-        translate,
-        documentCacheWarmTimeoutMs,
-      });
-    }
 
     emitPhase('saving');
     const reviewSaveRes = await fetchImpl(`/api/profile/review-save?${langQuery}`, {
@@ -962,6 +999,10 @@ module.exports = {
   waitForProfileNarrativesReady,
   refreshProfileWhenNarrativesReady,
   scheduleProfileNarrativeRefreshAfterSave,
+  fetchProfileNarrativesStatus,
+  PROFILE_NARRATIVE_POLL_MAX_ATTEMPTS,
+  detectPendingNarrativesFromProfile,
+  resolveNarrativePendingFromProfileResponse,
   seedProfileCacheFromReviewSave,
   prefetchProfileCacheAfterSave,
   throwIfSaveNotOk,

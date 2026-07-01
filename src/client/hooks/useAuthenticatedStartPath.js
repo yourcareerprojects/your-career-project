@@ -8,7 +8,10 @@ import { profileCompletionQueryKey, fetchProfileCompletion, useProfileCompletion
  * Resolves the post-login “get started” route for the current session.
  * `/simulation` if profile meets the minimum completion for simulations, otherwise `/profile/fill`.
  */
-export async function fetchAuthenticatedStartPath() {
+export async function fetchAuthenticatedStartPath(user) {
+  if (user && !user.isVerified && !user.emailVerified) {
+    return '/check-email';
+  }
   try {
     const data = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion);
     const overall = Number(data?.completion?.overall ?? 0);
@@ -23,15 +26,16 @@ export async function fetchAuthenticatedStartPath() {
  * Does not block the UI — use {@link fetchAuthenticatedStartPath} on click if `ready` is still false.
  */
 export function useAuthenticatedStartPath() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const completionQuery = useProfileCompletionQuery({ enabled: isAuthenticated });
 
   const path = useMemo(() => {
     if (!isAuthenticated) return '/profile/fill';
+    if (!user?.isVerified && !user?.emailVerified) return '/check-email';
     if (!completionQuery.data) return '/profile/fill';
     const overall = Number(completionQuery.data?.completion?.overall ?? 0);
     return overall >= MIN_PROFILE_COMPLETION_REQUIRED ? '/simulation' : '/profile/fill';
-  }, [isAuthenticated, completionQuery.data]);
+  }, [isAuthenticated, user?.isVerified, user?.emailVerified, completionQuery.data]);
 
   const ready = !isAuthenticated || !completionQuery.isLoading;
 

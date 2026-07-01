@@ -31,6 +31,16 @@ describe('validateSeniorityPayload', () => {
     expect(result).toEqual({ ok: false, field: 'highestDegree' });
   });
 
+  test('rejects missing years of experience', () => {
+    const result = validateSeniorityPayload({
+      currentStatus: 'employed',
+      yearsOfExperience: null,
+      highestDegree: 'bachelors',
+      mostSeniorWorkExperience: 'mid_level',
+    });
+    expect(result).toEqual({ ok: false, field: 'yearsOfExperience' });
+  });
+
   test('normalizes null years to null', () => {
     const result = normalizeSeniorityPayload({
       currentStatus: 'pupil',

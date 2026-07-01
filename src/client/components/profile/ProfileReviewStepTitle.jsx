@@ -13,6 +13,14 @@ const REVIEW_STEP_HEADER_CONFIG = {
   3: { Icon: AccountTreeIcon, titleKey: 'profilePage.sections.goodAt' },
   4: { Icon: AssessmentIcon, titleKey: 'documentUpload.review.step4Title' },
   5: { Icon: WorkHistoryIcon, titleKey: 'documentUpload.review.step5Title' },
+  6: { Icon: PsychologyIcon, titleKey: 'identityQuestions.workEnjoyMost' },
+  7: { Icon: PsychologyIcon, titleKey: 'identityQuestions.topicsIndustriesInterest' },
+  8: { Icon: PsychologyIcon, titleKey: 'identityQuestions.naturallyGoodAt' },
+  9: { Icon: PsychologyIcon, titleKey: 'identityQuestions.workEnvironmentFit' },
+  10: { Icon: PsychologyIcon, titleKey: 'identityQuestions.workingLifeAchievement' },
+  11: { Icon: AccountTreeIcon, titleKey: 'skillSelection.title' },
+  12: { Icon: WorkHistoryIcon, titleKey: 'tasksResponsibilitiesStep.title' },
+  13: { Icon: AccountTreeIcon, titleKey: 'skillsToLearnSelection.title' },
 };
 
 /**

@@ -121,7 +121,8 @@ async function runFanOutExtraction(text, options) {
   const combined = buildCombinedSemanticExtraction(
     heuristicResult,
     identitySemantic,
-    structuredSemantic
+    structuredSemantic,
+    { documentLanguage: cvLang }
   );
 
   const semanticEnrichmentStatus =

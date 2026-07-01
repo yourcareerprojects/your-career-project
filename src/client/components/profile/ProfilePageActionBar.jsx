@@ -18,7 +18,7 @@ const ProfilePageActionBar = ({ actions, sx }) => {
 
   useEffect(() => {
     if (!isMobile) {
-      setShowCompactBar(false);
+      setShowCompactBar((prev) => (prev ? false : prev));
       return undefined;
     }
 
@@ -27,7 +27,8 @@ const ProfilePageActionBar = ({ actions, sx }) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setShowCompactBar(!entry.isIntersecting);
+        const next = !entry.isIntersecting;
+        setShowCompactBar((prev) => (prev === next ? prev : next));
       },
       {
         root: null,
@@ -38,7 +39,7 @@ const ProfilePageActionBar = ({ actions, sx }) => {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isMobile, actions]);
+  }, [isMobile]);
 
   const renderButton = (action, compact) => (
     <Button

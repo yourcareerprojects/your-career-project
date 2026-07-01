@@ -115,5 +115,6 @@ router.post('/email-change', auth, loginSecurityLimiter, authController.initiate
 router.post('/email-change/resend', auth, loginSecurityLimiter, authController.resendEmailChangeVerification);
 router.delete('/email-change', auth, authController.cancelEmailChange);
 router.post('/email-change/verify', auth, loginSecurityLimiter, authController.verifyEmailChange);
+router.delete('/account', auth, loginSecurityLimiter, authController.deleteOwnAccount);
 
-module.exports = router; 
+module.exports = router;

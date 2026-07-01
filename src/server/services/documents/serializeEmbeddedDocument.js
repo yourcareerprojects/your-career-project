@@ -15,13 +15,32 @@ function resolveExtractedProfileForClient(doc, uiLanguage) {
   return fallbackCvProfileWithoutLocalization(profile, normalizeUiLanguage(uiLanguage, 'en'));
 }
 
+function documentHasExtractionResult(doc) {
+  if (!doc || typeof doc !== 'object') return false;
+  if (doc.extractedProfileData && typeof doc.extractedProfileData === 'object') return true;
+  const pipeline = String(doc.extractionStatus ?? '').trim().toLowerCase();
+  const outcome = String(doc.extractionOutcomeStatus ?? '').trim().toLowerCase();
+  return pipeline === 'completed' || pipeline === 'complete'
+    || outcome === 'success' || outcome === 'partial';
+}
+
+function docForReadinessComputation(doc) {
+  if (!doc || typeof doc !== 'object') return doc;
+  if (doc.extractedProfileData) return doc;
+  if (documentHasExtractionResult(doc)) {
+    return { ...doc, extractedProfileData: {} };
+  }
+  return doc;
+}
+
 function serializeEmbeddedDocumentForClient(doc, options = {}) {
   if (!doc) return null;
   const o = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: false }) : doc;
   const uiLanguage = options.uiLanguage;
   const lang = normalizeUiLanguage(uiLanguage, 'en');
-  const readiness = computeCvExtractionReadiness(o, null, { language: lang });
-  return {
+  const includeExtractionPayload = options.includeExtractionPayload !== false;
+  const readiness = computeCvExtractionReadiness(docForReadinessComputation(o), null, { language: lang });
+  const serialized = {
     id: o._id,
     type: o.type,
     documentTypeDisplay: documentTypeDisplaySlug(o.type),
@@ -37,12 +56,9 @@ function serializeEmbeddedDocumentForClient(doc, options = {}) {
     status: o.status,
     extractionStatus: o.extractionStatus ?? null,
     extractionOutcomeStatus: o.extractionOutcomeStatus ?? null,
-    extractedProfileData: resolveExtractedProfileForClient(o, uiLanguage),
-    cvExtractLocalization: o.cvExtractLocalization ?? null,
     extractionMessage: o.extractionMessage ?? null,
     extractionMessageKey: o.extractionMessageKey ?? null,
     localizationStatus: o.localizationStatus ?? null,
-    semanticInterpretation: o.semanticInterpretation ?? null,
     semanticInterpretationLanguage: o.semanticInterpretationLanguage ?? null,
     semanticEnrichmentStatus: o.semanticEnrichmentStatus ?? null,
     narrativeEnrichmentStatus: o.narrativeEnrichmentStatus ?? null,
@@ -55,6 +71,12 @@ function serializeEmbeddedDocumentForClient(doc, options = {}) {
     narrativesReady: readiness.narrativesReady,
     blockingTask: readiness.blockingTask,
   };
+  if (includeExtractionPayload) {
+    serialized.extractedProfileData = resolveExtractedProfileForClient(o, uiLanguage);
+    serialized.cvExtractLocalization = o.cvExtractLocalization ?? null;
+    serialized.semanticInterpretation = o.semanticInterpretation ?? null;
+  }
+  return serialized;
 }
 
 module.exports = {

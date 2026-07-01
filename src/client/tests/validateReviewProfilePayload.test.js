@@ -180,6 +180,24 @@ describe('requireGoodAt — all subcategories filled', () => {
       skills: ['Go'],
     });
   });
+
+  test('buildStructuredGoodAtFromReview caps each category to its own limit', () => {
+    const profile = {
+      structuredUserInfo: {
+        skillDomains: ['a', 'b', 'c', 'd', 'e', 'f'],
+        domains: ['x', 'y', 'z', 'w', 'v', 'u'],
+        keyResponsibilities: Array.from({ length: 30 }, (_, i) => `task ${i}`),
+        skills: Array.from({ length: 30 }, (_, i) => ({ name: `skill ${i}` })),
+        skillsInDevelopment: Array.from({ length: 30 }, (_, i) => `learn ${i}`),
+      },
+    };
+    const built = buildStructuredGoodAtFromReview(profile);
+    expect(built.skillDomains).toHaveLength(5);
+    expect(built.domains).toHaveLength(5);
+    expect(built.keyResponsibilities).toHaveLength(25);
+    expect(built.skills).toHaveLength(25);
+    expect(built.skillsInDevelopment).toHaveLength(25);
+  });
 });
 
 describe('validateReviewSavePayload', () => {

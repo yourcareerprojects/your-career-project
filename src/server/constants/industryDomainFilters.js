@@ -1,6 +1,6 @@
 /**
  * Labels that belong in skillDomains / skills / responsibilities — not in `domains`
- * (industry / economic sectors only: MedTech, Life Sciences, Manufacturing, Education, …).
+ * (industry / economic sectors only — see `src/constants/industries.js`).
  */
 const BLOCKED_NON_INDUSTRY_DOMAIN_PHRASES = new Set([
   'project management',

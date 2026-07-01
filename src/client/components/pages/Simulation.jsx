@@ -92,6 +92,7 @@ import {
 import useUpdateSimulation from '../../hooks/useUpdateSimulation';
 import useChangeDetection from '../../hooks/useChangeDetection';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
+import { useAuth } from '../../contexts/AuthContext';
 import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
 import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
 import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
@@ -100,6 +101,7 @@ import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 /** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
 const Simulation = () => {
   const { t } = useTranslation(['dashboard', 'common', 'onboarding']);
+  const { user } = useAuth();
   const requestLang = baseUILanguage();
   const localizeAiText = useCallback(
     (field) => localizedContentService.getLocalizedWithFallback(field, requestLang, ''),
@@ -126,7 +128,6 @@ const Simulation = () => {
     };
   }, []);
 
-  const { data: savedSimulations = [] } = useSavedSimulationsListQuery();
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [selectedSimulation, setSelectedSimulation] = useState(null);
   // State for save dialog
@@ -337,8 +338,14 @@ const Simulation = () => {
   }, [simResults]);
   const [profileSimulationGate, setProfileSimulationGate] = useState({
     ready: false,
+    needsVerification: false,
     belowMin: false,
   });
+  const canRunSimulation = profileSimulationGate.ready
+    && !profileSimulationGate.needsVerification
+    && !profileSimulationGate.belowMin;
+
+  const { data: savedSimulations = [] } = useSavedSimulationsListQuery({ enabled: canRunSimulation });
 
   // Global navigation guard context
   const { registerGuard, unregisterGuard, guardedNavigate } = useNavigationGuardContext();
@@ -486,7 +493,7 @@ const Simulation = () => {
     loadStoredSimulation();
   }, []); // Only run on mount
 
-  const { data: savedCareerSteps = [] } = useSavedCareerStepsListQuery();
+  const { data: savedCareerSteps = [] } = useSavedCareerStepsListQuery({ enabled: canRunSimulation });
   const savedCareerStepsRef = useRef([]);
   useEffect(() => {
     savedCareerStepsRef.current = savedCareerSteps;
@@ -578,8 +585,17 @@ const Simulation = () => {
     (async () => {
       try {
         const token = localStorage.getItem('token');
+        const isVerified = Boolean(user?.isVerified || user?.emailVerified);
         if (!token) {
-          if (!cancelled) setProfileSimulationGate({ ready: true, belowMin: false });
+          if (!cancelled) {
+            setProfileSimulationGate({ ready: true, needsVerification: false, belowMin: false });
+          }
+          return;
+        }
+        if (!isVerified) {
+          if (!cancelled) {
+            setProfileSimulationGate({ ready: true, needsVerification: true, belowMin: false });
+          }
           return;
         }
         const data = await queryClient.fetchQuery(profileCompletionQueryKey, fetchProfileCompletion);
@@ -588,18 +604,21 @@ const Simulation = () => {
           setProfileCompletion(overall);
           setProfileSimulationGate({
             ready: true,
+            needsVerification: false,
             belowMin: overall < MIN_PROFILE_COMPLETION_REQUIRED,
           });
         }
       } catch (err) {
         console.error('Profile completion gate fetch failed:', err);
-        if (!cancelled) setProfileSimulationGate({ ready: true, belowMin: false });
+        if (!cancelled) {
+          setProfileSimulationGate({ ready: true, needsVerification: false, belowMin: false });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.isVerified, user?.emailVerified]);
 
   const sanitizeSimulationResultsPayload = (newResults) => {
     if (!newResults || typeof newResults !== 'object') return null;
@@ -920,6 +939,17 @@ const Simulation = () => {
 
         setLoadingLast(true);
     try {
+      const isVerified = Boolean(user?.isVerified || user?.emailVerified);
+      if (!isVerified) {
+        setLoadingLast(false);
+        return;
+      }
+      const overall = await calculateProfileCompletion();
+      if (overall < MIN_PROFILE_COMPLETION_REQUIRED) {
+        setLoadingLast(false);
+        return;
+      }
+
       const res = await fetch(`/api/profile/simulation/last?lang=${encodeURIComponent(requestLang)}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1026,6 +1056,10 @@ const Simulation = () => {
   };
 
   const handleSimulate = async () => {
+    if (profileSimulationGate.ready && profileSimulationGate.needsVerification) {
+      setSimError(t('simulation.messages.emailVerificationRequired', { ns: 'dashboard' }));
+      return;
+    }
     if (profileSimulationGate.ready && profileSimulationGate.belowMin) {
       setSimError(
         t('simulation.messages.profileCompletionRequired', {
@@ -1590,6 +1624,10 @@ const Simulation = () => {
   };
 
   const handleUpdateProfile = () => {
+    if (profileSimulationGate.needsVerification) {
+      guardedNavigate('/check-email');
+      return;
+    }
     guardedNavigate('/profile/fill?mode=full-update');
   };
 
@@ -1625,15 +1663,21 @@ const Simulation = () => {
       compactOrder: 1,
     });
 
-    if (!(profileSimulationGate.ready && profileSimulationGate.belowMin)) {
+    if (!canRunSimulation) {
       actions.push({
         key: 'go-to-profile',
-        label: t('simulation.actions.goToProfile', { ns: 'dashboard' }),
-        shortLabel: t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
+        label: profileSimulationGate.needsVerification
+          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
+          : t('simulation.actions.goToProfile', { ns: 'dashboard' }),
+        shortLabel: profileSimulationGate.needsVerification
+          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
+          : t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
         variant: 'outlined',
         startIcon: <ArrowForwardIcon />,
-        onClick: () => guardedNavigate('/profile'),
-        ariaLabel: t('simulation.aria.goToProfile', { ns: 'dashboard' }),
+        onClick: () => guardedNavigate(profileSimulationGate.needsVerification ? '/check-email' : '/profile'),
+        ariaLabel: profileSimulationGate.needsVerification
+          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
+          : t('simulation.aria.goToProfile', { ns: 'dashboard' }),
         compactOrder: 0,
       });
     }
@@ -1643,8 +1687,8 @@ const Simulation = () => {
     simResults,
     isViewingSavedSimulation,
     saving,
-    profileSimulationGate.ready,
-    profileSimulationGate.belowMin,
+    canRunSimulation,
+    profileSimulationGate.needsVerification,
     t,
     guardedNavigate,
   ]);
@@ -2126,7 +2170,32 @@ const Simulation = () => {
                   : t('simulation.subtitle.empty', { ns: 'dashboard' })}
               </Typography>
 
-              {profileSimulationGate.ready && profileSimulationGate.belowMin && (
+              {profileSimulationGate.ready && profileSimulationGate.needsVerification && (
+                <Alert
+                  severity="info"
+                  variant="outlined"
+                  sx={{
+                    order: resultsHeaderOrder.profileGate,
+                    mb: 3,
+                    maxWidth: 680,
+                    mx: 'auto',
+                    borderRadius: 3,
+                    px: 2,
+                    py: 1.5,
+                    borderWidth: 1.5,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
+                    {t('simulation.emailVerificationGate.title', { ns: 'dashboard' })}
+                  </Typography>
+                  <Typography variant="body2">
+                    {t('simulation.emailVerificationGate.description', { ns: 'dashboard' })}
+                  </Typography>
+                </Alert>
+              )}
+
+              {profileSimulationGate.ready && !profileSimulationGate.needsVerification && profileSimulationGate.belowMin && (
                 <Alert
                   severity="warning"
                   variant="outlined"
@@ -2193,7 +2262,9 @@ const Simulation = () => {
                 {!simResults && !simLoading && (
                   <Tooltip
                     title={
-                      profileSimulationGate.ready && profileSimulationGate.belowMin
+                      profileSimulationGate.ready && profileSimulationGate.needsVerification
+                        ? t('simulation.tooltips.verifyEmailFirst', { ns: 'dashboard' })
+                        : profileSimulationGate.ready && profileSimulationGate.belowMin
                         ? t('simulation.tooltips.completeProfileFirst', {
                             ns: 'dashboard',
                             min: MIN_PROFILE_COMPLETION_REQUIRED,
@@ -2218,7 +2289,7 @@ const Simulation = () => {
                         }}
                         disabled={
                           simLoading ||
-                          (profileSimulationGate.ready && profileSimulationGate.belowMin)
+                          (profileSimulationGate.ready && (profileSimulationGate.needsVerification || profileSimulationGate.belowMin))
                         }
                       >
                         {t('simulation.actions.start', { ns: 'dashboard' })}
@@ -2229,6 +2300,28 @@ const Simulation = () => {
                 {!simResults &&
                   !simLoading &&
                   profileSimulationGate.ready &&
+                  profileSimulationGate.needsVerification && (
+                    <Button
+                      component={RouterLink}
+                      to="/check-email"
+                      variant="contained"
+                      color="primary"
+                      size="medium"
+                      startIcon={<ArrowForwardIcon />}
+                      sx={{
+                        fontWeight: 600,
+                        px: 3,
+                        py: 1.5,
+                        fontSize: '1rem',
+                      }}
+                    >
+                      {t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })}
+                    </Button>
+                  )}
+                {!simResults &&
+                  !simLoading &&
+                  profileSimulationGate.ready &&
+                  !profileSimulationGate.needsVerification &&
                   profileSimulationGate.belowMin && (
                     <Button
                       variant="contained"
@@ -2248,7 +2341,7 @@ const Simulation = () => {
                   )}
                 {!simResults &&
                   !simLoading &&
-                  !(profileSimulationGate.ready && profileSimulationGate.belowMin) && (
+                  canRunSimulation && (
                   <Tooltip title={t('simulation.tooltips.savedSimulations', { ns: 'dashboard' })} arrow>
                     <span>
                       <Button
@@ -2270,7 +2363,7 @@ const Simulation = () => {
                     </span>
                   </Tooltip>
                 )}
-                {!(profileSimulationGate.ready && profileSimulationGate.belowMin) && (
+                {canRunSimulation && (
                   <Tooltip title={t('simulation.tooltips.updateProfile', { ns: 'dashboard' })} arrow>
                     <span>
                       <Button

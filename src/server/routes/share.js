@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const requireVerifiedEmail = require('../middleware/requireVerifiedEmail');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const User = require('../models/User');
@@ -10,7 +9,7 @@ const User = require('../models/User');
 const sharedLinks = new Map();
 
 // Generate shareable link
-router.post('/generate-link', auth, requireVerifiedEmail, async (req, res) => {
+router.post('/generate-link', auth, async (req, res) => {
   try {
     const { resultId, title, description, category, matchScore, matchedInputs, privacySettings } = req.body;
     const userId = req.user.userId || req.user.id;
@@ -63,7 +62,7 @@ router.post('/generate-link', auth, requireVerifiedEmail, async (req, res) => {
 });
 
 // Share via email (with authentication)
-router.post('/email', auth, requireVerifiedEmail, async (req, res) => {
+router.post('/email', auth, async (req, res) => {
   try {
     const { recipient, message, resultId, shareableLink, privacySettings, title } = req.body;
     const userId = req.user.userId || req.user.id;

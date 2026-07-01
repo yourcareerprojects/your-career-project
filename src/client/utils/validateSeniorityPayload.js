@@ -38,6 +38,9 @@ function validateSeniorityPayload(raw = {}) {
   if (!CURRENT_EMPLOYMENT_STATUS_ALLOWED.includes(value.currentStatus)) {
     return { ok: false, field: 'currentStatus' };
   }
+  if (value.yearsOfExperience === null) {
+    return { ok: false, field: 'yearsOfExperience' };
+  }
   if (!value.highestDegree) {
     return { ok: false, field: 'highestDegree' };
   }

@@ -84,7 +84,7 @@ const VerifyEmail = () => {
       const result = await resendVerificationEmail(token ? { token } : undefined);
       setResendMessage(
         result.success
-          ? (result.message || t('verifyEmail.messages.resent'))
+          ? t('emailVerification.resendNotice', { ns: 'common' })
           : (result.error || t('verifyEmail.messages.unableToResend'))
       );
     } finally {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Paper,
   Box,
@@ -7,14 +8,23 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Stack
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  InputAdornment
 } from '@mui/material';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockIcon from '@mui/icons-material/Lock';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import axios from 'axios';
 import ChangeEmailDialog from './ChangeEmailDialog';
 import ChangePasswordDialog from './ChangePasswordDialog';
+import { useAuth } from '../../contexts/AuthContext';
 
 const InfoRow = ({ icon, label, value, helper, fallbackValue }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -42,8 +52,15 @@ const InfoRow = ({ icon, label, value, helper, fallbackValue }) => (
  */
 const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout = 'page' }) => {
   const { t } = useTranslation('onboarding');
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [pendingAction, setPendingAction] = useState(false);
@@ -75,6 +92,42 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
     }
   };
 
+  const resetDeleteDialogState = () => {
+    setDeletePassword('');
+    setShowDeletePassword(false);
+    setDeleteError('');
+    setDeleteLoading(false);
+  };
+
+  const openDeleteDialog = () => {
+    resetDeleteDialogState();
+    setDeleteDialogOpen(true);
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteLoading) return;
+    setDeleteDialogOpen(false);
+    resetDeleteDialogState();
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteError('');
+    setDeleteLoading(true);
+    try {
+      await axios.delete('/api/auth/account', {
+        data: { currentPassword: deletePassword }
+      });
+      logout();
+      navigate('/login', {
+        replace: true,
+        state: { accountDeleted: true }
+      });
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || t('loginSecurity.deleteAccount.errors.deleteFailed'));
+      setDeleteLoading(false);
+    }
+  };
+
   const isPage = layout === 'page';
   const body = (
     <>
@@ -93,6 +146,13 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
         </Button>
         <Button variant="contained" startIcon={<LockOutlinedIcon />} onClick={() => setPasswordDialogOpen(true)}>
           {t('loginSecurity.actions.changePassword')}
+        </Button>
+        <Button
+          color="error"
+          variant="outlined"
+          onClick={openDeleteDialog}
+        >
+          {t('loginSecurity.deleteAccount.actions.openDialog')}
         </Button>
       </Box>
 
@@ -193,6 +253,62 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
           }
         }}
       />
+
+      <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('loginSecurity.deleteAccount.dialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {t('loginSecurity.deleteAccount.warning')}
+          </Alert>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t('loginSecurity.deleteAccount.reauthDescription')}
+          </Typography>
+          <TextField
+            type={showDeletePassword ? 'text' : 'password'}
+            fullWidth
+            autoComplete="current-password"
+            label={t('loginSecurity.deleteAccount.fields.currentPassword')}
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            margin="dense"
+            disabled={deleteLoading}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    type="button"
+                    aria-label={showDeletePassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
+                    aria-pressed={showDeletePassword}
+                    onClick={() => setShowDeletePassword((v) => !v)}
+                    edge="end"
+                    disabled={deleteLoading}
+                  >
+                    {showDeletePassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteDialog} disabled={deleteLoading}>
+            {t('loginSecurity.actions.cancel')}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleDeleteAccount}
+            disabled={deleteLoading || !deletePassword.trim()}
+          >
+            {deleteLoading ? t('loginSecurity.deleteAccount.actions.deleting') : t('loginSecurity.deleteAccount.actions.confirmDelete')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 

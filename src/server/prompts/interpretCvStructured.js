@@ -1,4 +1,5 @@
 const { CURRENT_EMPLOYMENT_STATUS_CANONICAL } = require('../../constants/currentEmploymentStatus');
+const { formatIndustryTaxonomyForPrompt } = require('../../constants/industries');
 
 function buildMessages(cvText, lang = 'en') {
   const safeCvText = String(cvText || '').slice(0, 30000);
@@ -50,12 +51,12 @@ skillDomains requirements:
 
 Domains requirements (critical — industry / sector ONLY):
 - domains must be ECONOMIC SECTORS or SCIENTIFIC / INDUSTRY VERTICALS the person works in or wants to work in
-- GOOD examples: MedTech, Life Sciences, Pharmaceuticals, Healthcare, Manufacturing, Education, Energy, Agriculture, Automotive, Aerospace, Retail, Hospitality, Construction, Telecommunications, Software (as an industry), Financial Services
+- use ONLY labels from this canonical list (exact spelling): ${formatIndustryTaxonomyForPrompt(requested)}
 - NEVER put these in domains (use skillDomains or skills instead): Marketing, Digital Marketing, Social Media, Business Development, Sales, HR, Product Management, Project Management, Operations, Analytics, Consulting (as a role), Design (as a job function), Customer Success
 - infer from employers, products, regulated environments, and industry nouns — not from channel or go-to-market verbs
 - generalize: hospital/clinic -> Healthcare; drug R&D -> Life Sciences or Pharmaceuticals; factory floor -> Manufacturing; university -> Education
 - return 3-6 distinct domains when signals exist; prefer fewer if unclear
-- deduplicate synonyms; use widely understood sector names
+- deduplicate synonyms; map to the closest canonical sector name
 
 Responsibilities requirements:
 - return 5-10 detailed activity statements when enough signals exist
@@ -64,6 +65,14 @@ Responsibilities requirements:
 - include action + context (+ optional outcome)
 - avoid short labels like "Project Management" or "Marketing"
 - merge overlapping activities and avoid duplicates
+${requested === 'de' ? `
+Responsibilities requirements (German — mandatory):
+- Write EVERY responsibility in fluent, grammatical German at professional CV quality.
+- Use timeless profile-style phrases in Präsens or nominal style (e.g. "Leitung cross-funktionaler Teams", "Entwicklung von Softwarelösungen", "Verantwortung für die Budgetplanung") — not narrative CV copy.
+- Do NOT use Präteritum (leitete, entwickelte, koordinierte) or Perfekt (hat geleitet, habe entwickelt, wurde eingeführt).
+- Do NOT use English verb forms (Leading, Led, Managed, Developing).
+- Rewrite past-tense bullets from the source CV into correct present-tense or nominal German before returning them.
+- Keep subject–verb agreement and case government correct (von + Dative, für + Accusative).` : ''}
 
 skills requirements:
 - concrete tools, methods, and capabilities with level when inferable

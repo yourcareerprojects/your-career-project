@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import {
@@ -32,7 +31,6 @@ import {
   Download as DownloadIcon,
   Upload as UploadIcon,
   Description as DescriptionIcon,
-  CloudUpload as CloudUploadIcon,
   Edit as EditIcon,
   Add as AddIcon
 } from '@mui/icons-material';
@@ -47,6 +45,7 @@ import {
   WIZARD_NARRATIVE_WARM_SLOW_WARNING_MS,
 } from '../../utils/profileReviewSaveFlow';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+import { prefetchRoleSkillRecommendations } from '../../utils/roleSkillSearchApi';
 import {
   validateReviewProfileInDialog,
   validateReviewIdentityStep,
@@ -54,7 +53,9 @@ import {
   PROFILE_REVIEW_USER_IDENTITY_MAX,
   PROFILE_REVIEW_STRUCTURED_MAX,
 } from '../../utils/validateReviewProfilePayload';
-import { PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY } from '../../../constants/profileReviewFieldLimits';
+import {
+  getProfileStructuredListMaxItems,
+} from '../../../constants/profileReviewFieldLimits';
 import {
   saveCvReviewDraft,
   loadCvReviewDraft,
@@ -75,7 +76,6 @@ import {
   inferMostSeniorRoleFromText
 } from '../../../constants/senioritySelectOptions';
 import {
-  DOCUMENT_TYPE_UPLOAD_OPTIONS,
   isCvDocumentType,
   documentTypeDisplaySlug,
 } from '../../../constants/documentTypes';
@@ -97,6 +97,37 @@ import {
 } from '../../utils/cvExtractionZombie';
 import ProfileCreationProgress from './ProfileCreationProgress';
 import ProfileReviewStepTitle from './ProfileReviewStepTitle';
+import HomeGetStartedButton from '../home/HomeGetStartedButton';
+import WorkEnjoyMostCoaching, {
+  WorkEnjoyActivitiesPanel,
+  formatActivitiesAsText,
+  parseActivitiesFromText,
+} from './WorkEnjoyMostCoaching';
+import TopicsIndustriesCoaching, {
+  formatInterestTopicsAsText,
+  parseInterestTopicsFromText,
+} from './TopicsIndustriesCoaching';
+import NaturallyGoodAtCoaching, {
+  formatNaturallyGoodAtAsText,
+  parseNaturallyGoodAtFromText,
+  parseStrengthsFromText,
+} from './NaturallyGoodAtCoaching';
+import WorkEnvironmentCoaching, {
+  formatWorkEnvironmentAsText,
+  parseWorkEnvironmentFromText,
+  parseWorkStylesFromText,
+} from './WorkEnvironmentCoaching';
+import WorkingLifeAchievementCoaching, {
+  formatWorkingLifeAchievementAsText,
+  parseWorkingLifeAchievementFromText,
+  parseCareerGoalsFromText,
+} from './WorkingLifeAchievementCoaching';
+import SkillSelectionStep from './SkillSelectionStep';
+import SkillPicker from './SkillPicker';
+import TasksResponsibilitiesStep from './TasksResponsibilitiesStep';
+import SkillDomainPicker from './SkillDomainPicker';
+import IndustrySectorPicker from './IndustrySectorPicker';
+import { normalizeIndustryDomains } from '../../../constants/industries';
 import {
   qualityDiagnosisFingerprint,
   qualityDiagnosisInputFromProfile,
@@ -113,6 +144,39 @@ import {
   scrollToFirstReviewField,
   seniorityReviewFieldKey,
 } from '../../utils/reviewFieldScroll';
+import {
+  isManualFillFirstStep,
+  isManualFillLastStep,
+  MANUAL_FILL_STEP_COUNT,
+  MANUAL_FILL_STEP_ORDER,
+  MANUAL_FILL_REVIEW_STEPS,
+  manualFillProgressIndex,
+  nextManualFillStep,
+  prevManualFillStep,
+} from '../../utils/manualFillStepOrder';
+import {
+  saveManualFillDraft,
+  loadManualFillDraft,
+  clearManualFillDraft,
+} from '../../utils/manualFillDraftStorage';
+import {
+  buildManualFillDraftPayload,
+  hasMeaningfulManualFillDraft,
+} from '../../utils/manualFillDraft';
+import {
+  buildCoachingCvContextFromSnapshot,
+  hasManualFillCvSnapshot,
+  applyManualFillCvExtraction,
+  mergeStructuredFromCvSnapshot,
+  buildCvSkillSelectionCandidates,
+  buildCvSkillsToLearnCandidates,
+} from '../../utils/manualFillCvSnapshot';
+import { resolveRoleSkillLabels } from '../../utils/resolveRoleSkillLabels';
+import { normalizeGermanCvResponsibilityList } from '../../../constants/normalizeGermanCvResponsibilities';
+import {
+  buildCvReviewDraftPayload,
+  hasMeaningfulCvReviewDraft,
+} from '../../utils/cvReviewDraft';
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -148,19 +212,187 @@ function mergeFollowUpAnswersForQuestions(previousAnswers = {}, followUps = [], 
   return out;
 }
 
-const MAX_GOOD_AT_PER_CATEGORY = PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY;
+function buildProtectedIdentityFollowUpFields(
+  workEnjoyMostUserEdited,
+  topicsIndustriesUserEdited,
+  naturallyGoodAtUserEdited,
+  workEnvironmentFitUserEdited,
+  workingLifeAchievementUserEdited
+) {
+  const fields = [];
+  if (workEnjoyMostUserEdited) fields.push('userIdentity.workEnjoyMost');
+  if (topicsIndustriesUserEdited) {
+    fields.push('userIdentity.topicsIndustriesInterest');
+    fields.push('structuredUserInfo.domains');
+  }
+  if (naturallyGoodAtUserEdited) {
+    fields.push('userIdentity.naturallyGoodAt');
+    fields.push('structuredUserInfo.skillDomains');
+  }
+  if (workEnvironmentFitUserEdited) fields.push('userIdentity.workEnvironmentFit');
+  if (workingLifeAchievementUserEdited) fields.push('userIdentity.workingLifeAchievement');
+  return fields;
+}
+
+function filterProtectedIdentityFollowUps(
+  followUps,
+  workEnjoyMostUserEdited,
+  topicsIndustriesUserEdited,
+  naturallyGoodAtUserEdited,
+  workEnvironmentFitUserEdited,
+  workingLifeAchievementUserEdited
+) {
+  const blocked = new Set(buildProtectedIdentityFollowUpFields(
+    workEnjoyMostUserEdited,
+    topicsIndustriesUserEdited,
+    naturallyGoodAtUserEdited,
+    workEnvironmentFitUserEdited,
+    workingLifeAchievementUserEdited
+  ));
+  return (Array.isArray(followUps) ? followUps : []).filter((row) => {
+    const field = String(row?.field || '').trim();
+    if (blocked.has(field)) return false;
+    if (topicsIndustriesUserEdited && field.startsWith('structuredUserInfo.domains.')) return false;
+    if (naturallyGoodAtUserEdited && field.startsWith('structuredUserInfo.skillDomains.')) return false;
+    return true;
+  });
+}
+
+function buildAcceptedDomainFields(domains = []) {
+  const accepted = {};
+  (Array.isArray(domains) ? domains : []).forEach((_, idx) => {
+    accepted[`structuredUserInfo.domains.${idx}`] = true;
+  });
+  return accepted;
+}
+
+function buildAcceptedSkillDomainFields(skillDomains = []) {
+  const accepted = {};
+  (Array.isArray(skillDomains) ? skillDomains : []).forEach((_, idx) => {
+    accepted[`structuredUserInfo.skillDomains.${idx}`] = true;
+  });
+  return accepted;
+}
+
+function buildAcceptedSkillFields(skills = []) {
+  const accepted = {};
+  (Array.isArray(skills) ? skills : []).forEach((_, idx) => {
+    accepted[`structuredUserInfo.skills.${idx}`] = true;
+  });
+  return accepted;
+}
+
+function buildAcceptedSkillsInDevelopmentFields(skillsInDevelopment = []) {
+  const accepted = {};
+  (Array.isArray(skillsInDevelopment) ? skillsInDevelopment : []).forEach((_, idx) => {
+    accepted[`structuredUserInfo.skillsInDevelopment.${idx}`] = true;
+  });
+  return accepted;
+}
+
+function reviewProfileHasSelectedSkill(reviewProfile = {}) {
+  const skills = reviewProfile?.structuredUserInfo?.skills || [];
+  return skills.some((item) => {
+    const name = typeof item === 'string' ? item : item?.name;
+    return String(name || '').trim();
+  });
+}
+
+function reviewProfileHasSkillsInDevelopment(reviewProfile = {}) {
+  const skills = reviewProfile?.structuredUserInfo?.skillsInDevelopment || [];
+  return skills.some((item) => {
+    const name = typeof item === 'string' ? item : item?.name;
+    return String(name || '').trim();
+  });
+}
+
+function skillLabelsFromProfile(skills = []) {
+  return (Array.isArray(skills) ? skills : [])
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      return String(item?.name || '').trim();
+    })
+    .filter(Boolean);
+}
+
+/** Map validation field keys to a manual-fill step (CV-only steps 2–4 are not used). */
+function mapManualFillReviewStepFromField(firstField, fallbackStep) {
+  const field = String(firstField || '').trim();
+  if (field.startsWith('structuredUserInfo.skillsInDevelopment')) {
+    return MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN;
+  }
+  if (field.startsWith('structuredUserInfo.skills')) {
+    return MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION;
+  }
+  if (field.startsWith('structuredUserInfo.keyResponsibilities')) {
+    return MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES;
+  }
+  if (field.startsWith('structuredUserInfo.skillDomains')) {
+    return MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING;
+  }
+  if (field.startsWith('structuredUserInfo.domains')) {
+    return MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING;
+  }
+  if (field === 'userIdentity.workEnjoyMost') {
+    return MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING;
+  }
+  if (field === 'userIdentity.topicsIndustriesInterest') {
+    return MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING;
+  }
+  if (field === 'userIdentity.naturallyGoodAt') {
+    return MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING;
+  }
+  if (field === 'userIdentity.workEnvironmentFit') {
+    return MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING;
+  }
+  if (field === 'userIdentity.workingLifeAchievement') {
+    return MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING;
+  }
+  if (field.startsWith('seniority.')) {
+    return MANUAL_FILL_REVIEW_STEPS.SENIORITY;
+  }
+  if (fallbackStep === 2 || fallbackStep === 3 || fallbackStep === 4) {
+    return MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN;
+  }
+  if (MANUAL_FILL_STEP_ORDER.includes(fallbackStep)) return fallbackStep;
+  return MANUAL_FILL_REVIEW_STEPS.SENIORITY;
+}
+
+function buildAcceptedKeyResponsibilityFields(keyResponsibilities = []) {
+  const accepted = {};
+  (Array.isArray(keyResponsibilities) ? keyResponsibilities : []).forEach((item, idx) => {
+    if (String(item || '').trim()) {
+      accepted[`structuredUserInfo.keyResponsibilities.${idx}`] = true;
+    }
+  });
+  return accepted;
+}
+
+function reviewProfileHasKeyResponsibilities(reviewProfile = {}) {
+  const items = reviewProfile?.structuredUserInfo?.keyResponsibilities || [];
+  return items.some((item) => String(item || '').trim());
+}
+
+function capGoodAtList(arr, arrayKey) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, getProfileStructuredListMaxItems(arrayKey));
+}
 
 /** Merge Step 3 follow-up answers into the review profile before save (append text / push list rows). */
-function applyStep3FollowUpAnswersToReviewProfile(profile, followUps, answers) {
+function applyStep3FollowUpAnswersToReviewProfile(profile, followUps, answers, protectedFields = []) {
   if (!profile || typeof profile !== 'object' || !Array.isArray(followUps) || followUps.length === 0) {
     return profile;
   }
+  const protectedSet = new Set(
+    (Array.isArray(protectedFields) ? protectedFields : []).map((field) => String(field || '').trim()).filter(Boolean)
+  );
   const uid = { ...(profile.userIdentity || {}) };
   const keyResponsibilities = [...(profile.structuredUserInfo?.keyResponsibilities || [])];
   const skillsInDevelopment = [...(profile.structuredUserInfo?.skillsInDevelopment || [])];
 
   for (const row of followUps) {
     const f = row.field;
+    if (protectedSet.has(String(f || '').trim())) continue;
     const ans = String((answers && answers[f]) || '').trim();
     if (!ans) continue;
     if (f.startsWith('userIdentity.')) {
@@ -168,11 +400,11 @@ function applyStep3FollowUpAnswersToReviewProfile(profile, followUps, answers) {
       const prev = String(uid[key] || '').trim();
       uid[key] = prev ? `${prev}\n\n${ans}` : ans;
     } else if (f === 'structuredUserInfo.keyResponsibilities') {
-      if (keyResponsibilities.length < MAX_GOOD_AT_PER_CATEGORY) {
+      if (keyResponsibilities.length < getProfileStructuredListMaxItems('keyResponsibilities')) {
         keyResponsibilities.push(ans);
       }
     } else if (f === 'structuredUserInfo.skillsInDevelopment') {
-      if (skillsInDevelopment.length < MAX_GOOD_AT_PER_CATEGORY) {
+      if (skillsInDevelopment.length < getProfileStructuredListMaxItems('skillsInDevelopment')) {
         skillsInDevelopment.push(ans);
       }
     }
@@ -187,11 +419,6 @@ function applyStep3FollowUpAnswersToReviewProfile(profile, followUps, answers) {
       skillsInDevelopment
     }
   };
-}
-
-function capGoodAtList(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr.slice(0, MAX_GOOD_AT_PER_CATEGORY);
 }
 
 /** Align review rows: fixed category column, shared input width (matches “What are you good at?”). */
@@ -407,6 +634,272 @@ function restoreReviewDraftUiState(draft, setters) {
   }
 }
 
+function restoreManualFillDraftUiState(draft, setters) {
+  if (!draft || typeof draft !== 'object') return;
+  const {
+    setReviewProfile,
+    setReviewStep,
+    setAcceptedFields,
+    setManualWorkEnjoyComplete,
+    setManualTopicsComplete,
+    setManualStrengthsComplete,
+    setManualWorkEnvironmentComplete,
+    setManualWorkingLifeAchievementComplete,
+    setWorkEnjoyMostUserEdited,
+    setTopicsIndustriesUserEdited,
+    setNaturallyGoodAtUserEdited,
+    setWorkEnvironmentFitUserEdited,
+    setWorkingLifeAchievementUserEdited,
+    setManualFillCoachingDraft,
+    setManualFillCvSnapshot,
+    setOptionalCvSkipped,
+    setPendingUploadedDocId,
+    setCvExtractLocalization,
+    ensureReviewProfileShape,
+    normalizeExtractedProfileData,
+    setExtractedProfileData,
+  } = setters;
+
+  const emptyProfile = normalizeExtractedProfileData({});
+  setExtractedProfileData(emptyProfile);
+  if (draft.reviewProfile && typeof draft.reviewProfile === 'object') {
+    setReviewProfile(ensureReviewProfileShape(draft.reviewProfile));
+  } else {
+    setReviewProfile(ensureReviewProfileShape(emptyProfile));
+  }
+  if (typeof draft.reviewStep === 'number') {
+    let step = draft.reviewStep;
+    // Manual fill does not use CV-only identity (2), good-at overview (3), or context follow-up (4).
+    if (step === 2 || step === 4 || step === MANUAL_FILL_REVIEW_STEPS.GOOD_AT) {
+      step = MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN;
+    } else if (!MANUAL_FILL_STEP_ORDER.includes(step)) {
+      step = MANUAL_FILL_STEP_ORDER[0];
+    }
+    setReviewStep(step);
+  }
+  if (draft.acceptedFields && typeof draft.acceptedFields === 'object') {
+    setAcceptedFields(draft.acceptedFields);
+  }
+  setManualWorkEnjoyComplete(Boolean(draft.manualWorkEnjoyComplete));
+  setManualTopicsComplete(Boolean(draft.manualTopicsComplete));
+  setManualStrengthsComplete(Boolean(draft.manualStrengthsComplete));
+  setManualWorkEnvironmentComplete(Boolean(draft.manualWorkEnvironmentComplete));
+  setManualWorkingLifeAchievementComplete(Boolean(draft.manualWorkingLifeAchievementComplete));
+  setWorkEnjoyMostUserEdited(Boolean(draft.workEnjoyMostUserEdited));
+  setTopicsIndustriesUserEdited(Boolean(draft.topicsIndustriesUserEdited));
+  setNaturallyGoodAtUserEdited(Boolean(draft.naturallyGoodAtUserEdited));
+  setWorkEnvironmentFitUserEdited(Boolean(draft.workEnvironmentFitUserEdited));
+  setWorkingLifeAchievementUserEdited(Boolean(draft.workingLifeAchievementUserEdited));
+  setManualFillCoachingDraft(
+    draft.coachingDraft && typeof draft.coachingDraft === 'object' ? draft.coachingDraft : {}
+  );
+  if (setManualFillCvSnapshot) {
+    setManualFillCvSnapshot(
+      draft.manualFillCvSnapshot && typeof draft.manualFillCvSnapshot === 'object'
+        ? draft.manualFillCvSnapshot
+        : null
+    );
+  }
+  if (setOptionalCvSkipped) setOptionalCvSkipped(Boolean(draft.optionalCvSkipped));
+  if (setPendingUploadedDocId && draft.pendingUploadedDocId) {
+    setPendingUploadedDocId(String(draft.pendingUploadedDocId));
+  }
+  if (setCvExtractLocalization && draft.cvExtractLocalization) {
+    setCvExtractLocalization(draft.cvExtractLocalization);
+  }
+  const {
+    skillsUserEditedRef,
+    skillsToLearnUserEditedRef,
+    cvSkillsSelectionResolvedRef,
+    cvSkillsToLearnResolvedRef,
+  } = setters;
+  const draftSkills = draft.reviewProfile?.structuredUserInfo?.skills || [];
+  const draftStep = draft.reviewStep;
+  if (
+    skillsUserEditedRef
+    && typeof draftStep === 'number'
+    && draftStep > MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION
+    && reviewProfileHasSelectedSkill({ structuredUserInfo: { skills: draftSkills } })
+  ) {
+    skillsUserEditedRef.current = true;
+    if (cvSkillsSelectionResolvedRef) cvSkillsSelectionResolvedRef.current = true;
+  }
+  const draftSkillsInDevelopment = draft.reviewProfile?.structuredUserInfo?.skillsInDevelopment || [];
+  if (
+    skillsToLearnUserEditedRef
+    && reviewProfileHasSkillsInDevelopment({
+      structuredUserInfo: { skillsInDevelopment: draftSkillsInDevelopment },
+    })
+  ) {
+    skillsToLearnUserEditedRef.current = true;
+    if (cvSkillsToLearnResolvedRef) cvSkillsToLearnResolvedRef.current = true;
+  }
+}
+
+function resolveCoachingInitialMessages(coachingDraft, stepKey) {
+  const entry = coachingDraft?.[stepKey];
+  if (!entry || entry.phase !== 'chat' || !Array.isArray(entry.messages)) return [];
+  return entry.messages;
+}
+
+function resolveWorkEnjoyInitialActivities(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const fromProfile = parseActivitiesFromText(reviewProfile?.userIdentity?.workEnjoyMost);
+  if (fromProfile.length > 0 && !hasManualFillCvSnapshot(manualFillCvSnapshot)) return fromProfile;
+  const entry = coachingDraft?.workEnjoy;
+  if (entry?.phase === 'summary' && Array.isArray(entry.activities)) {
+    return entry.activities.filter((item) => String(item || '').trim());
+  }
+  return [];
+}
+
+function resolveTopicsInitialInterest(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const fromProfile = parseInterestTopicsFromText(reviewProfile?.userIdentity?.topicsIndustriesInterest);
+  if (fromProfile.length > 0 && !hasManualFillCvSnapshot(manualFillCvSnapshot)) return fromProfile;
+  const entry = coachingDraft?.topics;
+  if (entry?.phase === 'summary' && Array.isArray(entry.interestTopics)) {
+    return entry.interestTopics.filter((item) => String(item || '').trim());
+  }
+  return [];
+}
+
+function resolveTopicsInitialIndustries(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const fromProfile = (reviewProfile?.structuredUserInfo?.domains || [])
+    .map((item) => (typeof item === 'string' ? item : item?.name || ''))
+    .filter((item) => String(item || '').trim());
+  if (fromProfile.length > 0 && !hasManualFillCvSnapshot(manualFillCvSnapshot)) return fromProfile;
+  const entry = coachingDraft?.topics;
+  if (entry?.phase === 'summary' && Array.isArray(entry.industries)) {
+    return entry.industries.filter((item) => String(item || '').trim());
+  }
+  return [];
+}
+
+function resolveStrengthsInitialStrengths(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const parsed = parseNaturallyGoodAtFromText(reviewProfile?.userIdentity?.naturallyGoodAt);
+  if (parsed.strengths.length > 0 && !hasManualFillCvSnapshot(manualFillCvSnapshot)) {
+    return parsed.strengths;
+  }
+  const entry = coachingDraft?.strengths;
+  if (entry?.phase === 'summary' && Array.isArray(entry.strengths)) {
+    return entry.strengths.filter((item) => String(item || '').trim());
+  }
+  return [];
+}
+
+function resolveStrengthsInitialSkillDomains(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const fromProfile = (reviewProfile?.structuredUserInfo?.skillDomains || [])
+    .map((item) => (typeof item === 'string' ? item : item?.name || ''))
+    .filter((item) => String(item || '').trim());
+  if (fromProfile.length > 0 && !hasManualFillCvSnapshot(manualFillCvSnapshot)) return fromProfile;
+  const entry = coachingDraft?.strengths;
+  if (entry?.phase === 'summary' && Array.isArray(entry.skillDomains)) {
+    return entry.skillDomains.filter((item) => String(item || '').trim());
+  }
+  return [];
+}
+
+function appendCoachingContextTexts(texts, coachingDraft, stepKey) {
+  const entry = coachingDraft?.[stepKey];
+  if (!entry) return;
+  if (Array.isArray(entry.messages)) {
+    entry.messages
+      .filter((msg) => msg?.role === 'user')
+      .forEach((msg) => texts.push(String(msg.content || '').trim()));
+  }
+  if (entry.phase !== 'summary') return;
+  if (stepKey === 'workEnjoy' && Array.isArray(entry.activities)) {
+    entry.activities.forEach((item) => texts.push(String(item || '').trim()));
+  }
+  if (stepKey === 'topics') {
+    if (Array.isArray(entry.interestTopics)) {
+      entry.interestTopics.forEach((item) => texts.push(String(item || '').trim()));
+    }
+    if (Array.isArray(entry.industries)) {
+      entry.industries.forEach((item) => texts.push(String(item || '').trim()));
+    }
+  }
+}
+
+function buildSkillDomainRecommendationContext(reviewProfile, coachingDraft) {
+  const texts = [];
+  const seniority = reviewProfile?.seniority || {};
+  Object.values(seniority).forEach((value) => {
+    if (value == null || value === '') return;
+    texts.push(String(value).trim());
+  });
+  const workEnjoy = reviewProfile?.userIdentity?.workEnjoyMost;
+  if (workEnjoy) texts.push(String(workEnjoy).trim());
+  const topics = reviewProfile?.userIdentity?.topicsIndustriesInterest;
+  if (topics) texts.push(String(topics).trim());
+  (reviewProfile?.structuredUserInfo?.domains || []).forEach((item) => {
+    texts.push(typeof item === 'string' ? item : String(item?.name || '').trim());
+  });
+  appendCoachingContextTexts(texts, coachingDraft, 'workEnjoy');
+  appendCoachingContextTexts(texts, coachingDraft, 'topics');
+  appendCoachingContextTexts(texts, coachingDraft, 'strengths');
+  return texts.map((item) => String(item || '').trim()).filter(Boolean);
+}
+
+function buildSkillSelectionRecommendationContext(reviewProfile, coachingDraft) {
+  const texts = [...buildSkillDomainRecommendationContext(reviewProfile, coachingDraft)];
+  const naturallyGoodAt = reviewProfile?.userIdentity?.naturallyGoodAt;
+  if (naturallyGoodAt) texts.push(String(naturallyGoodAt).trim());
+  const workEnvironment = reviewProfile?.userIdentity?.workEnvironmentFit;
+  if (workEnvironment) texts.push(String(workEnvironment).trim());
+  const workingLifeAchievement = reviewProfile?.userIdentity?.workingLifeAchievement;
+  if (workingLifeAchievement) texts.push(String(workingLifeAchievement).trim());
+  (reviewProfile?.structuredUserInfo?.skillDomains || []).forEach((item) => {
+    texts.push(String(item || '').trim());
+  });
+  (reviewProfile?.structuredUserInfo?.keyResponsibilities || []).forEach((item) => {
+    texts.push(String(item || '').trim());
+  });
+  appendCoachingContextTexts(texts, coachingDraft, 'workEnvironment');
+  appendCoachingContextTexts(texts, coachingDraft, 'workingLifeAchievement');
+  const seen = new Set();
+  return texts
+    .map((item) => String(item || '').trim())
+    .filter((item) => {
+      if (!item) return false;
+      const key = item.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function resolveWorkEnvironmentInitial(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const parsed = parseWorkEnvironmentFromText(reviewProfile?.userIdentity?.workEnvironmentFit);
+  if ((parsed.workStyles.length > 0 || parsed.workEnvironments.length > 0)
+    && !hasManualFillCvSnapshot(manualFillCvSnapshot)) {
+    return parsed;
+  }
+  const entry = coachingDraft?.workEnvironment;
+  if (entry?.phase === 'summary') {
+    return {
+      workStyles: Array.isArray(entry.workStyles) ? entry.workStyles : [],
+      workEnvironments: Array.isArray(entry.workEnvironments) ? entry.workEnvironments : [],
+    };
+  }
+  return { workStyles: [], workEnvironments: [] };
+}
+
+function resolveWorkingLifeAchievementInitial(reviewProfile, coachingDraft, manualFillCvSnapshot) {
+  const parsed = parseWorkingLifeAchievementFromText(reviewProfile?.userIdentity?.workingLifeAchievement);
+  if ((parsed.careerGoals.length > 0 || parsed.priorities.length > 0)
+    && !hasManualFillCvSnapshot(manualFillCvSnapshot)) {
+    return parsed;
+  }
+  const entry = coachingDraft?.workingLifeAchievement;
+  if (entry?.phase === 'summary') {
+    return {
+      careerGoals: Array.isArray(entry.careerGoals) ? entry.careerGoals : [],
+      priorities: Array.isArray(entry.priorities) ? entry.priorities : [],
+    };
+  }
+  return { careerGoals: [], priorities: [] };
+}
+
 const DocumentUploadForm = ({
   documents = [],
   onDocumentsUpdate,
@@ -414,15 +907,15 @@ const DocumentUploadForm = ({
   onExtractedProfileReview,
   enableExtractionReview = true,
   defaultDocumentType = '',
-  rollbackOnReviewCancel = false,
   showSectionTitle = true,
   reviewSaveMode = 'merge',
-  showUploadControls = true,
   parentSavingReview = false,
   hideDocumentList = false,
   openReviewForDocumentId = null,
   restrictAutoResumeToDocumentId = null,
   onReviewSessionEnd = null,
+  showManualFillOption = false,
+  manualFillOnly = false,
 }) => {
   const { user } = useAuth();
   const reviewUserId = String(user?.id || user?._id || '').trim() || null;
@@ -452,15 +945,15 @@ const DocumentUploadForm = ({
   const [extractionError, setExtractionError] = useState('');
   const [uploadSucceeded, setUploadSucceeded] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadDialog, setUploadDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadedCvDisplayName, setUploadedCvDisplayName] = useState('');
   const [documentType, setDocumentType] = useState(defaultDocumentType || '');
   const [extractedProfileData, setExtractedProfileData] = useState(null);
   /** Bilingual payloads from CV pipeline; forwarded on review save for profile merge. */
   const [cvExtractLocalization, setCvExtractLocalization] = useState(null);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewProfile, setReviewProfile] = useState({});
-  const [reviewStep, setReviewStep] = useState(enableExtractionReview ? 1 : 2);
+  const [reviewStep, setReviewStep] = useState(1);
   const reviewStep1FileInputRef = useRef(null);
   const advancingToIdentityStepRef = useRef(false);
   /** CV document ids the user dismissed via wizard cancel — blocks auto-resume polling. */
@@ -480,6 +973,7 @@ const DocumentUploadForm = ({
     setCvPollTarget(null);
     setCvPipelinePhase('idle');
     setUploadSucceeded(false);
+    setUploadedCvDisplayName('');
     setCvPollTimedOutDocId(null);
     setCvPollFailedDocId(null);
     setCvZombieSnapshot(null);
@@ -515,6 +1009,62 @@ const DocumentUploadForm = ({
   const [pendingUploadedDocId, setPendingUploadedDocId] = useState(null);
   const [autoStartUpload, setAutoStartUpload] = useState(false);
   const [reviewCancelConfirmOpen, setReviewCancelConfirmOpen] = useState(false);
+  const [manualFillStartConfirmOpen, setManualFillStartConfirmOpen] = useState(false);
+  const [manualFillDiscardConfirmOpen, setManualFillDiscardConfirmOpen] = useState(false);
+  const [manualFillMode, setManualFillMode] = useState(false);
+  const [manualFillCvSnapshot, setManualFillCvSnapshot] = useState(null);
+  const [optionalCvSkipped, setOptionalCvSkipped] = useState(false);
+  const [manualFillCoachingDraft, setManualFillCoachingDraft] = useState({});
+  const [hasSavedManualFillDraft, setHasSavedManualFillDraft] = useState(false);
+  const [manualWorkEnjoyComplete, setManualWorkEnjoyComplete] = useState(false);
+  const [manualTopicsComplete, setManualTopicsComplete] = useState(false);
+  const [manualStrengthsComplete, setManualStrengthsComplete] = useState(false);
+  const [manualWorkEnvironmentComplete, setManualWorkEnvironmentComplete] = useState(false);
+  const [manualWorkingLifeAchievementComplete, setManualWorkingLifeAchievementComplete] = useState(false);
+  const [workEnjoyMostUserEdited, setWorkEnjoyMostUserEdited] = useState(false);
+  const [topicsIndustriesUserEdited, setTopicsIndustriesUserEdited] = useState(false);
+  const [naturallyGoodAtUserEdited, setNaturallyGoodAtUserEdited] = useState(false);
+  const [workEnvironmentFitUserEdited, setWorkEnvironmentFitUserEdited] = useState(false);
+  const [workingLifeAchievementUserEdited, setWorkingLifeAchievementUserEdited] = useState(false);
+  const [workEnjoySummaryFooter, setWorkEnjoySummaryFooter] = useState({
+    canConfirm: false,
+    isEditing: false,
+    hasActivities: false,
+  });
+  const [topicsSummaryFooter, setTopicsSummaryFooter] = useState({
+    canConfirm: false,
+    isEditing: false,
+    hasSummary: false,
+  });
+  const [strengthsSummaryFooter, setStrengthsSummaryFooter] = useState({
+    canConfirm: false,
+    isEditing: false,
+    hasSummary: false,
+  });
+  const [workEnvironmentSummaryFooter, setWorkEnvironmentSummaryFooter] = useState({
+    canConfirm: false,
+    isEditing: false,
+    hasSummary: false,
+  });
+  const [workingLifeAchievementSummaryFooter, setWorkingLifeAchievementSummaryFooter] = useState({
+    canConfirm: false,
+    isEditing: false,
+    hasSummary: false,
+  });
+  const workEnjoyConfirmRef = useRef(() => {});
+  const topicsConfirmRef = useRef(() => {});
+  const strengthsConfirmRef = useRef(() => {});
+  const workEnvironmentConfirmRef = useRef(() => {});
+  const workingLifeAchievementConfirmRef = useRef(() => {});
+  const structuredCvMergeAppliedRef = useRef(false);
+  const cvSkillsSelectionResolvedRef = useRef(false);
+  const cvSkillsToLearnResolvedRef = useRef(false);
+  const cvPreResolvedSkillsRef = useRef(null);
+  const cvPreResolveSkillsPromiseRef = useRef(null);
+  const skillsUserEditedRef = useRef(false);
+  const skillsToLearnUserEditedRef = useRef(false);
+  const manualFillCvSnapshotApplyRef = useRef(null);
+  const manualFillModeRef = useRef(false);
   /** Validation/save errors shown inside the review dialog (not hidden behind the modal). */
   const [reviewDialogError, setReviewDialogError] = useState('');
   /** True while context-step continue awaits diagnosis or narrative cache warm. */
@@ -536,6 +1086,146 @@ const DocumentUploadForm = ({
       onReviewSessionEnd();
     }
   }, [onReviewSessionEnd]);
+
+  const refreshSavedManualFillDraftFlag = useCallback(() => {
+    if (!reviewUserId) {
+      setHasSavedManualFillDraft(false);
+      return;
+    }
+    const draft = loadManualFillDraft(reviewUserId);
+    setHasSavedManualFillDraft(hasMeaningfulManualFillDraft(draft));
+  }, [reviewUserId]);
+
+  const strengthsSkillDomainRecommendationContext = useMemo(
+    () => buildSkillDomainRecommendationContext(reviewProfile, manualFillCoachingDraft),
+    [reviewProfile, manualFillCoachingDraft]
+  );
+
+  const skillSelectionRecommendationContext = useMemo(
+    () => buildSkillSelectionRecommendationContext(reviewProfile, manualFillCoachingDraft),
+    [reviewProfile, manualFillCoachingDraft]
+  );
+
+  useEffect(() => {
+    if (!showManualFillOption) return undefined;
+    refreshSavedManualFillDraftFlag();
+    return undefined;
+  }, [showManualFillOption, reviewUserId, refreshSavedManualFillDraftFlag]);
+
+  const buildCurrentManualFillDraft = useCallback(() => buildManualFillDraftPayload({
+    reviewProfile,
+    reviewStep,
+    acceptedFields,
+    manualFillCvSnapshot,
+    optionalCvSkipped,
+    pendingUploadedDocId,
+    cvExtractLocalization,
+    manualWorkEnjoyComplete,
+    manualTopicsComplete,
+    manualStrengthsComplete,
+    manualWorkEnvironmentComplete,
+    manualWorkingLifeAchievementComplete,
+    workEnjoyMostUserEdited,
+    topicsIndustriesUserEdited,
+    naturallyGoodAtUserEdited,
+    workEnvironmentFitUserEdited,
+    workingLifeAchievementUserEdited,
+    coachingDraft: manualFillCoachingDraft,
+  }), [
+    reviewProfile,
+    reviewStep,
+    acceptedFields,
+    manualFillCvSnapshot,
+    optionalCvSkipped,
+    pendingUploadedDocId,
+    cvExtractLocalization,
+    manualWorkEnjoyComplete,
+    manualTopicsComplete,
+    manualStrengthsComplete,
+    manualWorkEnvironmentComplete,
+    manualWorkingLifeAchievementComplete,
+    workEnjoyMostUserEdited,
+    topicsIndustriesUserEdited,
+    naturallyGoodAtUserEdited,
+    workEnvironmentFitUserEdited,
+    workingLifeAchievementUserEdited,
+    manualFillCoachingDraft,
+  ]);
+
+  const persistManualFillDraft = useCallback((draftOverride = null) => {
+    if (!reviewUserId) return;
+    const payload = draftOverride || buildCurrentManualFillDraft();
+    if (!hasMeaningfulManualFillDraft(payload)) return;
+    saveManualFillDraft(reviewUserId, payload);
+    setHasSavedManualFillDraft(true);
+  }, [reviewUserId, buildCurrentManualFillDraft]);
+
+  const buildCurrentCvReviewDraft = useCallback(() => buildCvReviewDraftPayload({
+    pendingUploadedDocId,
+    reviewProfile,
+    reviewStep,
+    step3FollowUps,
+    step3FollowUpAnswers,
+    acceptedFields,
+    cvExtractLocalization,
+    reviewDialogOpen: true,
+    inputQualityDiagnosisCache: diagnosisCacheMapToDraft(inputQualityDiagnosisCacheRef.current),
+    inputQualityDiagnosisAppliedFingerprint: inputQualityDiagnosisAppliedFingerprintRef.current,
+  }), [
+    pendingUploadedDocId,
+    reviewProfile,
+    reviewStep,
+    step3FollowUps,
+    step3FollowUpAnswers,
+    acceptedFields,
+    cvExtractLocalization,
+  ]);
+
+  const persistCvReviewDraft = useCallback((draftOverride = null) => {
+    if (!reviewUserId) return;
+    const payload = draftOverride || buildCurrentCvReviewDraft();
+    if (!hasMeaningfulCvReviewDraft(payload)) return;
+    saveCvReviewDraft(reviewUserId, payload);
+  }, [reviewUserId, buildCurrentCvReviewDraft]);
+
+  const handleManualFillCoachingPersist = useCallback((stepKey, snapshot) => {
+    setManualFillCoachingDraft((prev) => ({
+      ...prev,
+      [stepKey]: snapshot,
+    }));
+  }, []);
+
+  const resetManualFillUiState = useCallback(() => {
+    setManualFillMode(false);
+    setManualFillCvSnapshot(null);
+    setOptionalCvSkipped(false);
+    setManualFillCoachingDraft({});
+    setManualWorkEnjoyComplete(false);
+    setManualTopicsComplete(false);
+    setManualStrengthsComplete(false);
+    setManualWorkEnvironmentComplete(false);
+    setManualWorkingLifeAchievementComplete(false);
+    setWorkEnjoyMostUserEdited(false);
+    setTopicsIndustriesUserEdited(false);
+    setNaturallyGoodAtUserEdited(false);
+    setWorkEnvironmentFitUserEdited(false);
+    setWorkingLifeAchievementUserEdited(false);
+    setWorkEnjoySummaryFooter({ canConfirm: false, isEditing: false, hasActivities: false });
+    setTopicsSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+    setStrengthsSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+    setWorkEnvironmentSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+    setWorkingLifeAchievementSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+    workEnjoyConfirmRef.current = () => {};
+    topicsConfirmRef.current = () => {};
+    strengthsConfirmRef.current = () => {};
+    workEnvironmentConfirmRef.current = () => {};
+    workingLifeAchievementConfirmRef.current = () => {};
+    structuredCvMergeAppliedRef.current = false;
+    cvSkillsSelectionResolvedRef.current = false;
+    cvSkillsToLearnResolvedRef.current = false;
+    skillsUserEditedRef.current = false;
+    skillsToLearnUserEditedRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (reviewDialogOpen) {
@@ -608,7 +1298,10 @@ const DocumentUploadForm = ({
     }
     setReviewFieldErrors(translateReviewFieldErrors(result.fieldErrors, t));
     setReviewDialogError(t('documentUpload.review.errors.fixHighlightedFields'));
-    setReviewStep(result.focusStep || 2);
+    const focusStep = manualFillMode
+      ? mapManualFillReviewStepFromField(result.firstField, result.focusStep || 2)
+      : (result.focusStep || 2);
+    setReviewStep(focusStep);
     queueReviewFieldScroll(
       buildReviewFieldScrollQueue(result.firstField, result.fieldErrors)
     );
@@ -631,46 +1324,12 @@ const DocumentUploadForm = ({
   const [cvRecoveryBusy, setCvRecoveryBusy] = useState(false);
   const cvPollAbortRef = useRef(null);
 
-  /** Restore in-progress review draft after refresh / long session (sessionStorage, 24h TTL). */
-  useEffect(() => {
-    if (!enableExtractionReview || !reviewUserId || reviewDraftRestoredRef.current) return undefined;
-    const draft = loadCvReviewDraft(reviewUserId);
-    if (!draft?.pendingUploadedDocId) return undefined;
-    reviewDraftRestoredRef.current = true;
-    setPendingUploadedDocId(String(draft.pendingUploadedDocId));
-    if (draft.reviewProfile && typeof draft.reviewProfile === 'object') {
-      setReviewProfile(ensureReviewProfileShape(draft.reviewProfile));
-    }
-    restoreReviewDraftUiState(draft, {
-      setReviewStep,
-      setStep3FollowUps,
-      setStep3FollowUpAnswers,
-      setAcceptedFields,
-      setCvExtractLocalization,
-      setReviewDialogOpen,
-      inputQualityDiagnosisCacheRef,
-      inputQualityDiagnosisAppliedFingerprintRef,
-    });
-    return undefined;
-  }, [enableExtractionReview, reviewUserId]);
-
   /** Persist review answers while the dialog is open (survives tab refresh / long editing). */
   useEffect(() => {
     if (!enableExtractionReview || !reviewUserId || !pendingUploadedDocId) return undefined;
     if (!reviewDialogOpen && !extractedProfileData) return undefined;
     const timer = setTimeout(() => {
-      saveCvReviewDraft(reviewUserId, {
-        pendingUploadedDocId,
-        reviewProfile,
-        reviewStep,
-        step3FollowUps,
-        step3FollowUpAnswers,
-        acceptedFields,
-        cvExtractLocalization,
-        reviewDialogOpen,
-        inputQualityDiagnosisCache: diagnosisCacheMapToDraft(inputQualityDiagnosisCacheRef.current),
-        inputQualityDiagnosisAppliedFingerprint: inputQualityDiagnosisAppliedFingerprintRef.current,
-      });
+      persistCvReviewDraft();
     }, 400);
     return () => clearTimeout(timer);
   }, [
@@ -685,7 +1344,243 @@ const DocumentUploadForm = ({
     cvExtractLocalization,
     reviewDialogOpen,
     extractedProfileData,
+    persistCvReviewDraft,
+    buildCurrentCvReviewDraft,
   ]);
+
+  /** Persist manual-fill answers while the dialog is open and on cancel. */
+  useEffect(() => {
+    if (!manualFillMode || !reviewUserId || !reviewDialogOpen) return undefined;
+    const timer = setTimeout(() => {
+      persistManualFillDraft();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    manualFillMode,
+    reviewUserId,
+    reviewDialogOpen,
+    persistManualFillDraft,
+    buildCurrentManualFillDraft,
+  ]);
+
+  /** Merge CV structured suggestions when entering tasks step (coaching edits take precedence). */
+  useEffect(() => {
+    if (!manualFillMode || reviewStep !== MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES) {
+      if (reviewStep !== MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES) {
+        structuredCvMergeAppliedRef.current = false;
+      }
+      return undefined;
+    }
+    if (structuredCvMergeAppliedRef.current || !hasManualFillCvSnapshot(manualFillCvSnapshot)) {
+      return undefined;
+    }
+    structuredCvMergeAppliedRef.current = true;
+    const merged = mergeStructuredFromCvSnapshot(reviewProfile, manualFillCvSnapshot, {
+      topicsIndustriesUserEdited,
+      naturallyGoodAtUserEdited,
+      uiLanguage: uiLangCode,
+    });
+    setReviewProfile(merged);
+    prefetchRoleSkillRecommendations({
+      contextTexts: buildSkillSelectionRecommendationContext(merged, manualFillCoachingDraft),
+    });
+    return undefined;
+  }, [
+    manualFillMode,
+    reviewStep,
+    reviewProfile,
+    manualFillCvSnapshot,
+    manualFillCoachingDraft,
+    topicsIndustriesUserEdited,
+    naturallyGoodAtUserEdited,
+    uiLangCode,
+  ]);
+
+  /** Pre-resolve CV skill labels in the background so the skills step can apply them immediately. */
+  useEffect(() => {
+    if (!manualFillMode || !hasManualFillCvSnapshot(manualFillCvSnapshot)) {
+      cvPreResolvedSkillsRef.current = null;
+      cvPreResolveSkillsPromiseRef.current = null;
+      return undefined;
+    }
+    const candidates = buildCvSkillSelectionCandidates(manualFillCvSnapshot);
+    if (candidates.length === 0) {
+      cvPreResolvedSkillsRef.current = [];
+      cvPreResolveSkillsPromiseRef.current = Promise.resolve([]);
+      return undefined;
+    }
+    const token = localStorage.getItem('token');
+    const resolvePromise = resolveRoleSkillLabels({
+      labels: candidates,
+      token,
+      langQuery: getProfileApiLangQuery(),
+    })
+      .then((matched) => {
+        cvPreResolvedSkillsRef.current = matched;
+        return matched;
+      })
+      .catch(() => {
+        cvPreResolvedSkillsRef.current = null;
+        return [];
+      });
+    cvPreResolveSkillsPromiseRef.current = resolvePromise;
+    return undefined;
+  }, [manualFillMode, manualFillCvSnapshot]);
+
+  /** Match CV-extracted skill names to the role-skill catalog when entering skills selection. */
+  useEffect(() => {
+    if (!manualFillMode || reviewStep !== MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION) {
+      if (reviewStep !== MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION) {
+        cvSkillsSelectionResolvedRef.current = false;
+      }
+      return undefined;
+    }
+    if (
+      cvSkillsSelectionResolvedRef.current
+      || skillsUserEditedRef.current
+      || !hasManualFillCvSnapshot(manualFillCvSnapshot)
+    ) {
+      return undefined;
+    }
+    const candidates = buildCvSkillSelectionCandidates(manualFillCvSnapshot);
+    if (candidates.length === 0) {
+      cvSkillsSelectionResolvedRef.current = true;
+      return undefined;
+    }
+
+    const applyMatchedSkills = (matched) => {
+      if (!matched || matched.length === 0) return;
+      cvSkillsSelectionResolvedRef.current = true;
+      const nextSkills = capGoodAtList(matched.map((name) => ({ name })), 'skills');
+      setReviewProfile((prev) => ({
+        ...prev,
+        structuredUserInfo: {
+          ...(prev.structuredUserInfo || {}),
+          skills: nextSkills,
+        },
+      }));
+      setAcceptedFields((prev) => ({
+        ...prev,
+        ...buildAcceptedSkillFields(nextSkills),
+      }));
+    };
+
+    const preResolved = cvPreResolvedSkillsRef.current;
+    if (Array.isArray(preResolved)) {
+      applyMatchedSkills(preResolved);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const resolvePromise = cvPreResolveSkillsPromiseRef.current
+      || resolveRoleSkillLabels({
+        labels: candidates,
+        token: localStorage.getItem('token'),
+        langQuery: getProfileApiLangQuery(),
+      });
+    resolvePromise
+      .then((matched) => {
+        if (cancelled) return;
+        applyMatchedSkills(matched);
+      })
+      .catch(() => {
+        if (!cancelled) cvSkillsSelectionResolvedRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [manualFillMode, reviewStep, manualFillCvSnapshot]);
+
+  /** Match remaining CV skills to catalog for learning goals (exclude step-9 selections). */
+  useEffect(() => {
+    if (!manualFillMode || reviewStep !== MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN) {
+      if (reviewStep !== MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN) {
+        cvSkillsToLearnResolvedRef.current = false;
+      }
+      return undefined;
+    }
+    if (
+      cvSkillsToLearnResolvedRef.current
+      || skillsToLearnUserEditedRef.current
+      || !hasManualFillCvSnapshot(manualFillCvSnapshot)
+    ) {
+      return undefined;
+    }
+    const excludeLabels = skillLabelsFromProfile(reviewProfile.structuredUserInfo?.skills || []);
+    const candidates = buildCvSkillsToLearnCandidates(manualFillCvSnapshot, excludeLabels);
+    if (candidates.length === 0) {
+      cvSkillsToLearnResolvedRef.current = true;
+      return undefined;
+    }
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    resolveRoleSkillLabels({
+      labels: candidates,
+      token,
+      langQuery: getProfileApiLangQuery(),
+    })
+      .then((matched) => {
+        if (cancelled || matched.length === 0) return;
+        cvSkillsToLearnResolvedRef.current = true;
+        const nextSkills = capGoodAtList(matched.map((name) => ({ name })), 'skillsInDevelopment');
+        setReviewProfile((prev) => ({
+          ...prev,
+          structuredUserInfo: {
+            ...(prev.structuredUserInfo || {}),
+            skillsInDevelopment: nextSkills,
+          },
+        }));
+        setAcceptedFields((prev) => ({
+          ...prev,
+          ...buildAcceptedSkillsInDevelopmentFields(nextSkills),
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) cvSkillsToLearnResolvedRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    manualFillMode,
+    reviewStep,
+    manualFillCvSnapshot,
+    reviewProfile.structuredUserInfo?.skills,
+  ]);
+
+  /** Polish German CV responsibility bullets when entering tasks step (also fixes legacy extractions). */
+  useEffect(() => {
+    if (!manualFillMode || reviewStep !== MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES) return undefined;
+    if (uiLangCode !== 'de') return undefined;
+    setReviewProfile((prev) => {
+      const items = prev.structuredUserInfo?.keyResponsibilities || [];
+      if (items.length === 0) return prev;
+      const normalized = normalizeGermanCvResponsibilityList(items, { force: true });
+      if (normalized.join('\u0001') === items.join('\u0001')) return prev;
+      return {
+        ...prev,
+        structuredUserInfo: {
+          ...(prev.structuredUserInfo || {}),
+          keyResponsibilities: normalized,
+        },
+      };
+    });
+    return undefined;
+  }, [manualFillMode, reviewStep, uiLangCode]);
+
+  useEffect(() => {
+    manualFillModeRef.current = manualFillMode;
+  }, [manualFillMode]);
+
+  /** Recover from CV-wizard steps if manual fill was routed there by extraction. */
+  useEffect(() => {
+    if (!manualFillMode || !reviewDialogOpen) return undefined;
+    if (reviewStep !== 2 && reviewStep !== 3 && reviewStep !== 4) return undefined;
+    setReviewStep(optionalCvSkipped
+      ? MANUAL_FILL_REVIEW_STEPS.SENIORITY
+      : MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV);
+    return undefined;
+  }, [manualFillMode, reviewDialogOpen, reviewStep, optionalCvSkipped]);
 
   /** Step 4 (context): follow-up prompts must be answered before continuing to seniority. */
   const step3FollowUpsAnsweredFully = useMemo(() => {
@@ -699,9 +1594,324 @@ const DocumentUploadForm = ({
     return validateSeniorityPayload(reviewProfile?.seniority || {}).ok;
   }, [reviewStep, reviewProfile?.seniority]);
 
+  const mergeFollowUpAnswersIntoProfile = useCallback((profile, followUps, answers) => (
+    applyStep3FollowUpAnswersToReviewProfile(
+      profile,
+      followUps,
+      answers,
+      buildProtectedIdentityFollowUpFields(
+        workEnjoyMostUserEdited,
+        topicsIndustriesUserEdited,
+        naturallyGoodAtUserEdited,
+        workEnvironmentFitUserEdited,
+        workingLifeAchievementUserEdited
+      )
+    )
+  ), [workEnjoyMostUserEdited, topicsIndustriesUserEdited, naturallyGoodAtUserEdited, workEnvironmentFitUserEdited, workingLifeAchievementUserEdited]);
+
+  useEffect(() => {
+    if (!workEnjoyMostUserEdited && !topicsIndustriesUserEdited && !naturallyGoodAtUserEdited && !workEnvironmentFitUserEdited && !workingLifeAchievementUserEdited) {
+      return undefined;
+    }
+    setStep3FollowUps((prev) => filterProtectedIdentityFollowUps(
+      prev,
+      workEnjoyMostUserEdited,
+      topicsIndustriesUserEdited,
+      naturallyGoodAtUserEdited,
+      workEnvironmentFitUserEdited,
+      workingLifeAchievementUserEdited
+    ));
+    return undefined;
+  }, [workEnjoyMostUserEdited, topicsIndustriesUserEdited, naturallyGoodAtUserEdited, workEnvironmentFitUserEdited, workingLifeAchievementUserEdited]);
+
+  const coachingCvContext = useMemo(
+    () => buildCoachingCvContextFromSnapshot(manualFillCvSnapshot),
+    [manualFillCvSnapshot]
+  );
+
+  const inManualOptionalCv = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV;
+  const optionalCvDisplayName = useMemo(() => {
+    if (uploadedCvDisplayName) return uploadedCvDisplayName;
+    if (selectedFile?.name) return selectedFile.name;
+    if (!pendingUploadedDocId) return '';
+    const doc = (documents || []).find(
+      (d) => String(d.id || d._id) === String(pendingUploadedDocId)
+    );
+    return String(doc?.originalName || doc?.name || doc?.description || '').trim();
+  }, [uploadedCvDisplayName, selectedFile, pendingUploadedDocId, documents]);
+  const optionalCvHasUpload = Boolean(
+    pendingUploadedDocId || uploadSucceeded || uploading
+  );
+  const optionalCvExtractionComplete = cvPipelinePhase === 'completed';
+  const optionalCvShowUploadedFile = Boolean(
+    optionalCvDisplayName && optionalCvExtractionComplete
+  );
+  const optionalCvShowExtractionProgress = !optionalCvExtractionComplete && (
+    Boolean(cvPollTarget)
+    || cvPipelinePhase === 'failed'
+    || cvPipelinePhase === 'timedOut'
+    || cvRecoveryUxPhase === 'recovery'
+    || cvRecoveryUxPhase === 'stuck'
+    || cvRecoveryUxPhase === 'slow'
+  );
+  const optionalCvShowDropzone = !uploading && !uploadSucceeded && !pendingUploadedDocId && !selectedFile;
+  const manualOptionalCvCanContinue = Boolean(pendingUploadedDocId) && (
+    cvPipelinePhase === 'completed'
+    || cvPipelinePhase === 'failed'
+    || Boolean(cvPollFailedDocId)
+    || Boolean(cvPollTimedOutDocId)
+  );
+  const inManualWorkEnjoyCoaching = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING;
+  const inManualTopicsCoaching = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING;
+  const inManualStrengthsCoaching = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING;
+  const inManualWorkEnvironmentCoaching = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING;
+  const inManualWorkingLifeAchievementCoaching = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING;
+  const inManualTasksResponsibilities = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES;
+  const inManualSkillsSelection = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION;
+  const inManualSkillsToLearn = manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN;
+  /** CV extraction review only — manual fill reuses reviewStep 5 for seniority mid-flow. */
+  const isCvReviewFinalSeniorityStep = reviewStep === 5 && !manualFillMode;
+
+  const isReviewContinueStep = manualFillMode
+    ? (inManualOptionalCv
+      ? false
+      : MANUAL_FILL_STEP_ORDER.includes(reviewStep) && !isManualFillLastStep(reviewStep))
+    : reviewStep >= 2 && reviewStep <= 4;
+
+  const hideReviewPrimaryAction = (inManualWorkEnjoyCoaching && !workEnjoySummaryFooter.canConfirm)
+    || (inManualTopicsCoaching && !topicsSummaryFooter.canConfirm)
+    || (inManualStrengthsCoaching && !strengthsSummaryFooter.canConfirm)
+    || (inManualWorkEnvironmentCoaching && !workEnvironmentSummaryFooter.canConfirm)
+    || (inManualWorkingLifeAchievementCoaching && !workingLifeAchievementSummaryFooter.canConfirm);
+
+  const showWorkEnjoySummaryConfirm = inManualWorkEnjoyCoaching && workEnjoySummaryFooter.canConfirm;
+  const showTopicsSummaryConfirm = inManualTopicsCoaching && topicsSummaryFooter.canConfirm;
+  const showStrengthsSummaryConfirm = inManualStrengthsCoaching && strengthsSummaryFooter.canConfirm;
+  const showWorkEnvironmentSummaryConfirm = inManualWorkEnvironmentCoaching && workEnvironmentSummaryFooter.canConfirm;
+  const showWorkingLifeAchievementSummaryConfirm = inManualWorkingLifeAchievementCoaching && workingLifeAchievementSummaryFooter.canConfirm;
+
+  const handleBindWorkEnjoyConfirm = useCallback((confirm) => {
+    workEnjoyConfirmRef.current = typeof confirm === 'function' ? confirm : () => {};
+  }, []);
+
+  const handleBindTopicsConfirm = useCallback((confirm) => {
+    topicsConfirmRef.current = typeof confirm === 'function' ? confirm : () => {};
+  }, []);
+
+  const handleBindStrengthsConfirm = useCallback((confirm) => {
+    strengthsConfirmRef.current = typeof confirm === 'function' ? confirm : () => {};
+  }, []);
+
+  const handleBindWorkEnvironmentConfirm = useCallback((confirm) => {
+    workEnvironmentConfirmRef.current = typeof confirm === 'function' ? confirm : () => {};
+  }, []);
+
+  const handleBindWorkingLifeAchievementConfirm = useCallback((confirm) => {
+    workingLifeAchievementConfirmRef.current = typeof confirm === 'function' ? confirm : () => {};
+  }, []);
+
+  const handleSelectedSkillsChange = useCallback((skills) => {
+    skillsUserEditedRef.current = true;
+    const capped = capGoodAtList(
+      (Array.isArray(skills) ? skills : [])
+        .map((item) => {
+          const name = typeof item === 'string' ? item : item?.name;
+          return { name: String(name || '').trim() };
+        })
+        .filter((item) => item.name),
+      'skills'
+    );
+    setReviewProfile((prev) => ({
+      ...prev,
+      structuredUserInfo: {
+        ...(prev.structuredUserInfo || {}),
+        skills: capped,
+      },
+    }));
+    setAcceptedFields((prev) => ({
+      ...prev,
+      ...buildAcceptedSkillFields(capped),
+    }));
+    clearReviewFieldError('structuredUserInfo.skills');
+  }, [clearReviewFieldError]);
+
+  const handleSkillsToLearnChange = useCallback((skills) => {
+    skillsToLearnUserEditedRef.current = true;
+    const capped = capGoodAtList(
+      (Array.isArray(skills) ? skills : [])
+        .map((item) => {
+          const name = typeof item === 'string' ? item : item?.name;
+          return String(name || '').trim();
+        })
+        .filter(Boolean),
+      'skillsInDevelopment'
+    );
+    setReviewProfile((prev) => ({
+      ...prev,
+      structuredUserInfo: {
+        ...(prev.structuredUserInfo || {}),
+        skillsInDevelopment: capped,
+      },
+    }));
+    setAcceptedFields((prev) => ({
+      ...prev,
+      ...buildAcceptedSkillsInDevelopmentFields(capped),
+    }));
+    clearReviewFieldError('structuredUserInfo.skillsInDevelopment');
+  }, [clearReviewFieldError]);
+
+  const excludedSkillLabelsForLearning = useMemo(
+    () => skillLabelsFromProfile(reviewProfile.structuredUserInfo?.skills || []),
+    [reviewProfile.structuredUserInfo?.skills]
+  );
+
+  const skillSelectionContextKey = useMemo(
+    () => JSON.stringify(skillSelectionRecommendationContext),
+    [skillSelectionRecommendationContext]
+  );
+
+  const prefetchSkillSelectionRecommendations = useCallback((profile = reviewProfile) => {
+    prefetchRoleSkillRecommendations({
+      contextTexts: buildSkillSelectionRecommendationContext(profile, manualFillCoachingDraft),
+    });
+  }, [reviewProfile, manualFillCoachingDraft]);
+
+  useEffect(() => {
+    if (!manualFillMode) return undefined;
+    // Warm the server-side skill catalog cache early in the flow.
+    prefetchRoleSkillRecommendations({ contextTexts: [] });
+    return undefined;
+  }, [manualFillMode]);
+
+  useEffect(() => {
+    if (!manualFillMode) return undefined;
+    const shouldPrefetch = [
+      MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING,
+      MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING,
+      MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING,
+      MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES,
+      MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION,
+      MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN,
+    ].includes(reviewStep);
+    if (!shouldPrefetch) return undefined;
+    prefetchSkillSelectionRecommendations();
+    return undefined;
+  }, [
+    manualFillMode,
+    reviewStep,
+    skillSelectionContextKey,
+    prefetchSkillSelectionRecommendations,
+  ]);
+
+  const handleTasksResponsibilitiesChange = useCallback((items) => {
+    const capped = capGoodAtList(
+      (Array.isArray(items) ? items : []).map((item) => String(item || '')),
+      'keyResponsibilities'
+    );
+    setReviewProfile((prev) => ({
+      ...prev,
+      structuredUserInfo: {
+        ...(prev.structuredUserInfo || {}),
+        keyResponsibilities: capped,
+      },
+    }));
+    setAcceptedFields((prev) => ({
+      ...prev,
+      ...buildAcceptedKeyResponsibilityFields(capped),
+    }));
+    clearReviewFieldError('structuredUserInfo.keyResponsibilities');
+  }, [clearReviewFieldError]);
+
+  const handleSkillDomainsChange = useCallback((skillDomains) => {
+    const capped = capGoodAtList(
+      (Array.isArray(skillDomains) ? skillDomains : [])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+      'skillDomains'
+    );
+    setReviewProfile((prev) => ({
+      ...prev,
+      structuredUserInfo: {
+        ...(prev.structuredUserInfo || {}),
+        skillDomains: capped,
+      },
+    }));
+    setAcceptedFields((prev) => ({
+      ...prev,
+      ...buildAcceptedSkillDomainFields(capped),
+    }));
+    clearReviewFieldError('structuredUserInfo.skillDomains');
+  }, [clearReviewFieldError]);
+
+  const reviewSkillDomainValues = useMemo(
+    () => (reviewProfile.structuredUserInfo?.skillDomains || [])
+      .map((item) => (typeof item === 'string' ? item : String(item?.name || '')).trim())
+      .filter(Boolean),
+    [reviewProfile.structuredUserInfo?.skillDomains]
+  );
+
+  const handleIndustryDomainsChange = useCallback((domains) => {
+    const capped = capGoodAtList(
+      normalizeIndustryDomains(domains, { keepUnknown: true }),
+      'domains'
+    );
+    setReviewProfile((prev) => ({
+      ...prev,
+      structuredUserInfo: {
+        ...(prev.structuredUserInfo || {}),
+        domains: capped,
+      },
+    }));
+    setAcceptedFields((prev) => ({
+      ...prev,
+      ...buildAcceptedDomainFields(capped),
+    }));
+    clearReviewFieldError('structuredUserInfo.domains');
+  }, [clearReviewFieldError]);
+
+  const reviewIndustryDomainValues = useMemo(
+    () => normalizeIndustryDomains(reviewProfile.structuredUserInfo?.domains || [], { keepUnknown: true }),
+    [reviewProfile.structuredUserInfo?.domains]
+  );
+
+  const reviewSkillValues = useMemo(
+    () => skillLabelsFromProfile(reviewProfile.structuredUserInfo?.skills || []),
+    [reviewProfile.structuredUserInfo?.skills]
+  );
+
+  const reviewLearningGoalValues = useMemo(
+    () => skillLabelsFromProfile(reviewProfile.structuredUserInfo?.skillsInDevelopment || []),
+    [reviewProfile.structuredUserInfo?.skillsInDevelopment]
+  );
+
+  const handleWorkEnjoySummaryFooterStateChange = useCallback((state) => {
+    setWorkEnjoySummaryFooter(state);
+  }, []);
+
+  const handleTopicsSummaryFooterStateChange = useCallback((state) => {
+    setTopicsSummaryFooter(state);
+  }, []);
+
+  const handleStrengthsSummaryFooterStateChange = useCallback((state) => {
+    setStrengthsSummaryFooter(state);
+  }, []);
+
+  const handleWorkEnvironmentSummaryFooterStateChange = useCallback((state) => {
+    setWorkEnvironmentSummaryFooter(state);
+  }, []);
+
+  const handleWorkingLifeAchievementSummaryFooterStateChange = useCallback((state) => {
+    setWorkingLifeAchievementSummaryFooter(state);
+  }, []);
+
+  const showReviewBackButton = manualFillMode
+    ? !isManualFillFirstStep(reviewStep)
+    : reviewStep > 2;
+
   const seniorityFieldErrorKey = (field) => {
     const keys = {
       currentStatus: 'profilePage.seniorityForm.errors.currentStatusRequired',
+      yearsOfExperience: 'profilePage.seniorityForm.errors.yearsRequired',
       highestDegree: 'profilePage.seniorityForm.errors.highestDegreeRequired',
       mostSeniorWorkExperience: 'profilePage.seniorityForm.errors.mostSeniorRequired',
     };
@@ -777,20 +1987,20 @@ const DocumentUploadForm = ({
       structuredUserInfo: {
         skillDomains: capGoodAtList(Array.isArray(structuredUserInfo.skillDomains)
           ? structuredUserInfo.skillDomains
-          : []),
-        skills: capGoodAtList(normalizedSkills),
+          : [], 'skillDomains'),
+        skills: capGoodAtList(normalizedSkills, 'skills'),
         skillsInDevelopment: capGoodAtList(Array.isArray(structuredUserInfo.skillsInDevelopment)
           ? structuredUserInfo.skillsInDevelopment
-          : []),
+          : [], 'skillsInDevelopment'),
         certifications: Array.isArray(structuredUserInfo.certifications)
           ? structuredUserInfo.certifications
           : [],
         keyResponsibilities: capGoodAtList(Array.isArray(structuredUserInfo.keyResponsibilities)
           ? structuredUserInfo.keyResponsibilities
-          : []),
+          : [], 'keyResponsibilities'),
         domains: capGoodAtList(Array.isArray(structuredUserInfo.domains)
           ? structuredUserInfo.domains
-          : [])
+          : [], 'domains')
       }
     };
   };
@@ -828,34 +2038,19 @@ const DocumentUploadForm = ({
   };
 
   const appendStructuredStringList = (arrayKey) => {
+    const maxItems = getProfileStructuredListMaxItems(arrayKey);
     let appended = false;
     let newIdx = 0;
     setReviewProfile((prev) => {
       const sui = prev.structuredUserInfo || {};
       const prevList = sui[arrayKey] || [];
-      if (prevList.length >= MAX_GOOD_AT_PER_CATEGORY) return prev;
+      if (prevList.length >= maxItems) return prev;
       appended = true;
       newIdx = prevList.length;
       return { ...prev, structuredUserInfo: { ...sui, [arrayKey]: [...prevList, ''] } };
     });
     if (appended) {
       setAcceptedFields((af) => ({ ...af, [`structuredUserInfo.${arrayKey}.${newIdx}`]: true }));
-    }
-  };
-
-  const appendSkillRow = () => {
-    let appended = false;
-    let newIdx = 0;
-    setReviewProfile((prev) => {
-      const sui = prev.structuredUserInfo || {};
-      const prevList = sui.skills || [];
-      if (prevList.length >= MAX_GOOD_AT_PER_CATEGORY) return prev;
-      appended = true;
-      newIdx = prevList.length;
-      return { ...prev, structuredUserInfo: { ...sui, skills: [...prevList, { name: '' }] } };
-    });
-    if (appended) {
-      setAcceptedFields((af) => ({ ...af, [`structuredUserInfo.skills.${newIdx}`]: true }));
     }
   };
 
@@ -874,14 +2069,101 @@ const DocumentUploadForm = ({
   );
 
   const renderGoodAtCategoryLimitNotice = (arrayKey) => {
+    const maxItems = getProfileStructuredListMaxItems(arrayKey);
     const count = (reviewProfile.structuredUserInfo?.[arrayKey] || []).length;
-    if (count < MAX_GOOD_AT_PER_CATEGORY) return null;
+    if (count < maxItems) return null;
     return (
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, mb: 0.5 }}>
-        {t('documentUpload.review.goodAtLimit', { max: MAX_GOOD_AT_PER_CATEGORY })}
+        {t('documentUpload.review.goodAtLimit', { max: maxItems })}
       </Typography>
     );
   };
+
+  const openManualFillDialog = useCallback((draft = null) => {
+    setUploadError('');
+    setExtractionError('');
+    setReviewDialogError('');
+    cvWizardUserCanceledRef.current = false;
+    clearCvExtractionUiState();
+    setPendingUploadedDocId(null);
+    setSelectedFile(null);
+    setUploading(false);
+    setAutoStartUpload(false);
+    setCvExtractLocalization(null);
+    setStep3FollowUps([]);
+    setStep3FollowUpAnswers({});
+    if (draft) {
+      restoreManualFillDraftUiState(draft, {
+        setReviewProfile,
+        setReviewStep,
+        setAcceptedFields,
+        setManualWorkEnjoyComplete,
+        setManualTopicsComplete,
+        setManualStrengthsComplete,
+        setManualWorkEnvironmentComplete,
+        setManualWorkingLifeAchievementComplete,
+        setWorkEnjoyMostUserEdited,
+        setTopicsIndustriesUserEdited,
+        setNaturallyGoodAtUserEdited,
+        setWorkEnvironmentFitUserEdited,
+        setWorkingLifeAchievementUserEdited,
+        setManualFillCoachingDraft,
+        setManualFillCvSnapshot,
+        setOptionalCvSkipped,
+        setPendingUploadedDocId,
+        setCvExtractLocalization,
+        ensureReviewProfileShape,
+        normalizeExtractedProfileData,
+        setExtractedProfileData,
+        skillsUserEditedRef,
+        skillsToLearnUserEditedRef,
+        cvSkillsSelectionResolvedRef,
+        cvSkillsToLearnResolvedRef,
+      });
+      setManualFillMode(true);
+    } else {
+      const emptyProfile = normalizeExtractedProfileData({});
+      setExtractedProfileData(emptyProfile);
+      setReviewProfile(ensureReviewProfileShape(emptyProfile));
+      setAcceptedFields({});
+      setManualFillCoachingDraft({});
+      resetManualFillUiState();
+      setManualFillMode(true);
+      setManualFillCvSnapshot(null);
+      setOptionalCvSkipped(false);
+      setReviewStep(MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV);
+    }
+    setReviewDialogOpen(true);
+  }, [clearCvExtractionUiState, resetManualFillUiState]);
+
+  const startManualFillFresh = useCallback(() => {
+    if (reviewUserId) clearManualFillDraft(reviewUserId);
+    setHasSavedManualFillDraft(false);
+    openManualFillDialog(null);
+  }, [reviewUserId, openManualFillDialog]);
+
+  const handleStartManualFillClick = useCallback(() => {
+    if (hasSavedManualFillDraft) {
+      setManualFillStartConfirmOpen(true);
+      return;
+    }
+    startManualFillFresh();
+  }, [hasSavedManualFillDraft, startManualFillFresh]);
+
+  const resumeManualFill = useCallback(() => {
+    if (!reviewUserId) return;
+    const draft = loadManualFillDraft(reviewUserId);
+    if (!hasMeaningfulManualFillDraft(draft)) {
+      refreshSavedManualFillDraftFlag();
+      return;
+    }
+    openManualFillDialog(draft);
+  }, [reviewUserId, openManualFillDialog, refreshSavedManualFillDraftFlag]);
+
+  const discardSavedManualFillDraft = useCallback(() => {
+    if (reviewUserId) clearManualFillDraft(reviewUserId);
+    setHasSavedManualFillDraft(false);
+  }, [reviewUserId]);
 
   const queueFileForUpload = useCallback((file) => {
     if (!file) return;
@@ -896,58 +2178,8 @@ const DocumentUploadForm = ({
       setAutoStartUpload(true);
       setReviewDialogOpen(true);
       setReviewStep(1);
-      return;
     }
-    setUploadDialog(true);
-    setAutoStartUpload(true);
   }, [enableExtractionReview, clearCvExtractionUiState]);
-
-  const onDrop = useCallback((acceptedFiles) => {
-    const file = acceptedFiles?.[0];
-    if (!file) return;
-    queueFileForUpload(file);
-  }, [queueFileForUpload]);
-
-  const onDropRejected = useCallback((fileRejections) => {
-    if (!Array.isArray(fileRejections) || fileRejections.length === 0) {
-      setUploadError(t('documentUpload.errors.filesRejected'));
-      return;
-    }
-
-    const hasSizeError = fileRejections.some((rejection) =>
-      rejection?.errors?.some((error) => error.code === 'file-too-large')
-    );
-    const hasTypeError = fileRejections.some((rejection) =>
-      rejection?.errors?.some((error) => error.code === 'file-invalid-type')
-    );
-
-    if (hasSizeError) {
-      setUploadError(t('documentUpload.errors.fileTooLarge'));
-      return;
-    }
-
-    if (hasTypeError) {
-      setUploadError(t('documentUpload.errors.invalidType'));
-      return;
-    }
-
-    const firstError = fileRejections[0]?.errors?.[0]?.message;
-    setUploadError(firstError || t('documentUpload.errors.filesRejected'));
-  }, [t]);
-
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    onDrop,
-    onDropRejected,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-    },
-    maxSize: MAX_UPLOAD_SIZE_BYTES,
-    disabled: enableExtractionReview && reviewDialogOpen,
-  });
 
   const handleDelete = async (documentId) => {
     try {
@@ -1051,6 +2283,7 @@ const DocumentUploadForm = ({
         isCvDocumentType(defaultDocumentType);
 
       if (isCvUpload && uploadedDocId) {
+        setUploadedCvDisplayName(selectedFile.name);
         if (enableExtractionReview) {
           setReviewDialogOpen(true);
           setReviewStep(1);
@@ -1209,14 +2442,40 @@ const DocumentUploadForm = ({
     const outcome = document.extractionOutcomeStatus || document?.result?.status || null;
 
     if (enableExtractionReview && extractedPayload) {
-      setCvExtractLocalization(
-        document.cvExtractLocalization && typeof document.cvExtractLocalization === 'object'
-          ? document.cvExtractLocalization
-          : null
-      );
+      const localization = document.cvExtractLocalization && typeof document.cvExtractLocalization === 'object'
+        ? document.cvExtractLocalization
+        : null;
+
+      if (manualFillModeRef.current) {
+        const normalizedData = normalizeExtractedProfileData(extractedPayload);
+        setCvExtractLocalization(localization);
+        setPendingUploadedDocId(String(docId));
+        let applied = null;
+        setReviewProfile((prev) => {
+          applied = applyManualFillCvExtraction(ensureReviewProfileShape(prev), normalizedData, {
+            pendingUploadedDocId: docId,
+            cvExtractLocalization: localization,
+          });
+          return applied.reviewProfile;
+        });
+        if (applied) {
+          setManualFillCvSnapshot(applied.snapshot);
+          setCvExtractLocalization(applied.cvExtractLocalization);
+          setOptionalCvSkipped(false);
+        }
+        setReviewDialogOpen(true);
+        setReviewStep((prev) => (
+          prev === MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV
+            ? prev
+            : MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV
+        ));
+        return true;
+      }
+
       const normalizedData = normalizeExtractedProfileData(
         stripHeuristicGoodAtFromProfileData(extractedPayload, document)
       );
+      setCvExtractLocalization(localization);
       setExtractedProfileData(normalizedData);
       loadReviewProfileFromExtraction(normalizedData, docId);
       setAcceptedFields(buildAcceptedDefaults(normalizedData));
@@ -1247,6 +2506,122 @@ const DocumentUploadForm = ({
     loadReviewProfileFromExtraction,
     uiLangCode,
     ensureStructuredSemanticForReview,
+  ]);
+
+  const applyManualFillCvFromDocument = useCallback(async (docId) => {
+    const token = localStorage.getItem('token') || '';
+    const langQuery = `lang=${encodeURIComponent(uiLangCode)}`;
+    const res = await fetch(`/api/documents/${docId}?${langQuery}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    if (!res.ok) throw new Error('document refresh failed');
+    let data = await res.json();
+    let document = data.document;
+    if (!document) return false;
+
+    if (documentNeedsCvLocalization(document, uiLangCode)) {
+      const ensureRes = await fetch(
+        `/api/documents/${encodeURIComponent(String(docId))}/ensure-localization?${langQuery}`,
+        {
+          method: 'POST',
+          headers: { Authorization: token ? `Bearer ${token}` : '' },
+        }
+      );
+      if (ensureRes.ok) {
+        data = await ensureRes.json();
+        document = data.document || document;
+      }
+    }
+
+    if (documentNeedsFullReviewQuality(document)) {
+      try {
+        const semanticData = await ensureStructuredSemanticForReview(String(docId));
+        if (semanticData?.document) {
+          document = semanticData.document;
+        }
+      } catch {
+        // Coaching can proceed with partial CV context.
+      }
+    }
+
+    const extractedPayload =
+      document.extractedProfileData
+      || document?.result?.profile
+      || null;
+    if (!extractedPayload) return false;
+
+    const localization = document.cvExtractLocalization && typeof document.cvExtractLocalization === 'object'
+      ? document.cvExtractLocalization
+      : null;
+    // Keep structured CV fields for coaching context — do not strip heuristic lists here.
+    const normalizedData = normalizeExtractedProfileData(extractedPayload);
+    let applied = null;
+    setReviewProfile((prev) => {
+      applied = applyManualFillCvExtraction(ensureReviewProfileShape(prev), normalizedData, {
+        pendingUploadedDocId: docId,
+        cvExtractLocalization: localization,
+      });
+      return applied.reviewProfile;
+    });
+    if (applied) {
+      setManualFillCvSnapshot(applied.snapshot);
+      setPendingUploadedDocId(applied.pendingUploadedDocId);
+      setCvExtractLocalization(applied.cvExtractLocalization);
+      setOptionalCvSkipped(false);
+    }
+    const mergedList = (documentsRef.current || []).map((d) =>
+      String(d.id) === String(docId) ? { ...d, ...document, id: document.id || d.id } : d
+    );
+    onDocumentsUpdate(normalizeDocuments(mergedList));
+    return Boolean(applied);
+  }, [uiLangCode, ensureStructuredSemanticForReview, onDocumentsUpdate]);
+
+  const handleManualFillOptionalCvSkip = useCallback(() => {
+    setReviewDialogError('');
+    setOptionalCvSkipped(true);
+    setManualFillCvSnapshot(null);
+    setPendingUploadedDocId(null);
+    setCvExtractLocalization(null);
+    setSelectedFile(null);
+    clearCvExtractionUiState();
+    setReviewStep(MANUAL_FILL_REVIEW_STEPS.SENIORITY);
+  }, [clearCvExtractionUiState]);
+
+  const handleManualFillOptionalCvContinue = useCallback(async () => {
+    setReviewDialogError('');
+    if (pendingUploadedDocId) {
+      try {
+        await applyManualFillCvFromDocument(String(pendingUploadedDocId));
+      } catch {
+        setReviewDialogError(t('documentUpload.errors.refreshAfterExtractionFailed'));
+        return;
+      }
+    }
+    setReviewStep(MANUAL_FILL_REVIEW_STEPS.SENIORITY);
+  }, [
+    pendingUploadedDocId,
+    applyManualFillCvFromDocument,
+    t,
+  ]);
+
+  /** Pre-build CV snapshot when extraction completes on optional CV step (draft persistence). */
+  useEffect(() => {
+    if (!manualFillMode || reviewStep !== MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV) return undefined;
+    if (!pendingUploadedDocId || manualFillCvSnapshot) return undefined;
+    if (cvPipelinePhase !== 'completed') return undefined;
+    if (manualFillCvSnapshotApplyRef.current === String(pendingUploadedDocId)) return undefined;
+    manualFillCvSnapshotApplyRef.current = String(pendingUploadedDocId);
+    void applyManualFillCvFromDocument(String(pendingUploadedDocId)).catch(() => {
+      manualFillCvSnapshotApplyRef.current = null;
+    });
+    return undefined;
+  }, [
+    manualFillMode,
+    reviewStep,
+    pendingUploadedDocId,
+    manualFillCvSnapshot,
+    cvPipelinePhase,
+    applyManualFillCvFromDocument,
   ]);
 
   const renderCvExtractionProgressAlert = () => (
@@ -1339,11 +2714,7 @@ const DocumentUploadForm = ({
               setCvPipelinePhase('idle');
               setUploadSucceeded(false);
               setSelectedFile(null);
-              if (enableExtractionReview) {
-                reviewStep1FileInputRef.current?.click();
-              } else if (showUploadControls) {
-                open();
-              }
+              reviewStep1FileInputRef.current?.click();
             }}
           >
             {t('documentUpload.async.recovery.uploadAgain')}
@@ -1397,6 +2768,7 @@ const DocumentUploadForm = ({
   ), []);
 
   const tryOpenIdentityReviewFromPoll = useCallback(async (snapshot, docId) => {
+    if (manualFillModeRef.current) return;
     if (!enableExtractionReview || !snapshot?.identityReviewReady) {
       return;
     }
@@ -1464,11 +2836,12 @@ const DocumentUploadForm = ({
     hydrateFromDocument,
     reviewProfileIdentityIsEmpty,
     uiLangCode,
+    manualFillMode,
   ]);
 
-  /** Step 1 → 2: load identity extraction into the review dialog once ready. */
+  /** Step 1 → 2: load identity extraction into the review dialog once ready (CV wizard only). */
   useEffect(() => {
-    if (!enableExtractionReview || cvWizardUserCanceledRef.current) return undefined;
+    if (!enableExtractionReview || cvWizardUserCanceledRef.current || manualFillMode) return undefined;
     if (!reviewDialogOpen || reviewStep !== 1 || !pendingUploadedDocId) {
       return undefined;
     }
@@ -1729,7 +3102,12 @@ const DocumentUploadForm = ({
         if (outcome.kind === 'completed') {
           try {
             const openedReview = await hydrateFromDocument(docId);
-            if (enableExtractionReview && !openedReview && outcome?.data?.hasResult) {
+            if (
+              enableExtractionReview
+              && !manualFillModeRef.current
+              && !openedReview
+              && outcome?.data?.hasResult
+            ) {
               // Keep UX moving when status says "completed with result" but hydration lags.
               setReviewDialogOpen(true);
               setReviewStep((prev) => (prev < 2 ? 2 : prev));
@@ -1850,20 +3228,15 @@ const DocumentUploadForm = ({
     if (!autoStartUpload || uploading || !selectedFile || !effectiveDocumentType) {
       return;
     }
-    if (!enableExtractionReview && !uploadDialog) {
-      return;
-    }
     setAutoStartUpload(false);
     handleUpload();
   }, [
     autoStartUpload,
     uploading,
-    uploadDialog,
     selectedFile,
     documentType,
     defaultDocumentType,
     handleUpload,
-    enableExtractionReview,
   ]);
 
   // Handler for saving reviewed profile data
@@ -1877,17 +3250,21 @@ const DocumentUploadForm = ({
     setSavingReview(true);
     setReviewDialogError('');
     try {
-      const profileForSave = applyStep3FollowUpAnswersToReviewProfile(
-        reviewProfile,
-        step3FollowUps,
-        step3FollowUpAnswers
-      );
-      const emptyFollowUpField = firstEmptyFollowUpFieldKey(step3FollowUps, step3FollowUpAnswers);
-      if (emptyFollowUpField) {
-        setReviewDialogError(t('documentUpload.review.errors.fixHighlightedFields'));
-        setReviewStep(4);
-        queueReviewFieldScroll(emptyFollowUpField);
-        return;
+      const profileForSave = manualFillMode
+        ? reviewProfile
+        : mergeFollowUpAnswersIntoProfile(
+          reviewProfile,
+          step3FollowUps,
+          step3FollowUpAnswers
+        );
+      if (!manualFillMode) {
+        const emptyFollowUpField = firstEmptyFollowUpFieldKey(step3FollowUps, step3FollowUpAnswers);
+        if (emptyFollowUpField) {
+          setReviewDialogError(t('documentUpload.review.errors.fixHighlightedFields'));
+          setReviewStep(4);
+          queueReviewFieldScroll(emptyFollowUpField);
+          return;
+        }
       }
 
       const seniorityCheck = validateSeniorityPayload(profileForSave.seniority || {});
@@ -1940,8 +3317,15 @@ const DocumentUploadForm = ({
       }
 
       await onExtractedProfileReview(payload);
-      if (reviewUserId) clearCvReviewDraft(reviewUserId);
+      if (reviewUserId) {
+        clearCvReviewDraft(reviewUserId);
+        if (manualFillMode) {
+          clearManualFillDraft(reviewUserId);
+          setHasSavedManualFillDraft(false);
+        }
+      }
       setReviewDialogOpen(false);
+      resetManualFillUiState();
       notifyReviewSessionEnd();
       setExtractedProfileData(null);
       setCvExtractLocalization(null);
@@ -1994,14 +3378,22 @@ const DocumentUploadForm = ({
     const preserveExistingAnswers = inputQualityDiagnosisAppliedFingerprintRef.current === fingerprint;
     const cached = !force ? inputQualityDiagnosisCacheRef.current.get(fingerprint) : null;
     if (cached) {
-      setStep3FollowUps(cached.followUps);
+      const followUps = filterProtectedIdentityFollowUps(
+        cached.followUps,
+        workEnjoyMostUserEdited,
+        topicsIndustriesUserEdited,
+        naturallyGoodAtUserEdited,
+        workEnvironmentFitUserEdited,
+        workingLifeAchievementUserEdited
+      );
+      setStep3FollowUps(followUps);
       setStep3FollowUpAnswers((prev) =>
-        mergeFollowUpAnswersForQuestions(prev, cached.followUps, preserveExistingAnswers)
+        mergeFollowUpAnswersForQuestions(prev, followUps, preserveExistingAnswers)
       );
       setInputQualityDiagnosisError(null);
       setInputQualityDiagnosisLoading(false);
       inputQualityDiagnosisAppliedFingerprintRef.current = fingerprint;
-      return { followUps: cached.followUps, fromCache: true };
+      return { followUps, fromCache: true };
     }
 
     if (
@@ -2042,7 +3434,14 @@ const DocumentUploadForm = ({
         if (!res.ok) {
           throw new Error(data?.error || data?.details || `Quality analysis failed (${res.status})}`);
         }
-        const followUps = Array.isArray(data.followUps) ? data.followUps : [];
+        const followUps = filterProtectedIdentityFollowUps(
+          Array.isArray(data.followUps) ? data.followUps : [],
+          workEnjoyMostUserEdited,
+          topicsIndustriesUserEdited,
+          naturallyGoodAtUserEdited,
+          workEnvironmentFitUserEdited,
+          workingLifeAchievementUserEdited
+        );
       inputQualityDiagnosisCacheRef.current.set(fingerprint, { followUps });
       trimDiagnosisCacheMap(inputQualityDiagnosisCacheRef.current);
       if (inputQualityDiagnosisInflightFingerprintRef.current === fingerprint) {
@@ -2074,7 +3473,7 @@ const DocumentUploadForm = ({
       }
     });
     return promise;
-  }, [t, uiLangCode]);
+  }, [t, uiLangCode, workEnjoyMostUserEdited, topicsIndustriesUserEdited, naturallyGoodAtUserEdited, workEnvironmentFitUserEdited, workingLifeAchievementUserEdited]);
 
   const diagnosisPrefetchKey = useMemo(
     () => qualityDiagnosisFingerprint(reviewProfile, uiLangCode),
@@ -2083,6 +3482,7 @@ const DocumentUploadForm = ({
 
   useEffect(() => {
     if (!reviewDialogOpen) return undefined;
+    if (manualFillMode) return undefined;
     if (reviewStep !== 3 && reviewStep !== 4) return undefined;
     if (diagnosisPrefetchKey === inputQualityDiagnosisAppliedFingerprintRef.current) {
       return undefined;
@@ -2098,11 +3498,11 @@ const DocumentUploadForm = ({
       void startInputQualityDiagnosis(reviewProfile);
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [reviewDialogOpen, reviewStep, diagnosisPrefetchKey, startInputQualityDiagnosis, reviewProfile]);
+  }, [reviewDialogOpen, reviewStep, manualFillMode, diagnosisPrefetchKey, startInputQualityDiagnosis, reviewProfile]);
 
   const followUpNarrativeWarmKey = useMemo(() => {
     if (reviewStep !== 4) return '';
-    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+    const profileForWarm = mergeFollowUpAnswersIntoProfile(
       reviewProfile,
       step3FollowUps,
       step3FollowUpAnswers
@@ -2111,14 +3511,14 @@ const DocumentUploadForm = ({
       userIdentity: profileForWarm.userIdentity || {},
       structured: buildStructuredGoodAtFromReview(profileForWarm, acceptedFields),
     });
-  }, [reviewStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields]);
+  }, [reviewStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields, mergeFollowUpAnswersIntoProfile]);
 
   useEffect(() => {
     if (!reviewDialogOpen || reviewStep !== 4 || !pendingUploadedDocId || !followUpNarrativeWarmKey) {
       return undefined;
     }
     const timer = setTimeout(() => {
-      const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+      const profileForWarm = mergeFollowUpAnswersIntoProfile(
         reviewProfile,
         step3FollowUps,
         step3FollowUpAnswers
@@ -2146,21 +3546,21 @@ const DocumentUploadForm = ({
     t,
   ]);
 
-  const step5NarrativeBlocksSave = reviewStep === 5
+  const step5NarrativeBlocksSave = isCvReviewFinalSeniorityStep
     && pendingUploadedDocId
     && step5NarrativeWarmStatus === 'warming';
 
   useEffect(() => {
-    if (reviewStep !== 5) {
+    if (!isCvReviewFinalSeniorityStep) {
       setStep5NarrativeWarmStatus('idle');
       setStep5NarrativeWarmProgress(0);
       setStep5NarrativeWarmSlow(false);
     }
-  }, [reviewStep]);
+  }, [isCvReviewFinalSeniorityStep]);
 
   const seniorityNarrativeWarmKey = useMemo(() => {
-    if (reviewStep !== 5) return '';
-    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+    if (!isCvReviewFinalSeniorityStep) return '';
+    const profileForWarm = mergeFollowUpAnswersIntoProfile(
       reviewProfile,
       step3FollowUps,
       step3FollowUpAnswers
@@ -2169,10 +3569,10 @@ const DocumentUploadForm = ({
       userIdentity: profileForWarm.userIdentity || {},
       structured: buildStructuredGoodAtFromReview(profileForWarm, acceptedFields),
     });
-  }, [reviewStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields]);
+  }, [isCvReviewFinalSeniorityStep, reviewProfile, step3FollowUps, step3FollowUpAnswers, acceptedFields, mergeFollowUpAnswersIntoProfile]);
 
   useEffect(() => {
-    if (!reviewDialogOpen || reviewStep !== 5 || !pendingUploadedDocId || !seniorityNarrativeWarmKey) {
+    if (!reviewDialogOpen || !isCvReviewFinalSeniorityStep || !pendingUploadedDocId || !seniorityNarrativeWarmKey) {
       return undefined;
     }
 
@@ -2181,7 +3581,7 @@ const DocumentUploadForm = ({
     let slowWarningTimer;
     const warmStartedAt = Date.now();
 
-    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+    const profileForWarm = mergeFollowUpAnswersIntoProfile(
       reviewProfile,
       step3FollowUps,
       step3FollowUpAnswers
@@ -2268,7 +3668,7 @@ const DocumentUploadForm = ({
     // seniorityNarrativeWarmKey captures identity + structured inputs only; seniority edits must not restart warm.
   }, [
     reviewDialogOpen,
-    reviewStep,
+    isCvReviewFinalSeniorityStep,
     pendingUploadedDocId,
     seniorityNarrativeWarmKey,
     t,
@@ -2321,7 +3721,7 @@ const DocumentUploadForm = ({
       }
     }
 
-    const profileForWarm = applyStep3FollowUpAnswersToReviewProfile(
+    const profileForWarm = mergeFollowUpAnswersIntoProfile(
       reviewProfile,
       step3FollowUps,
       step3FollowUpAnswers
@@ -2340,6 +3740,26 @@ const DocumentUploadForm = ({
 
   const handleReviewBack = () => {
     setReviewDialogError('');
+    if (manualFillMode) {
+      const prev = prevManualFillStep(reviewStep);
+      if (prev === MANUAL_FILL_REVIEW_STEPS.SENIORITY && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING) {
+        setManualWorkEnjoyComplete(false);
+      }
+      if (prev === MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING && reviewStep === MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING) {
+        setManualTopicsComplete(false);
+      }
+      if (prev === MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING && reviewStep === MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING) {
+        setManualStrengthsComplete(false);
+      }
+      if (prev === MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING) {
+        setManualWorkEnvironmentComplete(false);
+      }
+      if (prev === MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING) {
+        setManualWorkingLifeAchievementComplete(false);
+      }
+      if (prev != null) setReviewStep(prev);
+      return;
+    }
     if (reviewStep === 5) {
       setInputQualityDiagnosisError(null);
       setReviewStep(4);
@@ -2352,6 +3772,135 @@ const DocumentUploadForm = ({
 
   const handleReviewContinue = async () => {
     setReviewDialogError('');
+    if (manualFillMode && (reviewStep === 2 || reviewStep === 3 || reviewStep === 4)) {
+      setReviewStep(optionalCvSkipped
+        ? MANUAL_FILL_REVIEW_STEPS.SENIORITY
+        : MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV);
+      return;
+    }
+    if (manualFillMode && reviewStep === 5) {
+      const seniorityCheck = validateSeniorityPayload(reviewProfile.seniority || {});
+      if (!seniorityCheck.ok) {
+        setReviewDialogError(t(seniorityFieldErrorKey(seniorityCheck.field)));
+        queueReviewFieldScroll(seniorityReviewFieldKey(seniorityCheck.field));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING) {
+      if (!manualWorkEnjoyComplete) {
+        if (workEnjoySummaryFooter.canConfirm) {
+          workEnjoyConfirmRef.current();
+          return;
+        }
+        setReviewDialogError(t('workEnjoyCoaching.errors.completeCoachingFirst'));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING) {
+      if (!manualTopicsComplete) {
+        if (topicsSummaryFooter.canConfirm) {
+          topicsConfirmRef.current();
+          return;
+        }
+        setReviewDialogError(t('topicsIndustriesCoaching.errors.completeCoachingFirst'));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING) {
+      if (!manualStrengthsComplete) {
+        if (strengthsSummaryFooter.canConfirm) {
+          strengthsConfirmRef.current();
+          return;
+        }
+        setReviewDialogError(t('naturallyGoodAtCoaching.errors.completeCoachingFirst'));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING) {
+      if (!manualWorkEnvironmentComplete) {
+        if (workEnvironmentSummaryFooter.canConfirm) {
+          workEnvironmentConfirmRef.current();
+          return;
+        }
+        setReviewDialogError(t('workEnvironmentCoaching.errors.completeCoachingFirst'));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING) {
+      if (!manualWorkingLifeAchievementComplete) {
+        if (workingLifeAchievementSummaryFooter.canConfirm) {
+          workingLifeAchievementConfirmRef.current();
+          return;
+        }
+        setReviewDialogError(t('workingLifeAchievementCoaching.errors.completeCoachingFirst'));
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.TASKS_RESPONSIBILITIES) {
+      if (!reviewProfileHasKeyResponsibilities(reviewProfile)) {
+        setReviewDialogError(t('tasksResponsibilitiesStep.errors.addAtLeastOne'));
+        queueReviewFieldScroll('structuredUserInfo.keyResponsibilities');
+        return;
+      }
+      const trimmed = capGoodAtList(
+        (reviewProfile.structuredUserInfo?.keyResponsibilities || [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+        'keyResponsibilities'
+      );
+      setReviewProfile((prev) => ({
+        ...prev,
+        structuredUserInfo: {
+          ...(prev.structuredUserInfo || {}),
+          keyResponsibilities: trimmed,
+        },
+      }));
+      setAcceptedFields((prev) => ({
+        ...prev,
+        ...buildAcceptedKeyResponsibilityFields(trimmed),
+      }));
+      const profileForSkills = {
+        ...reviewProfile,
+        structuredUserInfo: {
+          ...(reviewProfile.structuredUserInfo || {}),
+          keyResponsibilities: trimmed,
+        },
+      };
+      prefetchRoleSkillRecommendations({
+        contextTexts: buildSkillSelectionRecommendationContext(profileForSkills, manualFillCoachingDraft),
+      });
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
+    if (manualFillMode && reviewStep === MANUAL_FILL_REVIEW_STEPS.SKILLS_SELECTION) {
+      if (!reviewProfileHasSelectedSkill(reviewProfile)) {
+        setReviewDialogError(t('skillSelection.errors.selectAtLeastOne'));
+        queueReviewFieldScroll('structuredUserInfo.skills');
+        return;
+      }
+      const next = nextManualFillStep(reviewStep);
+      if (next != null) setReviewStep(next);
+      return;
+    }
     if (reviewStep === 2) {
       if (!applyReviewValidationToUi(validateReviewIdentityStep(reviewProfile))) {
         return;
@@ -2419,6 +3968,7 @@ const DocumentUploadForm = ({
       return;
     }
     if (reviewStep === 4) {
+      if (manualFillMode) return;
       void handleContinueFromContextStep();
     }
   };
@@ -2427,35 +3977,48 @@ const DocumentUploadForm = ({
   const handleReviewCancel = async () => {
     setReviewCancelConfirmOpen(false);
     setReviewDialogError('');
-    const canceledDocId = pendingUploadedDocId
+
+    if (manualFillMode) {
+      persistManualFillDraft();
+      setReviewDialogOpen(false);
+      setExtractedProfileData(null);
+      setCvExtractLocalization(null);
+      setReviewProfile({});
+      setAcceptedFields({});
+      setStep3FollowUps([]);
+      setStep3FollowUpAnswers({});
+      setReviewStep(MANUAL_FILL_REVIEW_STEPS.SENIORITY);
+      setPendingUploadedDocId(null);
+      setSelectedFile(null);
+      resetManualFillUiState();
+      notifyReviewSessionEnd();
+      return;
+    }
+
+    const docIdForDraft = pendingUploadedDocId
       ? String(pendingUploadedDocId)
       : cvPollTarget?.documentId
         ? String(cvPollTarget.documentId)
         : null;
-    if (canceledDocId) {
-      dismissedCvWizardDocIdsRef.current.add(canceledDocId);
-    }
     cvWizardUserCanceledRef.current = true;
     setUploading(false);
     setAutoStartUpload(false);
+    if (reviewUserId && docIdForDraft) {
+      persistCvReviewDraft(buildCvReviewDraftPayload({
+        pendingUploadedDocId: docIdForDraft,
+        reviewProfile,
+        reviewStep,
+        step3FollowUps,
+        step3FollowUpAnswers,
+        acceptedFields,
+        cvExtractLocalization,
+        reviewDialogOpen: false,
+        inputQualityDiagnosisCache: diagnosisCacheMapToDraft(inputQualityDiagnosisCacheRef.current),
+        inputQualityDiagnosisAppliedFingerprint: inputQualityDiagnosisAppliedFingerprintRef.current,
+      }));
+    }
     clearCvExtractionUiState();
     setReviewDialogOpen(false);
-    if (reviewUserId) clearCvReviewDraft(reviewUserId);
-    if (rollbackOnReviewCancel && canceledDocId) {
-      try {
-        await fetch(`/api/documents/${canceledDocId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        onDocumentsUpdate(normalizeDocuments(
-          documents.filter((doc) => String(doc.id) !== String(canceledDocId))
-        ));
-      } catch (error) {
-        console.warn('Failed to rollback uploaded document on review cancel:', error);
-      }
-    }
     setExtractedProfileData(null);
     setCvExtractLocalization(null);
     setReviewProfile({});
@@ -2469,25 +4032,12 @@ const DocumentUploadForm = ({
     inputQualityDiagnosisAbortRef.current = null;
     inputQualityDiagnosisInflightFingerprintRef.current = '';
     inputQualityDiagnosisInflightPromiseRef.current = null;
-    setReviewStep(enableExtractionReview ? 1 : 2);
+    setReviewStep(1);
     setPendingUploadedDocId(null);
     setSelectedFile(null);
+    resetManualFillUiState();
     setExtractionError('');
     notifyReviewSessionEnd();
-  };
-
-  // Handler for editing extracted skills list items.
-  const handleReviewSkillChange = (idx, value) => {
-    clearGoodAtCategoryErrors('skills', idx);
-    setReviewProfile(prev => ({
-      ...prev,
-      structuredUserInfo: {
-        ...(prev.structuredUserInfo || {}),
-        skills: (prev.structuredUserInfo?.skills || []).map((item, i) =>
-          i === idx ? { ...item, name: value } : item
-        )
-      }
-    }));
   };
 
   const handleFileSelect = (event) => {
@@ -2548,65 +4098,68 @@ const DocumentUploadForm = ({
         </Alert>
       )}
 
-      {!enableExtractionReview && uploading && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            {t('documentUpload.async.uploading')}
-          </Typography>
-          <LinearProgress />
-        </Alert>
-      )}
-
-      {!enableExtractionReview && !uploading && uploadSucceeded && cvPollTarget && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          <Typography variant="body2">
-            {t('documentUpload.async.uploadComplete')}
-          </Typography>
-        </Alert>
-      )}
-
-      {!enableExtractionReview && !uploading && (cvPollTarget || cvPipelinePhase === 'failed' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'slow') && (
-        renderCvExtractionProgressAlert()
-      )}
-
-      {showUploadControls && !(enableExtractionReview && reviewDialogOpen) && (
-        <Paper
-          {...getRootProps()}
+      {showManualFillOption && !reviewDialogOpen && (
+        <Box
           sx={{
-            p: 3,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             mb: 3,
-            textAlign: 'center',
-            cursor: 'pointer',
-            bgcolor: isDragActive ? 'action.hover' : 'background.paper',
-            border: '2px dashed',
-            borderColor: isDragActive ? 'primary.main' : 'grey.300'
+            width: '100%',
           }}
         >
-          <input {...getInputProps()} />
-          <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-          <Typography variant="h6" gutterBottom>
-            {isDragActive
-              ? t('documentUpload.dropzone.dragActive')
-              : t('documentUpload.dropzone.idle')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t('documentUpload.dropzone.supportedFormats')}
-          </Typography>
-          <Button
-            variant="outlined"
-            onClick={(e) => {
-              e.stopPropagation();
-              open();
-            }}
-            startIcon={<UploadIcon />}
-          >
-            {t('documentUpload.dropzone.cta')}
-          </Button>
-        </Paper>
+          {hasSavedManualFillDraft ? (
+            <>
+              <Alert severity="info" sx={{ width: '100%', textAlign: 'left' }}>
+                <Typography variant="body2">
+                  {t('profileCreation.manualFill.resumeDescription', {
+                    step: manualFillProgressIndex(loadManualFillDraft(reviewUserId)?.reviewStep || MANUAL_FILL_REVIEW_STEPS.SENIORITY),
+                    total: MANUAL_FILL_STEP_COUNT,
+                  })}
+                </Typography>
+              </Alert>
+              <Box
+                sx={{
+                  mt: 2,
+                  display: 'flex',
+                  gap: 2,
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  alignItems: 'stretch',
+                  width: '100%',
+                }}
+              >
+                <HomeGetStartedButton onClick={resumeManualFill}>
+                  {t('profileCreation.manualFill.resumeCta')}
+                </HomeGetStartedButton>
+                <Button
+                  variant="outlined"
+                  size="medium"
+                  onClick={() => setManualFillDiscardConfirmOpen(true)}
+                  sx={{
+                    fontWeight: 600,
+                    px: 3,
+                    py: 1.5,
+                    fontSize: '1rem',
+                    width: { xs: '100%', sm: 'auto' },
+                    maxWidth: '100%',
+                  }}
+                >
+                  {t('profileCreation.manualFill.discardSavedCta')}
+                </Button>
+              </Box>
+            </>
+          ) : (
+            <HomeGetStartedButton onClick={handleStartManualFillClick}>
+              {t('profileCreation.manualFill.cta')}
+            </HomeGetStartedButton>
+          )}
+        </Box>
       )}
 
       {/* Document list */}
-      {!hideDocumentList && (
+      {!hideDocumentList && !manualFillOnly && (
       <List>
         {documents.map((doc) => (
           <ListItem
@@ -2717,7 +4270,7 @@ const DocumentUploadForm = ({
       )}
 
       {/* Delete Confirmation Dialog */}
-      {!hideDocumentList && (
+      {!hideDocumentList && !manualFillOnly && (
       <Dialog 
         open={deleteDialogOpen} 
         onClose={() => setDeleteDialogOpen(false)}
@@ -2776,69 +4329,6 @@ const DocumentUploadForm = ({
       </Dialog>
       )}
 
-      {showUploadControls && !enableExtractionReview && (
-        <Dialog open={uploadDialog} onClose={() => { setUploadDialog(false); setAutoStartUpload(false); }}>
-          <DialogTitle>{t('documentUpload.uploadDialog.title')}</DialogTitle>
-          <DialogContent>
-            <Box sx={{ pt: 1 }}>
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-                id="file-input"
-              />
-              <label htmlFor="file-input">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  fullWidth
-                  sx={{ mb: 2 }}
-                  startIcon={<UploadIcon />}
-                >
-                  {selectedFile ? selectedFile.name : t('documentUpload.uploadDialog.selectFileCta')}
-                </Button>
-              </label>
-              {!defaultDocumentType && (
-                <TextField
-                  select
-                  fullWidth
-                  label={t('documentUpload.uploadDialog.documentTypeLabel')}
-                  value={documentType}
-                  onChange={(e) => setDocumentType(e.target.value)}
-                  SelectProps={{
-                    native: true
-                  }}
-                  sx={{ mb: 2 }}
-                >
-                  <option value="">{t('documentUpload.uploadDialog.documentTypePlaceholder')}</option>
-                  {DOCUMENT_TYPE_UPLOAD_OPTIONS.map(({ value }) => (
-                    <option key={value} value={value}>
-                      {t(`documentUpload.uploadDialog.documentTypes.${value}`)}
-                    </option>
-                  ))}
-                </TextField>
-              )}
-              {defaultDocumentType && (
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  {t('documentUpload.uploadDialog.defaultTypeInfo')}
-                </Alert>
-              )}
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => { setUploadDialog(false); setAutoStartUpload(false); }}>{t('documentUpload.common.cancel')}</Button>
-            <Button
-              onClick={handleUpload}
-              variant="contained"
-              disabled={!(documentType || defaultDocumentType) || uploading}
-            >
-              {uploading ? <CircularProgress size={24} /> : t('documentUpload.uploadDialog.uploadCta')}
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
-
       {/* Review extracted profile data dialog */}
       <Dialog
         open={reviewDialogOpen}
@@ -2862,7 +4352,11 @@ const DocumentUploadForm = ({
       >
         <DialogTitle sx={{ pb: 1, flexShrink: 0 }}>
           {enableExtractionReview && (
-            <ProfileCreationProgress currentStep={reviewStep} sx={{ mb: 1.5 }} />
+            <ProfileCreationProgress
+              currentStep={manualFillMode ? manualFillProgressIndex(reviewStep) : reviewStep}
+              totalSteps={manualFillMode ? MANUAL_FILL_STEP_COUNT : undefined}
+              sx={{ mb: 1.5 }}
+            />
           )}
           <ProfileReviewStepTitle step={reviewStep} t={t} />
         </DialogTitle>
@@ -2884,7 +4378,11 @@ const DocumentUploadForm = ({
           {reviewStep === 1 && enableExtractionReview && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                {t('documentUpload.review.step1Intro')}
+                {manualFillMode
+                  ? t(reviewSaveMode === 'replace'
+                    ? 'profileCreation.manualFill.optionalCv.introFullUpdate'
+                    : 'profileCreation.manualFill.optionalCv.intro')
+                  : t('documentUpload.review.step1Intro')}
               </Typography>
               <input
                 ref={reviewStep1FileInputRef}
@@ -2893,11 +4391,6 @@ const DocumentUploadForm = ({
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
               />
-              {selectedFile && (
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {selectedFile.name}
-                </Typography>
-              )}
               {uploading && (
                 <Alert severity="info">
                   <Typography variant="body2" sx={{ mb: 1 }}>
@@ -2906,17 +4399,33 @@ const DocumentUploadForm = ({
                   <LinearProgress />
                 </Alert>
               )}
-              {!uploading && uploadSucceeded && cvPollTarget && (
+              {!uploading && uploadSucceeded && (
                 <Alert severity="success">
                   <Typography variant="body2">
                     {t('documentUpload.async.uploadComplete')}
                   </Typography>
                 </Alert>
               )}
-              {!uploading && (cvPollTarget || cvPipelinePhase === 'failed' || cvPipelinePhase === 'timedOut' || cvRecoveryUxPhase === 'recovery' || cvRecoveryUxPhase === 'stuck' || cvRecoveryUxPhase === 'slow') && (
+              {!uploading && optionalCvShowExtractionProgress && (
                 renderCvExtractionProgressAlert()
               )}
-              {!uploading && !cvPollTarget && cvPipelinePhase === 'idle' && !uploadSucceeded && (
+              {!uploading && optionalCvExtractionComplete && optionalCvHasUpload && (
+                <Alert severity="success">
+                  <Typography variant="body2">
+                    {t('documentUpload.async.completed')}
+                  </Typography>
+                </Alert>
+              )}
+              {!uploading && optionalCvShowUploadedFile && (
+                <Alert severity="success">
+                  <Typography variant="body2">
+                    {t('profileCreation.manualFill.optionalCv.uploadedFile', {
+                      fileName: optionalCvDisplayName,
+                    })}
+                  </Typography>
+                </Alert>
+              )}
+              {optionalCvShowDropzone && (
                 <Box sx={{ textAlign: 'center' }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {t('documentUpload.dropzone.supportedFormats')}
@@ -2940,15 +4449,303 @@ const DocumentUploadForm = ({
               )}
             </Box>
           )}
-          {extractedProfileData ? (
+          {(extractedProfileData || manualFillMode) ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-              {reviewStep === 2 && (
+              {reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING && manualFillMode && (
+                <>
+                  {!workEnjoySummaryFooter.canConfirm && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {t('workEnjoyCoaching.chat.intro')}
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                    </>
+                  )}
+                  <Box {...reviewFieldAnchorProps('userIdentity.workEnjoyMost')} sx={{ mb: 2.5 }}>
+                    <WorkEnjoyMostCoaching
+                      seniority={reviewProfile.seniority || {}}
+                      cvContext={coachingCvContext}
+                      confirmInFooter
+                      initialActivities={resolveWorkEnjoyInitialActivities(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
+                      initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workEnjoy')}
+                      onChatPersist={(snapshot) => handleManualFillCoachingPersist('workEnjoy', snapshot)}
+                      onSummaryFooterStateChange={handleWorkEnjoySummaryFooterStateChange}
+                      onBindConfirm={handleBindWorkEnjoyConfirm}
+                      onComplete={(_activities, workEnjoyMostText, meta = {}) => {
+                        clearReviewFieldError('userIdentity.workEnjoyMost');
+                        setReviewProfile((prev) => ({
+                          ...prev,
+                          userIdentity: {
+                            ...(prev.userIdentity || {}),
+                            workEnjoyMost: workEnjoyMostText,
+                          },
+                        }));
+                        setWorkEnjoyMostUserEdited(Boolean(meta.userEdited));
+                        setManualWorkEnjoyComplete(true);
+                        setWorkEnjoySummaryFooter({ canConfirm: false, isEditing: false, hasActivities: false });
+                        setReviewDialogError('');
+                        const next = nextManualFillStep(MANUAL_FILL_REVIEW_STEPS.WORK_ENJOY_COACHING);
+                        if (next != null) setReviewStep(next);
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+              {reviewStep === MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING && manualFillMode && (
+                <>
+                  {!topicsSummaryFooter.canConfirm && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {t('topicsIndustriesCoaching.chat.intro')}
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                    </>
+                  )}
+                  <Box {...reviewFieldAnchorProps('userIdentity.topicsIndustriesInterest')} sx={{ mb: 2.5 }}>
+                    <TopicsIndustriesCoaching
+                      seniority={reviewProfile.seniority || {}}
+                      cvContext={coachingCvContext}
+                      confirmInFooter
+                      initialInterestTopics={resolveTopicsInitialInterest(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
+                      initialIndustries={resolveTopicsInitialIndustries(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
+                      initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'topics')}
+                      onChatPersist={(snapshot) => handleManualFillCoachingPersist('topics', snapshot)}
+                      onSummaryFooterStateChange={handleTopicsSummaryFooterStateChange}
+                      onBindConfirm={handleBindTopicsConfirm}
+                      onComplete={(summary, meta = {}) => {
+                        clearReviewFieldError('userIdentity.topicsIndustriesInterest');
+                        const interestTopics = (summary?.interestTopics || [])
+                          .map((item) => String(item || '').trim())
+                          .filter(Boolean);
+                        const industries = capGoodAtList((summary?.industries || [])
+                          .map((item) => String(item || '').trim())
+                          .filter(Boolean), 'domains');
+                        setReviewProfile((prev) => ({
+                          ...prev,
+                          userIdentity: {
+                            ...(prev.userIdentity || {}),
+                            topicsIndustriesInterest: formatInterestTopicsAsText(interestTopics),
+                          },
+                          structuredUserInfo: {
+                            ...(prev.structuredUserInfo || {}),
+                            domains: industries,
+                          },
+                        }));
+                        setAcceptedFields((prev) => ({
+                          ...prev,
+                          ...buildAcceptedDomainFields(industries),
+                        }));
+                        setTopicsIndustriesUserEdited(Boolean(meta.userEdited));
+                        setManualTopicsComplete(true);
+                        setTopicsSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+                        setReviewDialogError('');
+                        const next = nextManualFillStep(MANUAL_FILL_REVIEW_STEPS.TOPICS_COACHING);
+                        if (next != null) setReviewStep(next);
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+              {reviewStep === MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING && manualFillMode && (
+                <>
+                  {!strengthsSummaryFooter.canConfirm && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {t('naturallyGoodAtCoaching.chat.intro')}
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                    </>
+                  )}
+                  <Box {...reviewFieldAnchorProps('userIdentity.naturallyGoodAt')} sx={{ mb: 2.5 }}>
+                    <NaturallyGoodAtCoaching
+                      seniority={reviewProfile.seniority || {}}
+                      cvContext={coachingCvContext}
+                      confirmInFooter
+                      recommendationContextTexts={strengthsSkillDomainRecommendationContext}
+                      initialStrengths={resolveStrengthsInitialStrengths(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
+                      initialSkillDomains={resolveStrengthsInitialSkillDomains(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
+                      initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'strengths')}
+                      onChatPersist={(snapshot) => handleManualFillCoachingPersist('strengths', snapshot)}
+                      onSummaryFooterStateChange={handleStrengthsSummaryFooterStateChange}
+                      onBindConfirm={handleBindStrengthsConfirm}
+                      onComplete={(summary, naturallyGoodAtText, meta = {}) => {
+                        clearReviewFieldError('userIdentity.naturallyGoodAt');
+                        const strengths = (summary?.strengths || [])
+                          .map((item) => String(item || '').trim())
+                          .filter(Boolean);
+                        const skillDomains = capGoodAtList((summary?.skillDomains || [])
+                          .map((item) => String(item || '').trim())
+                          .filter(Boolean), 'skillDomains');
+                        setReviewProfile((prev) => ({
+                          ...prev,
+                          userIdentity: {
+                            ...(prev.userIdentity || {}),
+                            naturallyGoodAt: naturallyGoodAtText || formatNaturallyGoodAtAsText({ strengths }),
+                          },
+                          structuredUserInfo: {
+                            ...(prev.structuredUserInfo || {}),
+                            skillDomains,
+                          },
+                        }));
+                        setAcceptedFields((prev) => ({
+                          ...prev,
+                          ...buildAcceptedSkillDomainFields(skillDomains),
+                        }));
+                        setNaturallyGoodAtUserEdited(Boolean(meta.userEdited));
+                        setManualStrengthsComplete(true);
+                        setStrengthsSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+                        setReviewDialogError('');
+                        const next = nextManualFillStep(MANUAL_FILL_REVIEW_STEPS.STRENGTHS_COACHING);
+                        if (next != null) setReviewStep(next);
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+              {reviewStep === MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING && manualFillMode && (
+                <>
+                  {!workEnvironmentSummaryFooter.canConfirm && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {t('workEnvironmentCoaching.chat.intro')}
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                    </>
+                  )}
+                  <Box {...reviewFieldAnchorProps('userIdentity.workEnvironmentFit')} sx={{ mb: 2.5 }}>
+                    <WorkEnvironmentCoaching
+                      seniority={reviewProfile.seniority || {}}
+                      cvContext={coachingCvContext}
+                      confirmInFooter
+                      initialWorkStyles={resolveWorkEnvironmentInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).workStyles}
+                      initialWorkEnvironments={resolveWorkEnvironmentInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).workEnvironments}
+                      initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workEnvironment')}
+                      onChatPersist={(snapshot) => handleManualFillCoachingPersist('workEnvironment', snapshot)}
+                      onSummaryFooterStateChange={handleWorkEnvironmentSummaryFooterStateChange}
+                      onBindConfirm={handleBindWorkEnvironmentConfirm}
+                      onComplete={(_summary, workEnvironmentFitText, meta = {}) => {
+                        clearReviewFieldError('userIdentity.workEnvironmentFit');
+                        setReviewProfile((prev) => ({
+                          ...prev,
+                          userIdentity: {
+                            ...(prev.userIdentity || {}),
+                            workEnvironmentFit: workEnvironmentFitText,
+                          },
+                        }));
+                        setWorkEnvironmentFitUserEdited(Boolean(meta.userEdited));
+                        setManualWorkEnvironmentComplete(true);
+                        setWorkEnvironmentSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+                        setReviewDialogError('');
+                        const next = nextManualFillStep(MANUAL_FILL_REVIEW_STEPS.WORK_ENVIRONMENT_COACHING);
+                        if (next != null) setReviewStep(next);
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+              {reviewStep === MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING && manualFillMode && (
+                <>
+                  {!workingLifeAchievementSummaryFooter.canConfirm && (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {t('workingLifeAchievementCoaching.chat.intro')}
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                    </>
+                  )}
+                  <Box {...reviewFieldAnchorProps('userIdentity.workingLifeAchievement')} sx={{ mb: 2.5 }}>
+                    <WorkingLifeAchievementCoaching
+                      seniority={reviewProfile.seniority || {}}
+                      cvContext={coachingCvContext}
+                      confirmInFooter
+                      initialCareerGoals={resolveWorkingLifeAchievementInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).careerGoals}
+                      initialPriorities={resolveWorkingLifeAchievementInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).priorities}
+                      initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workingLifeAchievement')}
+                      onChatPersist={(snapshot) => handleManualFillCoachingPersist('workingLifeAchievement', snapshot)}
+                      onSummaryFooterStateChange={handleWorkingLifeAchievementSummaryFooterStateChange}
+                      onBindConfirm={handleBindWorkingLifeAchievementConfirm}
+                      onComplete={(_summary, workingLifeAchievementText, meta = {}) => {
+                        clearReviewFieldError('userIdentity.workingLifeAchievement');
+                        setReviewProfile((prev) => ({
+                          ...prev,
+                          userIdentity: {
+                            ...(prev.userIdentity || {}),
+                            workingLifeAchievement: workingLifeAchievementText,
+                          },
+                        }));
+                        setWorkingLifeAchievementUserEdited(Boolean(meta.userEdited));
+                        setManualWorkingLifeAchievementComplete(true);
+                        setWorkingLifeAchievementSummaryFooter({ canConfirm: false, isEditing: false, hasSummary: false });
+                        setReviewDialogError('');
+                        const next = nextManualFillStep(MANUAL_FILL_REVIEW_STEPS.WORKING_LIFE_ACHIEVEMENT_COACHING);
+                        if (next != null) setReviewStep(next);
+                      }}
+                    />
+                  </Box>
+                </>
+              )}
+              {inManualTasksResponsibilities && (
+                <Box {...reviewFieldAnchorProps('structuredUserInfo.keyResponsibilities')} sx={{ mb: 2.5 }}>
+                  <TasksResponsibilitiesStep
+                    responsibilities={reviewProfile.structuredUserInfo?.keyResponsibilities || []}
+                    onResponsibilitiesChange={handleTasksResponsibilitiesChange}
+                    maxItems={getProfileStructuredListMaxItems('keyResponsibilities')}
+                    fieldErrors={reviewFieldErrors}
+                  />
+                </Box>
+              )}
+              {inManualSkillsSelection && (
+                <Box {...reviewFieldAnchorProps('structuredUserInfo.skills')} sx={{ mb: 2.5 }}>
+                  <SkillSelectionStep
+                    selectedSkills={reviewProfile.structuredUserInfo?.skills || []}
+                    onSelectedSkillsChange={handleSelectedSkillsChange}
+                    maxSelected={getProfileStructuredListMaxItems('skills')}
+                    recommendationContextTexts={skillSelectionRecommendationContext}
+                  />
+                  {reviewFieldErrors['structuredUserInfo.skills'] && (
+                    <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+                      {reviewFieldErrors['structuredUserInfo.skills']}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+              {inManualSkillsToLearn && (
+                <Box {...reviewFieldAnchorProps('structuredUserInfo.skillsInDevelopment')} sx={{ mb: 2.5 }}>
+                  <SkillSelectionStep
+                    selectedSkills={reviewProfile.structuredUserInfo?.skillsInDevelopment || []}
+                    onSelectedSkillsChange={handleSkillsToLearnChange}
+                    maxSelected={getProfileStructuredListMaxItems('skillsInDevelopment')}
+                    recommendationContextTexts={skillSelectionRecommendationContext}
+                    excludeLabels={excludedSkillLabelsForLearning}
+                    translationKeyPrefix="skillsToLearnSelection"
+                  />
+                  {reviewFieldErrors['structuredUserInfo.skillsInDevelopment'] && (
+                    <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+                      {reviewFieldErrors['structuredUserInfo.skillsInDevelopment']}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+              {reviewStep === 2 && !manualFillMode && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {t('documentUpload.review.step2Intro')}
+                    {manualFillMode
+                      ? t('documentUpload.review.step2IntroManual')
+                      : t('documentUpload.review.step2Intro')}
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
-                  {USER_IDENTITY_FIELDS.map(({ key, questionKey }) => {
+                  {USER_IDENTITY_FIELDS.filter(({ key }) => {
+                      if (manualFillMode && (
+                        key === 'workEnjoyMost'
+                        || key === 'topicsIndustriesInterest'
+                        || key === 'naturallyGoodAt'
+                        || key === 'workEnvironmentFit'
+                        || key === 'workingLifeAchievement'
+                      )) {
+                        return false;
+                      }
+                      return true;
+                    }).map(({ key, questionKey }) => {
                     const identityFieldKey = `userIdentity.${key}`;
                     const identityValue = reviewProfile.userIdentity?.[key] || '';
                     return (
@@ -2956,8 +4753,96 @@ const DocumentUploadForm = ({
                       <Typography variant="body1" sx={REVIEW.subcategoryTitle}>
                         {t(questionKey)}
                       </Typography>
+                      {manualFillMode && key === 'workEnjoyMost' && identityValue ? (
+                        <WorkEnjoyActivitiesPanel
+                          activities={parseActivitiesFromText(identityValue)}
+                          onActivitiesChange={(nextActivities) => {
+                            clearReviewFieldError(identityFieldKey);
+                            setReviewProfile((prev) => ({
+                              ...prev,
+                              userIdentity: {
+                                ...(prev.userIdentity || {}),
+                                workEnjoyMost: formatActivitiesAsText(nextActivities),
+                              },
+                            }));
+                          }}
+                          onUserEdited={() => setWorkEnjoyMostUserEdited(true)}
+                        />
+                      ) : manualFillMode && key === 'topicsIndustriesInterest' && identityValue ? (
+                        <WorkEnjoyActivitiesPanel
+                          activities={parseInterestTopicsFromText(identityValue)}
+                          onActivitiesChange={(nextTopics) => {
+                            clearReviewFieldError(identityFieldKey);
+                            setReviewProfile((prev) => ({
+                              ...prev,
+                              userIdentity: {
+                                ...(prev.userIdentity || {}),
+                                topicsIndustriesInterest: formatInterestTopicsAsText(nextTopics),
+                              },
+                            }));
+                          }}
+                          onUserEdited={() => setTopicsIndustriesUserEdited(true)}
+                        />
+                      ) : manualFillMode && key === 'naturallyGoodAt' && identityValue ? (
+                        <WorkEnjoyActivitiesPanel
+                          activities={parseStrengthsFromText(identityValue)}
+                          onActivitiesChange={(nextStrengths) => {
+                            clearReviewFieldError(identityFieldKey);
+                            setReviewProfile((prev) => ({
+                              ...prev,
+                              userIdentity: {
+                                ...(prev.userIdentity || {}),
+                                naturallyGoodAt: formatNaturallyGoodAtAsText({ strengths: nextStrengths }),
+                              },
+                            }));
+                          }}
+                          onUserEdited={() => setNaturallyGoodAtUserEdited(true)}
+                        />
+                      ) : manualFillMode && key === 'workEnvironmentFit' && identityValue ? (
+                        <WorkEnjoyActivitiesPanel
+                          activities={parseWorkStylesFromText(identityValue)}
+                          onActivitiesChange={(nextStyles) => {
+                            clearReviewFieldError(identityFieldKey);
+                            const parsed = parseWorkEnvironmentFromText(identityValue);
+                            setReviewProfile((prev) => ({
+                              ...prev,
+                              userIdentity: {
+                                ...(prev.userIdentity || {}),
+                                workEnvironmentFit: formatWorkEnvironmentAsText({
+                                  workStyles: nextStyles,
+                                  workEnvironments: parsed.workEnvironments,
+                                }),
+                              },
+                            }));
+                          }}
+                          onUserEdited={() => setWorkEnvironmentFitUserEdited(true)}
+                        />
+                      ) : manualFillMode && key === 'workingLifeAchievement' && identityValue ? (
+                        <WorkEnjoyActivitiesPanel
+                          activities={parseCareerGoalsFromText(identityValue)}
+                          onActivitiesChange={(nextGoals) => {
+                            clearReviewFieldError(identityFieldKey);
+                            const parsed = parseWorkingLifeAchievementFromText(identityValue);
+                            setReviewProfile((prev) => ({
+                              ...prev,
+                              userIdentity: {
+                                ...(prev.userIdentity || {}),
+                                workingLifeAchievement: formatWorkingLifeAchievementAsText({
+                                  careerGoals: nextGoals,
+                                  priorities: parsed.priorities,
+                                }),
+                              },
+                            }));
+                          }}
+                          onUserEdited={() => setWorkingLifeAchievementUserEdited(true)}
+                        />
+                      ) : (
                       <TextField
-                        value={identityValue}
+                        value={
+                          key === 'topicsIndustriesInterest'
+                            ? formatInterestTopicsAsText(parseInterestTopicsFromText(identityValue))
+                            : identityValue
+                        }
                         onChange={(e) => {
                           clearReviewFieldError(identityFieldKey);
                           setReviewProfile((prev) => ({
@@ -2980,10 +4865,11 @@ const DocumentUploadForm = ({
                         }
                         inputProps={{ maxLength: PROFILE_REVIEW_USER_IDENTITY_MAX }}
                       />
+                      )}
                     </Box>
                     );
                   })}
-                  {(structuredReviewLoading || !structuredExtractionReady) && (
+                  {(structuredReviewLoading || !structuredExtractionReady) && !manualFillMode && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1 }}>
                       <CircularProgress size={20} />
                       <Typography variant="body2" color="text.secondary">
@@ -2993,7 +4879,7 @@ const DocumentUploadForm = ({
                   )}
                 </>
               )}
-              {reviewStep === 3 && (
+              {reviewStep === 3 && !manualFillMode && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {t('documentUpload.review.step3Intro')}
@@ -3008,59 +4894,17 @@ const DocumentUploadForm = ({
                       {reviewFieldErrors['structuredUserInfo.skillDomains']}
                     </Typography>
                   )}
-                  {(reviewProfile.structuredUserInfo?.skillDomains || []).length === 0 && (
+                  {reviewSkillDomainValues.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
                       {t('documentUpload.review.emptyMessages.skillDomains')}
                     </Typography>
                   )}
-                  {sortStructuredIndices('structuredUserInfo.skillDomains', (reviewProfile.structuredUserInfo?.skillDomains || []).length).map((idx) => {
-                    const domain = (reviewProfile.structuredUserInfo?.skillDomains || [])[idx];
-                    return (
-                      <Box
-                        key={idx}
-                        {...reviewFieldAnchorProps(`structuredUserInfo.skillDomains.${idx}`)}
-                        sx={REVIEW.rowEntry}
-                      >
-                        {renderReviewEntryCheckbox(
-                          `structuredUserInfo.skillDomains.${idx}`,
-                          t('documentUpload.review.labels.skillDomain', { index: idx + 1 })
-                        )}
-                        <TextField
-                          value={domain || ''}
-                          onChange={(e) => {
-                            clearGoodAtCategoryErrors('skillDomains', idx);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              structuredUserInfo: {
-                                ...(prev.structuredUserInfo || {}),
-                                skillDomains: (prev.structuredUserInfo?.skillDomains || []).map((item, i) => (
-                                  i === idx ? e.target.value : item
-                                ))
-                              }
-                            }));
-                          }}
-                          sx={REVIEW.field}
-                          fullWidth
-                          disabled={!isAccepted(`structuredUserInfo.skillDomains.${idx}`)}
-                          hiddenLabel
-                          error={Boolean(reviewFieldErrors[`structuredUserInfo.skillDomains.${idx}`])}
-                          helperText={reviewFieldErrors[`structuredUserInfo.skillDomains.${idx}`]}
-                          inputProps={{ maxLength: PROFILE_REVIEW_STRUCTURED_MAX.skillDomains }}
-                        />
-                      </Box>
-                    );
-                  })}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={() => appendStructuredStringList('skillDomains')}
-                    disabled={(reviewProfile.structuredUserInfo?.skillDomains || []).length >= MAX_GOOD_AT_PER_CATEGORY}
-                    title={(reviewProfile.structuredUserInfo?.skillDomains || []).length >= MAX_GOOD_AT_PER_CATEGORY ? t('documentUpload.review.maxEntriesTitle', { max: MAX_GOOD_AT_PER_CATEGORY }) : undefined}
-                    sx={{ alignSelf: 'flex-start', mt: 0.5, mb: 1 }}
-                  >
-                    {t('documentUpload.review.actions.addSkillDomain')}
-                  </Button>
+                  <SkillDomainPicker
+                    value={reviewSkillDomainValues}
+                    onChange={handleSkillDomainsChange}
+                    maxItems={getProfileStructuredListMaxItems('skillDomains')}
+                    recommendationContextTexts={strengthsSkillDomainRecommendationContext}
+                  />
                   {renderGoodAtCategoryLimitNotice('skillDomains')}
                   </Box>
                   <Box {...reviewFieldAnchorProps('structuredUserInfo.domains')}>
@@ -3072,59 +4916,17 @@ const DocumentUploadForm = ({
                       {reviewFieldErrors['structuredUserInfo.domains']}
                     </Typography>
                   )}
-                  {(reviewProfile.structuredUserInfo?.domains || []).length === 0 && (
+                  {reviewIndustryDomainValues.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
                       {t('documentUpload.review.emptyMessages.domains')}
                     </Typography>
                   )}
-                  {sortStructuredIndices('structuredUserInfo.domains', (reviewProfile.structuredUserInfo?.domains || []).length).map((idx) => {
-                    const domain = (reviewProfile.structuredUserInfo?.domains || [])[idx];
-                    return (
-                      <Box
-                        key={idx}
-                        {...reviewFieldAnchorProps(`structuredUserInfo.domains.${idx}`)}
-                        sx={REVIEW.rowEntry}
-                      >
-                        {renderReviewEntryCheckbox(
-                          `structuredUserInfo.domains.${idx}`,
-                          t('documentUpload.review.labels.domain', { index: idx + 1 })
-                        )}
-                        <TextField
-                          value={domain || ''}
-                          onChange={(e) => {
-                            clearGoodAtCategoryErrors('domains', idx);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              structuredUserInfo: {
-                                ...(prev.structuredUserInfo || {}),
-                                domains: (prev.structuredUserInfo?.domains || []).map((item, i) => (
-                                  i === idx ? e.target.value : item
-                                ))
-                              }
-                            }));
-                          }}
-                          sx={REVIEW.field}
-                          fullWidth
-                          disabled={!isAccepted(`structuredUserInfo.domains.${idx}`)}
-                          hiddenLabel
-                          error={Boolean(reviewFieldErrors[`structuredUserInfo.domains.${idx}`])}
-                          helperText={reviewFieldErrors[`structuredUserInfo.domains.${idx}`]}
-                          inputProps={{ maxLength: PROFILE_REVIEW_STRUCTURED_MAX.domains }}
-                        />
-                      </Box>
-                    );
-                  })}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={() => appendStructuredStringList('domains')}
-                    disabled={(reviewProfile.structuredUserInfo?.domains || []).length >= MAX_GOOD_AT_PER_CATEGORY}
-                    title={(reviewProfile.structuredUserInfo?.domains || []).length >= MAX_GOOD_AT_PER_CATEGORY ? t('documentUpload.review.maxEntriesTitle', { max: MAX_GOOD_AT_PER_CATEGORY }) : undefined}
-                    sx={{ alignSelf: 'flex-start', mt: 0.5, mb: 1 }}
-                  >
-                    {t('documentUpload.review.actions.addDomain')}
-                  </Button>
+                  <IndustrySectorPicker
+                    value={reviewIndustryDomainValues}
+                    onChange={handleIndustryDomainsChange}
+                    lang={uiLangCode}
+                    maxItems={getProfileStructuredListMaxItems('domains')}
+                  />
                   {renderGoodAtCategoryLimitNotice('domains')}
                   </Box>
                   <Box {...reviewFieldAnchorProps('structuredUserInfo.keyResponsibilities')}>
@@ -3185,8 +4987,8 @@ const DocumentUploadForm = ({
                     variant="outlined"
                     startIcon={<AddIcon />}
                     onClick={() => appendStructuredStringList('keyResponsibilities')}
-                    disabled={(reviewProfile.structuredUserInfo?.keyResponsibilities || []).length >= MAX_GOOD_AT_PER_CATEGORY}
-                    title={(reviewProfile.structuredUserInfo?.keyResponsibilities || []).length >= MAX_GOOD_AT_PER_CATEGORY ? t('documentUpload.review.maxEntriesTitle', { max: MAX_GOOD_AT_PER_CATEGORY }) : undefined}
+                    disabled={(reviewProfile.structuredUserInfo?.keyResponsibilities || []).length >= getProfileStructuredListMaxItems('keyResponsibilities')}
+                    title={(reviewProfile.structuredUserInfo?.keyResponsibilities || []).length >= getProfileStructuredListMaxItems('keyResponsibilities') ? t('documentUpload.review.maxEntriesTitle', { max: getProfileStructuredListMaxItems('keyResponsibilities') }) : undefined}
                     sx={{ alignSelf: 'flex-start', mt: 0.5, mb: 1 }}
                   >
                     {t('documentUpload.review.actions.addResponsibility')}
@@ -3202,48 +5004,17 @@ const DocumentUploadForm = ({
                       {reviewFieldErrors['structuredUserInfo.skills']}
                     </Typography>
                   )}
-                  {(reviewProfile.structuredUserInfo?.skills || []).length === 0 && (
+                  {reviewSkillValues.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
                       {t('documentUpload.review.emptyMessages.skills')}
                     </Typography>
                   )}
-                  {sortStructuredIndices('structuredUserInfo.skills', (reviewProfile.structuredUserInfo?.skills || []).length).map((idx) => {
-                    const skill = (reviewProfile.structuredUserInfo?.skills || [])[idx];
-                    return (
-                      <Box
-                        key={idx}
-                        {...reviewFieldAnchorProps(`structuredUserInfo.skills.${idx}`)}
-                        sx={REVIEW.rowEntry}
-                      >
-                        {renderReviewEntryCheckbox(
-                          `structuredUserInfo.skills.${idx}`,
-                          t('documentUpload.review.labels.skill', { index: idx + 1 })
-                        )}
-                        <TextField
-                          value={skill.name || ''}
-                          onChange={(e) => handleReviewSkillChange(idx, e.target.value)}
-                          sx={REVIEW.field}
-                          fullWidth
-                          disabled={!isAccepted(`structuredUserInfo.skills.${idx}`)}
-                          hiddenLabel
-                          error={Boolean(reviewFieldErrors[`structuredUserInfo.skills.${idx}`])}
-                          helperText={reviewFieldErrors[`structuredUserInfo.skills.${idx}`]}
-                          inputProps={{ maxLength: PROFILE_REVIEW_STRUCTURED_MAX.skills }}
-                        />
-                      </Box>
-                    );
-                  })}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={appendSkillRow}
-                    disabled={(reviewProfile.structuredUserInfo?.skills || []).length >= MAX_GOOD_AT_PER_CATEGORY}
-                    title={(reviewProfile.structuredUserInfo?.skills || []).length >= MAX_GOOD_AT_PER_CATEGORY ? t('documentUpload.review.maxEntriesTitle', { max: MAX_GOOD_AT_PER_CATEGORY }) : undefined}
-                    sx={{ alignSelf: 'flex-start', mt: 0.5, mb: 1 }}
-                  >
-                    {t('documentUpload.review.actions.addSkill')}
-                  </Button>
+                  <SkillPicker
+                    value={reviewSkillValues}
+                    onChange={handleSelectedSkillsChange}
+                    maxItems={getProfileStructuredListMaxItems('skills')}
+                    recommendationContextTexts={skillSelectionRecommendationContext}
+                  />
                   {renderGoodAtCategoryLimitNotice('skills')}
                   </Box>
                   <Box {...reviewFieldAnchorProps('structuredUserInfo.skillsInDevelopment')}>
@@ -3255,64 +5026,24 @@ const DocumentUploadForm = ({
                       {reviewFieldErrors['structuredUserInfo.skillsInDevelopment']}
                     </Typography>
                   )}
-                  {(reviewProfile.structuredUserInfo?.skillsInDevelopment || []).length === 0 && (
+                  {reviewLearningGoalValues.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
                       {t('documentUpload.review.emptyMessages.skillsInDevelopment')}
                     </Typography>
                   )}
-                  {sortStructuredIndices('structuredUserInfo.skillsInDevelopment', (reviewProfile.structuredUserInfo?.skillsInDevelopment || []).length).map((idx) => {
-                    const skill = (reviewProfile.structuredUserInfo?.skillsInDevelopment || [])[idx];
-                    return (
-                      <Box
-                        key={idx}
-                        {...reviewFieldAnchorProps(`structuredUserInfo.skillsInDevelopment.${idx}`)}
-                        sx={REVIEW.rowEntry}
-                      >
-                        {renderReviewEntryCheckbox(
-                          `structuredUserInfo.skillsInDevelopment.${idx}`,
-                          t('documentUpload.review.labels.learningGoal', { index: idx + 1 })
-                        )}
-                        <TextField
-                          value={skill || ''}
-                          onChange={(e) => {
-                            clearGoodAtCategoryErrors('skillsInDevelopment', idx);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              structuredUserInfo: {
-                                ...(prev.structuredUserInfo || {}),
-                                skillsInDevelopment: (prev.structuredUserInfo?.skillsInDevelopment || []).map((item, i) => (
-                                  i === idx ? e.target.value : item
-                                ))
-                              }
-                            }));
-                          }}
-                          sx={REVIEW.field}
-                          fullWidth
-                          disabled={!isAccepted(`structuredUserInfo.skillsInDevelopment.${idx}`)}
-                          hiddenLabel
-                          error={Boolean(reviewFieldErrors[`structuredUserInfo.skillsInDevelopment.${idx}`])}
-                          helperText={reviewFieldErrors[`structuredUserInfo.skillsInDevelopment.${idx}`]}
-                          inputProps={{ maxLength: PROFILE_REVIEW_STRUCTURED_MAX.skillsInDevelopment }}
-                        />
-                      </Box>
-                    );
-                  })}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={() => appendStructuredStringList('skillsInDevelopment')}
-                    disabled={(reviewProfile.structuredUserInfo?.skillsInDevelopment || []).length >= MAX_GOOD_AT_PER_CATEGORY}
-                    title={(reviewProfile.structuredUserInfo?.skillsInDevelopment || []).length >= MAX_GOOD_AT_PER_CATEGORY ? t('documentUpload.review.maxEntriesTitle', { max: MAX_GOOD_AT_PER_CATEGORY }) : undefined}
-                    sx={{ alignSelf: 'flex-start', mt: 0.5, mb: 1 }}
-                  >
-                    {t('documentUpload.review.actions.addLearningGoal')}
-                  </Button>
+                  <SkillPicker
+                    value={reviewLearningGoalValues}
+                    onChange={handleSkillsToLearnChange}
+                    maxItems={getProfileStructuredListMaxItems('skillsInDevelopment')}
+                    recommendationContextTexts={skillSelectionRecommendationContext}
+                    excludeLabels={excludedSkillLabelsForLearning}
+                    translationKeyPrefix="skillsToLearnSelection"
+                  />
                   {renderGoodAtCategoryLimitNotice('skillsInDevelopment')}
                   </Box>
                 </>
               )}
-              {reviewStep === 4 && (
+              {reviewStep === 4 && !manualFillMode && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {t('documentUpload.review.step4Intro')}
@@ -3375,9 +5106,11 @@ const DocumentUploadForm = ({
               {reviewStep === 5 && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {t('documentUpload.review.step5Intro')}
+                    {manualFillMode
+                      ? t('documentUpload.review.step5IntroManual')
+                      : t('documentUpload.review.step5Intro')}
                   </Typography>
-                  {step5NarrativeWarmStatus === 'warming' && (
+                  {isCvReviewFinalSeniorityStep && step5NarrativeWarmStatus === 'warming' && (
                     <Box sx={{ mb: 2 }}>
                       <Alert severity="info">
                         {t('documentUpload.review.step5PreparingProfile')}
@@ -3401,7 +5134,7 @@ const DocumentUploadForm = ({
                       />
                     </Box>
                   )}
-                  {step5NarrativeWarmStatus === 'failed' && (
+                  {isCvReviewFinalSeniorityStep && step5NarrativeWarmStatus === 'failed' && (
                     <Alert severity="warning" sx={{ mb: 2 }}>
                       {t('documentUpload.review.step5PrepareSlow')}
                     </Alert>
@@ -3472,7 +5205,7 @@ const DocumentUploadForm = ({
                         }}
                         SelectProps={{ native: true }}
                       >
-                        <option value="">{t('documentUpload.review.experience.notSpecified')}</option>
+                        <option value="">{t('documentUpload.review.selectPlaceholder')}</option>
                         {(() => {
                           const y = reviewProfile.seniority?.yearsOfExperience;
                           const n = y === null || y === undefined || y === '' ? null : Number(y);
@@ -3574,38 +5307,90 @@ const DocumentUploadForm = ({
           <Button onClick={() => setReviewCancelConfirmOpen(true)} disabled={savingReviewActive}>
             {t('documentUpload.common.cancel')}
           </Button>
-          {reviewStep > 2 && (
+          {showReviewBackButton && (
             <Button onClick={handleReviewBack} disabled={savingReviewActive}>
               {t('documentUpload.common.back')}
             </Button>
           )}
-          {reviewStep === 1 && enableExtractionReview ? null : reviewStep >= 2 && reviewStep <= 4 ? (
+          {inManualOptionalCv && (
+            <>
+              {!optionalCvExtractionComplete && (
+                <Button onClick={handleManualFillOptionalCvSkip} disabled={savingReviewActive || uploading}>
+                  {t('profileCreation.manualFill.optionalCv.skipCta')}
+                </Button>
+              )}
+              <Button
+                onClick={() => void handleManualFillOptionalCvContinue()}
+                variant="contained"
+                disabled={savingReviewActive || uploading || !manualOptionalCvCanContinue}
+              >
+                {(cvPipelinePhase === 'failed' || cvPollFailedDocId || cvPollTimedOutDocId)
+                  ? t('profileCreation.manualFill.optionalCv.continueWithoutCvCta')
+                  : t('profileCreation.manualFill.optionalCv.continueCta')}
+              </Button>
+            </>
+          )}
+          {reviewStep === 1 && enableExtractionReview ? null : hideReviewPrimaryAction ? null : isReviewContinueStep ? (
             <Button
               onClick={handleReviewContinue}
               variant="contained"
               disabled={
                 savingReviewActive
                 || reviewContinueBusy
-                || (reviewStep === 2 && (structuredReviewLoading || !structuredExtractionReady))
+                || (reviewStep === 2 && !manualFillMode && (structuredReviewLoading || !structuredExtractionReady))
                 || (reviewStep === 4 && !step3FollowUpsAnsweredFully)
+                || (manualFillMode && reviewStep === 5 && !step3SeniorityComplete)
+                || (showWorkEnjoySummaryConfirm && (
+                  workEnjoySummaryFooter.isEditing || !workEnjoySummaryFooter.hasActivities
+                ))
+                || (showTopicsSummaryConfirm && (
+                  topicsSummaryFooter.isEditing || !topicsSummaryFooter.hasSummary
+                ))
+                || (showStrengthsSummaryConfirm && (
+                  strengthsSummaryFooter.isEditing || !strengthsSummaryFooter.hasSummary
+                ))
+                || (showWorkEnvironmentSummaryConfirm && (
+                  workEnvironmentSummaryFooter.isEditing || !workEnvironmentSummaryFooter.hasSummary
+                ))
+                || (showWorkingLifeAchievementSummaryConfirm && (
+                  workingLifeAchievementSummaryFooter.isEditing || !workingLifeAchievementSummaryFooter.hasSummary
+                ))
+                || (inManualTasksResponsibilities && !reviewProfileHasKeyResponsibilities(reviewProfile))
+                || (inManualSkillsSelection && !reviewProfileHasSelectedSkill(reviewProfile))
+                || (inManualSkillsToLearn && !reviewProfileHasSkillsInDevelopment(reviewProfile))
               }
               startIcon={
-                (reviewContinueBusy || (reviewStep === 2 && structuredReviewLoading))
+                (reviewContinueBusy || (reviewStep === 2 && !manualFillMode && structuredReviewLoading))
                   ? <CircularProgress size={16} color="inherit" />
                   : null
               }
             >
               {reviewContinueBusy
                 ? t('documentUpload.review.analyzing')
-                : reviewStep === 2 && (structuredReviewLoading || !structuredExtractionReady)
-                  ? t('documentUpload.review.structuredLoading')
-                  : t('documentUpload.common.continue')}
+                : showWorkEnjoySummaryConfirm
+                  ? t('workEnjoyCoaching.summary.confirmCta')
+                  : showTopicsSummaryConfirm
+                    ? t('topicsIndustriesCoaching.summary.confirmCta')
+                    : showStrengthsSummaryConfirm
+                      ? t('naturallyGoodAtCoaching.summary.confirmCta')
+                      : showWorkEnvironmentSummaryConfirm
+                        ? t('workEnvironmentCoaching.summary.confirmCta')
+                      : showWorkingLifeAchievementSummaryConfirm
+                        ? t('workingLifeAchievementCoaching.summary.confirmCta')
+                      : reviewStep === 2 && !manualFillMode && (structuredReviewLoading || !structuredExtractionReady)
+                      ? t('documentUpload.review.structuredLoading')
+                      : t('documentUpload.common.continue')}
             </Button>
           ) : (
             <Button
               onClick={handleReviewSave}
               variant="contained"
-              disabled={savingReviewActive || !step3SeniorityComplete || step5NarrativeBlocksSave}
+              disabled={
+                savingReviewActive
+                || !step3SeniorityComplete
+                || step5NarrativeBlocksSave
+                || (manualFillMode && inManualSkillsToLearn && !reviewProfileHasSkillsInDevelopment(reviewProfile))
+              }
               startIcon={savingReviewActive ? <CircularProgress size={16} /> : null}
             >
               {savingReviewActive ? t('documentUpload.review.saving') : t('documentUpload.review.saveToProfileCta')}
@@ -3621,11 +5406,15 @@ const DocumentUploadForm = ({
         aria-describedby="review-cancel-confirm-description"
       >
         <DialogTitle id="review-cancel-confirm-title">
-          {t('documentUpload.review.cancelConfirm.title')}
+          {(manualFillMode || enableExtractionReview)
+            ? t('documentUpload.review.cancelConfirm.manualFillTitle')
+            : t('documentUpload.review.cancelConfirm.title')}
         </DialogTitle>
         <DialogContent>
           <DialogContentText id="review-cancel-confirm-description">
-            {t('documentUpload.review.cancelConfirm.description')}
+            {(manualFillMode || enableExtractionReview)
+              ? t('documentUpload.review.cancelConfirm.manualFillDescription')
+              : t('documentUpload.review.cancelConfirm.description')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -3633,7 +5422,71 @@ const DocumentUploadForm = ({
             {t('documentUpload.review.cancelConfirm.stayCta')}
           </Button>
           <Button onClick={() => void handleReviewCancel()} variant="contained" color="error" disabled={savingReviewActive}>
-            {t('documentUpload.review.cancelConfirm.discardCta')}
+            {(manualFillMode || enableExtractionReview)
+              ? t('documentUpload.review.cancelConfirm.manualFillLeaveCta')
+              : t('documentUpload.review.cancelConfirm.discardCta')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={manualFillStartConfirmOpen}
+        onClose={() => setManualFillStartConfirmOpen(false)}
+        aria-labelledby="manual-fill-start-confirm-title"
+        aria-describedby="manual-fill-start-confirm-description"
+      >
+        <DialogTitle id="manual-fill-start-confirm-title">
+          {t('profileCreation.manualFill.startOverConfirm.title')}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="manual-fill-start-confirm-description">
+            {t('profileCreation.manualFill.startOverConfirm.description')}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManualFillStartConfirmOpen(false)} variant="outlined">
+            {t('profileCreation.manualFill.startOverConfirm.keepSavedCta')}
+          </Button>
+          <Button
+            onClick={() => {
+              setManualFillStartConfirmOpen(false);
+              startManualFillFresh();
+            }}
+            variant="contained"
+            color="error"
+          >
+            {t('profileCreation.manualFill.startOverConfirm.startFreshCta')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={manualFillDiscardConfirmOpen}
+        onClose={() => setManualFillDiscardConfirmOpen(false)}
+        aria-labelledby="manual-fill-discard-confirm-title"
+        aria-describedby="manual-fill-discard-confirm-description"
+      >
+        <DialogTitle id="manual-fill-discard-confirm-title">
+          {t('profileCreation.manualFill.discardConfirm.title')}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="manual-fill-discard-confirm-description">
+            {t('profileCreation.manualFill.discardConfirm.description')}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManualFillDiscardConfirmOpen(false)} variant="outlined">
+            {t('profileCreation.manualFill.discardConfirm.keepSavedCta')}
+          </Button>
+          <Button
+            onClick={() => {
+              setManualFillDiscardConfirmOpen(false);
+              discardSavedManualFillDraft();
+            }}
+            variant="contained"
+            color="error"
+          >
+            {t('profileCreation.manualFill.discardConfirm.confirmCta')}
           </Button>
         </DialogActions>
       </Dialog>

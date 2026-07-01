@@ -16,7 +16,6 @@ import {
   useTheme,
   useMediaQuery,
   Button,
-  Alert,
   Tooltip,
 } from '@mui/material';
 import {
@@ -46,24 +45,25 @@ const Layout = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const location = useLocation();
-  const { isAuthenticated, user, logout, resendVerificationEmail } = useAuth();
+  const { isAuthenticated, user, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const { guardedNavigate } = useNavigationGuardContext();
 
   const completionQuery = useProfileCompletionQuery({ enabled: isAuthenticated });
-  const lastSimEnabled = isAuthenticated && !hasActiveCareerSimulationSession();
+  const hasSimulationSession = hasActiveCareerSimulationSession();
+  const lastSimEnabled = isAuthenticated && !hasSimulationSession;
   const lastSimQuery = useLastSimulationQuery({ enabled: lastSimEnabled });
 
   const canAccessSavedPages = useMemo(() => {
-    if (!isAuthenticated || !completionQuery.data) return false;
+    if (!isAuthenticated || !user?.isVerified || !completionQuery.data) return false;
     return Number(completionQuery.data?.completion?.overall || 0) >= MIN_PROFILE_COMPLETION_REQUIRED;
-  }, [isAuthenticated, completionQuery.data]);
+  }, [isAuthenticated, user?.isVerified, completionQuery.data]);
 
   const careerSimulationPath = useMemo(() => {
-    if (hasActiveCareerSimulationSession()) return '/simulation/results';
+    if (hasSimulationSession) return '/simulation/results';
     if (lastSimQuery.isError || lastSimQuery.data == null) return '/simulation';
     return lastSimQuery.data?.results ? '/simulation/results' : '/simulation';
-  }, [lastSimQuery.data, lastSimQuery.isError]);
+  }, [hasSimulationSession, lastSimQuery.data, lastSimQuery.isError]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -74,16 +74,6 @@ const Layout = ({ children }) => {
     if (isMobile) {
       setMobileOpen(false);
     }
-  };
-  const [resendMessage, setResendMessage] = useState('');
-
-  const handleResend = async () => {
-    const result = await resendVerificationEmail();
-    setResendMessage(
-      result.success
-        ? (result.message || t('emailVerification.resendSuccessFallback', { ns: 'common' }))
-        : (result.error || t('emailVerification.resendErrorFallback', { ns: 'common' }))
-    );
   };
 
   const menuItems = [
@@ -284,38 +274,6 @@ const Layout = ({ children }) => {
           mt: '64px', // Height of AppBar
         }}
       >
-        {isAuthenticated && user && !user.isVerified && (
-          <Alert
-            severity="info"
-            sx={{
-              mb: 2,
-              width: '100%',
-              maxWidth: '100%',
-              alignItems: { xs: 'flex-start', sm: 'center' },
-              flexDirection: { xs: 'column', sm: 'row' },
-              '& .MuiAlert-message': {
-                overflowWrap: 'break-word',
-                wordBreak: 'break-word',
-                width: '100%',
-              },
-              '& .MuiAlert-action': {
-                pt: { xs: 1, sm: 0 },
-                pl: { xs: 0, sm: 2 },
-                m: 0,
-                alignSelf: { xs: 'stretch', sm: 'center' },
-                '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } },
-              },
-            }}
-            action={
-              <Button color="inherit" size="small" onClick={handleResend}>
-                {t('emailVerification.resendCta', { ns: 'common' })}
-              </Button>
-            }
-          >
-            {t('emailVerification.notice', { ns: 'common' })}
-            {resendMessage ? ` ${resendMessage}` : ''}
-          </Alert>
-        )}
         {children}
       </Box>
     </Box>

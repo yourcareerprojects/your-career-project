@@ -1,7 +1,7 @@
 {
   "identityQuestions": {
     "workEnjoyMost": "What kind of work do you enjoy doing most?",
-    "topicsIndustriesInterest": "What topics or industries are you most interested in?",
+    "topicsIndustriesInterest": "What topics are you most interested in?",
     "naturallyGoodAt": "What are you naturally good at or confident doing?",
     "workEnvironmentFit": "What kind of work environment or way of working suits you best?",
     "workingLifeAchievement": "What would you like to achieve in your working life?"
@@ -55,6 +55,18 @@
       "unexpected": "An unexpected error occurred. Please try again."
     }
   },
+  "checkEmail": {
+    "greeting": "Hi {{name}}!",
+    "fallbackName": "there",
+    "message": "Please open your mail account and click the verification link we sent you to confirm your email address.",
+    "emailSentTo": "We sent the link to {{email}}.",
+    "resendCta": "Resend verification email",
+    "continueCta": "Continue to app",
+    "messages": {
+      "resent": "Verification email sent.",
+      "unableToResend": "Unable to resend verification email."
+    }
+  },
   "register": {
     "title": "Create Account",
     "subtitle": "Sign up with your name, email, and password. You can add profile details anytime on your profile page.",
@@ -101,14 +113,237 @@
     },
     "default": {
       "title": "Fill your profile",
-      "description": "Upload your CV to extract your experience, skills, and background."
+      "description": "Answer a few guided questions about your experience, skills, and interests. You can optionally upload your CV along the way."
+    },
+    "manualFill": {
+      "cta": "Start profile setup",
+      "resumeDescription": "You have saved progress from step {{step}} of {{total}}. You can continue where you left off.",
+      "resumeCta": "Continue profile setup",
+      "discardSavedCta": "Discard saved progress",
+      "discardConfirm": {
+        "title": "Discard saved progress?",
+        "description": "Your saved profile setup will be permanently deleted from this device. You cannot undo this action.",
+        "keepSavedCta": "Keep saved progress",
+        "confirmCta": "Discard progress"
+      },
+      "startOverConfirm": {
+        "title": "Start a new profile setup?",
+        "description": "Starting fresh will replace your saved progress. This cannot be undone.",
+        "keepSavedCta": "Keep saved progress",
+        "startFreshCta": "Start fresh"
+      },
+      "optionalCv": {
+        "intro": "Optionally upload your CV. You can skip this step and continue without a CV.",
+        "introFullUpdate": "Upload a new CV to personalize coaching questions, or skip to continue with your existing profile.",
+        "skipCta": "Skip",
+        "continueCta": "Continue",
+        "continueWithoutCvCta": "Continue without CV",
+        "extractionWait": "We are reading your CV. This may take a moment.",
+        "uploadedFile": "Uploaded CV: {{fileName}}"
+      }
+    },
+    "cvUpload": {
+      "resumeDescription": "You have saved CV upload progress from step {{step}} of {{total}}. You can continue where you left off.",
+      "resumeCta": "Continue CV setup",
+      "discardSavedCta": "Discard saved progress",
+      "discardConfirm": {
+        "title": "Discard saved CV progress?",
+        "description": "Your saved CV setup and uploaded file will be permanently deleted. You cannot undo this action.",
+        "keepSavedCta": "Keep saved progress",
+        "confirmCta": "Discard progress"
+      },
+      "startOverConfirm": {
+        "title": "Upload a new CV?",
+        "description": "Uploading a new CV will replace your saved progress. This cannot be undone.",
+        "keepSavedCta": "Keep saved progress",
+        "startFreshCta": "Upload new CV"
+      }
     },
     "fullUpdate": {
       "title": "Full profile update",
-      "description": "Upload a new CV to fully refresh your profile. You can review extracted content step by step and answer context questions before replacing existing data."
+      "description": "Walk through the guided profile setup again. You can optionally upload a new CV to personalize coaching questions before replacing your existing data."
+    }
+  },
+  "workEnjoyCoaching": {
+    "chat": {
+      "intro": "A short coaching chat will help identify work activities you enjoy. Answer three simple questions in your own words.",
+      "loading": "Preparing your first question…",
+      "thinking": "Thinking…",
+      "inputPlaceholder": "Type your answer…",
+      "sendCta": "Send"
+    },
+    "summary": {
+      "intro": "Based on your answers, these work activities fit you well:",
+      "confirmCta": "Continue with these activities"
+    },
+    "errors": {
+      "loadFailed": "Could not start the coaching chat. Please try again.",
+      "sendFailed": "Could not send your answer. Please try again.",
+      "emptyQuestion": "Received an empty question. Please try again.",
+      "completeCoachingFirst": "Please complete the coaching chat for your preferred work activities first."
+    }
+  },
+  "topicsIndustriesCoaching": {
+    "chat": {
+      "intro": "A short coaching chat will help identify topics and industries that interest you. Answer three simple questions in your own words.",
+      "loading": "Preparing your first question…",
+      "thinking": "Thinking…",
+      "inputPlaceholder": "Type your answer…",
+      "sendCta": "Send"
+    },
+    "summary": {
+      "intro": "Based on your answers, these interests fit you especially well.",
+      "interestTopicsHeading": "Your key interests",
+      "confirmCta": "Continue with these topics"
+    },
+    "errors": {
+      "loadFailed": "Could not start the coaching chat. Please try again.",
+      "sendFailed": "Could not send your answer. Please try again.",
+      "emptyQuestion": "Received an empty question. Please try again.",
+      "completeCoachingFirst": "Please complete the coaching chat for your interests first."
+    }
+  },
+  "naturallyGoodAtCoaching": {
+    "chat": {
+      "intro": "A short coaching chat helps find what you are naturally good at or confident doing. Answer three simple questions in your own words.",
+      "loading": "Preparing your first question…",
+      "thinking": "Thinking…",
+      "inputPlaceholder": "Type your answer…",
+      "sendCta": "Send"
+    },
+    "summary": {
+      "intro": "Based on your answers, these are your natural strengths:",
+      "strengthsHeading": "Your natural strengths",
+      "skillDomainsHeading": "Your strengths",
+      "confirmCta": "Continue with these strengths"
+    },
+    "skillDomainPicker": {
+      "dialogTitle": "Choose strength domains",
+      "searchPlaceholder": "Search strength domains…",
+      "searchHint": "Type at least 2 characters to search all strength domains, or pick from the suggestions below.",
+      "searchResultsTitle": "Search results",
+      "recommendationsTitle": "Suggested for you",
+      "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
+      "noSearchResults": "No matching strength domains. Try a different search term.",
+      "noRecommendations": "No suggestions available yet. Use search to find strength domains.",
+      "selectedCount": "{{count}} of {{max}} selected",
+      "addButton": "Add strength domain",
+      "loading": "Loading strength domains…",
+      "errors": {
+        "loadFailed": "Could not load strength domains. Please try again."
+      }
+    },
+    "errors": {
+      "loadFailed": "Could not start the coaching chat. Please try again.",
+      "sendFailed": "Could not send your answer. Please try again.",
+      "emptyQuestion": "Received an empty question. Please try again.",
+      "completeCoachingFirst": "Please complete the coaching chat for your strengths first."
+    }
+  },
+  "workEnvironmentCoaching": {
+    "chat": {
+      "intro": "A short coaching chat helps find how you prefer to work and what environment you feel comfortable in. Answer three simple questions in your own words.",
+      "loading": "Preparing your first question…",
+      "thinking": "Thinking…",
+      "inputPlaceholder": "Type your answer…",
+      "sendCta": "Send"
+    },
+    "summary": {
+      "intro": "Based on your answers, this way of working and environment suit you especially well:",
+      "workStylesHeading": "Your preferred way of working",
+      "workEnvironmentsHeading": "Suitable work environment",
+      "confirmCta": "Continue with this way of working"
+    },
+    "errors": {
+      "loadFailed": "Could not start the coaching chat. Please try again.",
+      "sendFailed": "Could not send your answer. Please try again.",
+      "emptyQuestion": "Received an empty question. Please try again.",
+      "completeCoachingFirst": "Please complete the coaching chat for your way of working first."
+    }
+  },
+  "workingLifeAchievementCoaching": {
+    "chat": {
+      "intro": "A short coaching chat helps clarify what you really want to achieve in your working life. Answer three simple questions in your own words.",
+      "loading": "Preparing your first question…",
+      "thinking": "Thinking…",
+      "inputPlaceholder": "Type your answer…",
+      "sendCta": "Send"
+    },
+    "summary": {
+      "intro": "Based on your answers, these are your key career goals:",
+      "careerGoalsHeading": "Your key career goals",
+      "prioritiesHeading": "What matters especially to you",
+      "confirmCta": "Continue with these goals"
+    },
+    "errors": {
+      "loadFailed": "Could not start the coaching chat. Please try again.",
+      "sendFailed": "Could not send your answer. Please try again.",
+      "emptyQuestion": "Received an empty question. Please try again.",
+      "completeCoachingFirst": "Please complete the coaching chat for your career goals first."
+    }
+  },
+  "skillSelection": {
+    "title": "Your skills",
+    "dialogTitle": "Choose skills",
+    "addButton": "Add skill",
+    "intro": "Search for skills that apply to you, or pick from the suggestions below. Your choices will appear under “Your skills” in your profile.",
+    "loading": "Loading skills…",
+    "searchPlaceholder": "Search skills…",
+    "searchHint": "Type at least 2 characters to search all skills, or pick from the suggestions below.",
+    "searchResultsTitle": "Search results",
+    "recommendationsTitle": "Suggested for you",
+    "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
+    "selectedTitle": "Your selection",
+    "requiredSkillsTitle": "Required skills",
+    "optionalSkillsTitle": "Optional skills",
+    "noOptionalSkills": "No optional-only skills in these suggestions.",
+    "noSearchResults": "No skills match your search.",
+    "noRecommendations": "No suggestions available yet. Use search to find skills.",
+    "selectedCount": "{{count}} of {{max}} selected",
+    "errors": {
+      "loadFailed": "Could not load skills. Please try again.",
+      "selectAtLeastOne": "Please select at least one skill that applies to you."
+    }
+  },
+  "skillsToLearnSelection": {
+    "title": "Skills you want to learn",
+    "dialogTitle": "Choose learning goals",
+    "addButton": "Add learning goal",
+    "intro": "Search for skills you want to develop, or pick from the suggestions below. Skills you already selected as yours are hidden. Your choices will appear under “Your learning goals” in your profile.",
+    "loading": "Loading skills…",
+    "searchPlaceholder": "Search skills…",
+    "searchHint": "Type at least 2 characters to search all skills, or pick from the suggestions below.",
+    "searchResultsTitle": "Search results",
+    "recommendationsTitle": "Suggested for you",
+    "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
+    "selectedTitle": "Your selection",
+    "noSearchResults": "No skills match your search.",
+    "noRecommendations": "No suggestions available yet. Use search to find skills.",
+    "selectedCount": "{{count}} of {{max}} selected",
+    "errors": {
+      "loadFailed": "Could not load skills. Please try again.",
+      "selectAtLeastOne": "Please select at least one skill you want to learn."
+    }
+  },
+  "tasksResponsibilitiesStep": {
+    "title": "Tasks & responsibilities",
+    "intro": "List the main tasks and responsibilities from your work.",
+    "placeholder": "e.g. Led weekly team stand-ups",
+    "itemLabel": "Responsibility {{index}}",
+    "addCta": "Add another bullet",
+    "removeItem": "Remove bullet",
+    "count": "{{count}} of {{max}} bullets added",
+    "errors": {
+      "addAtLeastOne": "Please add at least one task or responsibility before continuing."
     }
   },
   "profilePagePrompts": {
+    "verifyEmail": {
+      "title": "Verify your email",
+      "description": "Confirm your email address to edit your profile and upload your CV.",
+      "cta": "Check your inbox",
+      "ctaShort": "Verify email"
+    },
     "incomplete": {
       "title": "Complete Your Profile",
       "description": "Complete more of your profile to unlock personalized simulations.",
@@ -256,6 +491,24 @@
         "passwordMismatch": "Passwords do not match.",
         "updateFailed": "Failed to update password"
       }
+    },
+    "deleteAccount": {
+      "title": "Delete account",
+      "description": "Permanently delete your account and all associated profile data.",
+      "dialogTitle": "Delete your account?",
+      "warning": "This action is permanent and cannot be undone.",
+      "reauthDescription": "Enter your current password to confirm account deletion.",
+      "fields": {
+        "currentPassword": "Current Password"
+      },
+      "actions": {
+        "openDialog": "Delete Account",
+        "confirmDelete": "Permanently Delete",
+        "deleting": "Deleting..."
+      },
+      "errors": {
+        "deleteFailed": "Failed to delete account"
+      }
     }
   },
   "profileCompletionTooltip": {
@@ -280,7 +533,11 @@
       "saving": "Saving...",
       "cancel": "Cancel",
       "edit": "Edit",
+      "restartCoachingChat": "Restart chat",
       "close": "Close"
+    },
+    "identityCoaching": {
+      "backToManualEdit": "Back to manual edit"
     },
     "notProvided": "Not provided",
     "errors": {
@@ -354,13 +611,27 @@
         "discardChanges": "Discard Changes"
       }
     },
+    "identityBullets": {
+      "addBullet": "Add bullet",
+      "itemLabel": "Answer {{index}}",
+      "addWorkStyle": "Add work style",
+      "addWorkEnvironment": "Add work environment",
+      "addCareerGoal": "Add career goal",
+      "addPriority": "Add priority"
+    },
     "sections": {
       "identity": "Who are you?",
       "goodAt": "What are you good at?",
       "experience": "How experienced are you?"
     },
+      "displayMode": {
+      "bullets": "Your answers",
+      "narrative": "AI summary",
+      "narrativeLoading": "Your AI summary is still being prepared…",
+      "ariaLabel": "Choose how to view this section"
+    },
     "structuredInfo": {
-      "maxEntriesPerCategory": "Up to {{max}} entries per category.",
+      "maxEntriesPerCategory": "Maximum {{max}} entries",
       "emptyEntries": "No entries yet. Add your own.",
       "strengths": {
         "title": "Your strengths",
@@ -371,11 +642,28 @@
       "industrySectors": {
         "title": "Industry sectors",
         "addCta": "Add industry sector",
-        "helper": "Use sectors like MedTech, Life Sciences, Manufacturing.",
-        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). Use sectors, not job functions like Marketing."
+        "addButton": "Add industry",
+        "changeButton": "Change industry",
+        "dialogTitle": "Choose an industry",
+        "dialogSelectionHint": "Your selection (click Save to confirm)",
+        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). Use sectors, not job functions like Marketing.",
+        "groups": {
+          "healthLife": "Health & life sciences",
+          "sciences": "Sciences & research",
+          "technology": "Technology & digital",
+          "financeBusiness": "Finance & business services",
+          "industryManufacturing": "Industry & manufacturing",
+          "buildingTrades": "Building & skilled trades",
+          "mobility": "Mobility & transport",
+          "agricultureFood": "Agriculture & food",
+          "retailHospitality": "Retail, hospitality & tourism",
+          "mediaCulture": "Media, culture & sports",
+          "educationSocial": "Education & social",
+          "publicDefense": "Public sector & security"
+        }
       },
       "responsibilities": {
-        "title": "Your responsibilities",
+        "title": "Tasks & responsibilities",
         "addCta": "Add responsibility",
         "helper": "Concrete responsibilities from your work history.",
         "empty": "No responsibilities provided"
@@ -402,8 +690,10 @@
     },
     "seniorityForm": {
       "notSpecified": "Not specified",
+      "selectPlaceholder": "Select...",
       "errors": {
         "currentStatusRequired": "Current employment status is required",
+        "yearsRequired": "Years of work experience is required",
         "yearsRange": "Years must be between 0 and 50",
         "highestDegreeRequired": "Highest educational degree is required",
         "mostSeniorRequired": "Most senior work experience is required"
@@ -622,11 +912,14 @@
         "ariaLabel": "Profile setup step {{current}} of {{total}}"
       },
       "step2Intro": "Review and refine your answers to these identity questions. They help us understand what matters to you at work.",
+      "step2IntroManual": "Answer these identity questions about what matters to you at work. There are no wrong answers — write in your own words.",
       "structuredLoading": "Processing your profile insights…",
       "step3Intro": "Review skills, domains, and strengths extracted from your CV. Keep the items you want on your profile and edit or add as needed.",
+      "step3IntroManual": "Review and complete your profile strengths. Skills you selected earlier are pre-filled — edit or add other categories as needed, then save.",
       "step4Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then continue.",
       "step4NoFollowUps": "No additional questions are needed. Continue to confirm your experience level.",
       "step5Intro": "Confirm your experience level and background so we can tailor simulations to your seniority. Then save your profile.",
+      "step5IntroManual": "Tell us about your background so we can tailor simulations to you.",
       "step5PreparingProfile": "Preparing your profile… You can fill in the fields below. Save will be available in a moment.",
       "step5PrepareSlow": "Profile preparation is taking longer than expected. You can save now — it may take a bit longer.",
       "step3QualityErrorPrefix": "Could not load quality suggestions:",
@@ -647,21 +940,21 @@
         "experience": "How experienced are you?"
       },
       "goodAtCategories": {
-        "skillDomains": "Skill domains",
+        "skillDomains": "Your strengths",
         "domains": "Industry sectors",
-        "keyResponsibilities": "Your responsibilities",
+        "keyResponsibilities": "Tasks & responsibilities",
         "skills": "Your skills",
         "skillsInDevelopment": "Your learning goals"
       },
       "emptyMessages": {
-        "skillDomains": "No skill domains extracted. You can add your own.",
+        "skillDomains": "No strengths extracted. You can add your own.",
         "domains": "No industry sectors extracted. You can add your own.",
         "keyResponsibilities": "No responsibilities extracted. You can add your own.",
         "skills": "No skills extracted. You can add your own.",
         "skillsInDevelopment": "No learning goals extracted. You can add your own."
       },
       "labels": {
-        "skillDomain": "Skill domain {{index}}",
+        "skillDomain": "Strength {{index}}",
         "domain": "Domain {{index}}",
         "responsibility": "Responsibility {{index}}",
         "skill": "Skill {{index}}",
@@ -693,8 +986,11 @@
       "cancelConfirm": {
         "title": "Leave profile setup?",
         "description": "Your edits on this step will be discarded. You can upload your CV again later if you leave now.",
+        "manualFillTitle": "Save and leave profile setup?",
+        "manualFillDescription": "Your progress will be saved on this device. You can continue from the same step when you return.",
         "stayCta": "Keep editing",
-        "discardCta": "Leave and discard"
+        "discardCta": "Leave and discard",
+        "manualFillLeaveCta": "Save and leave"
       }
     }
   }

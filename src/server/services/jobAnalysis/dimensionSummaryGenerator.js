@@ -5,6 +5,17 @@ const SUPPORTED_LANGS = ['en', 'de'];
 
 const EMPTY_PLACEHOLDER = 'No information available yet';
 
+function bundleIfRequested(result, options = {}) {
+  if (!options.returnBundle) return result;
+  const lang = String(options.lang || 'en').toLowerCase().split('-')[0] || 'en';
+  const sourceLang = String(options.sourceLang || lang || 'en').toLowerCase().split('-')[0] || 'en';
+  return {
+    canonical: result,
+    canonicalLanguage: sourceLang,
+    localized: {},
+  };
+}
+
 function normalizeStringArray(arr = []) {
   return Array.isArray(arr)
     ? arr.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean)
@@ -32,17 +43,19 @@ function buildDeterministicFallback(rawItems = []) {
 
 async function generateDimensionSummary({ dimension, rawItems }, options = {}) {
   const normalizedItems = normalizeStringArray(rawItems);
-  if (normalizedItems.length === 0) return EMPTY_PLACEHOLDER;
+  const lang = String(options.lang || 'en').toLowerCase().split('-')[0] || 'en';
+  const sourceLang = String(options.sourceLang || lang || 'en').toLowerCase().split('-')[0] || 'en';
+  if (normalizedItems.length === 0) {
+    return bundleIfRequested(EMPTY_PLACEHOLDER, { ...options, lang, sourceLang });
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !String(apiKey).trim()) {
-    return buildDeterministicFallback(normalizedItems);
+    return bundleIfRequested(buildDeterministicFallback(normalizedItems), { ...options, lang, sourceLang });
   }
 
   try {
     const provider = options.llmProvider || openaiProvider;
-    const lang = String(options.lang || 'en').toLowerCase().split('-')[0] || 'en';
-    const sourceLang = String(options.sourceLang || lang || 'en').toLowerCase().split('-')[0] || 'en';
     const aiResult = await generateAI({
       task: 'dimension_summary',
       input: { dimension, rawItems: normalizedItems },
@@ -66,7 +79,7 @@ async function generateDimensionSummary({ dimension, rawItems }, options = {}) {
     return aiResult.localized[lang] || aiResult.canonical;
   } catch (err) {
     console.warn('[dimensionSummaryGenerator] Falling back to deterministic summary:', err.message);
-    return buildDeterministicFallback(normalizedItems);
+    return bundleIfRequested(buildDeterministicFallback(normalizedItems), { ...options, lang, sourceLang });
   }
 }
 

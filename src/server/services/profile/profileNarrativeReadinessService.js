@@ -11,8 +11,52 @@ const {
   meetsWhoAreYouNarrativesQuality,
   isNarrativeCacheQualityVersionCurrent,
 } = require('./narrativeQualityGate');
+const {
+  USER_IDENTITY_ANSWER_KEYS,
+  normalizeUserIdentityAnswers,
+  mergeProfileIdentityAnswers,
+} = require('../embedding/userIdentityEmbeddingTextService');
+const { overlayIdentityAnswersWithCvLocalization } = require('../documents/cvExtractLocalization');
 
 const SUPPORTED_LANGS = ['en', 'de'];
+
+function buildWhoAreYouRawAnswersFromIdentity(identityAnswers = {}) {
+  const normalized = normalizeUserIdentityAnswers(identityAnswers || {});
+  return USER_IDENTITY_ANSWER_KEYS.map((key) => String(normalized[key] || '').trim());
+}
+
+/**
+ * Identity answers visible on GET /api/profile (CSI + userIdentityAnswers + cvExtractLocalization overlay).
+ */
+function getEffectiveIdentityAnswersForNarratives(profile = {}, language = 'en') {
+  const merged = mergeProfileIdentityAnswers(profile);
+  return overlayIdentityAnswersWithCvLocalization(
+    merged,
+    profile?.cvExtractLocalization?.userIdentity,
+    language
+  );
+}
+
+/**
+ * DB profiles may store identity answers only on userIdentityAnswers while who_are_you.raw_answers
+ * is empty — readiness checks must not treat that as "no answers".
+ */
+function enrichProfileForNarrativeChecks(profile = {}, language = 'en') {
+  if (!profile || typeof profile !== 'object') return {};
+  const identityRaw = buildWhoAreYouRawAnswersFromIdentity(
+    getEffectiveIdentityAnswersForNarratives(profile, language)
+  );
+  const who = profile.who_are_you && typeof profile.who_are_you === 'object'
+    ? { ...profile.who_are_you }
+    : {};
+  const storedRaw = Array.isArray(who.raw_answers)
+    ? who.raw_answers.map((v) => String(v || '').trim())
+    : [];
+  if (!storedRaw.some(Boolean) && identityRaw.some(Boolean)) {
+    return { ...profile, who_are_you: { ...who, raw_answers: identityRaw } };
+  }
+  return profile;
+}
 
 function normalizeLangCode(value, fallback = 'en') {
   const code = String(value || fallback).toLowerCase().split('-')[0] || fallback;
@@ -46,6 +90,23 @@ function parseWhoAreYouNarratives(summaryText = '') {
   }
 }
 
+/** True when a language slot has real narrative lines for answered identity slots. */
+function isWhoAreYouSummaryDisplayReadyForLanguage(summaryField, rawAnswers = [], language = 'en') {
+  const lang = normalizeLangCode(language, 'en');
+  const answers = Array.isArray(rawAnswers) ? rawAnswers : [];
+  if (!answers.some((v) => String(v || '').trim())) return true;
+  const summaryRaw = String(localizedContentService.get(summaryField, lang) || '').trim();
+  if (!summaryRaw) return false;
+  const parsed = parseWhoAreYouNarratives(summaryRaw);
+  if (parsed.length !== 5) return false;
+  for (let idx = 0; idx < 5; idx += 1) {
+    if (!String(answers[idx] || '').trim()) continue;
+    const line = String(parsed[idx] || '').trim();
+    if (!line || line === WHO_ARE_YOU_PLACEHOLDER) return false;
+  }
+  return true;
+}
+
 function isWhoAreYouNarrativeReady(whoAreYou = {}, language = 'en') {
   const lang = normalizeLangCode(language, 'en');
   const rawAnswers = Array.isArray(whoAreYou.raw_answers) ? whoAreYou.raw_answers : [];
@@ -73,15 +134,50 @@ function isDimensionNarrativeReady(dimensionValue, language = 'en') {
   return meetsDimensionSummaryQuality(summaryText, rawItems);
 }
 
+/** Display polling: any persisted non-placeholder summary is enough to stop the loading state. */
+function isDimensionNarrativeDisplayReady(dimensionValue, language = 'en') {
+  const rawItems = getRawItems(dimensionValue);
+  if (rawItems.length === 0) return true;
+  const summaryText = readDimensionSummaryText(dimensionValue, language);
+  return !isPlaceholderDimensionSummary(summaryText);
+}
+
+/** Display polling: each answered slot needs a non-placeholder narrative line. */
+function isWhoAreYouNarrativeDisplayReady(whoAreYou = {}, language = 'en') {
+  const lang = normalizeLangCode(language, 'en');
+  const rawAnswers = Array.isArray(whoAreYou.raw_answers) ? whoAreYou.raw_answers : [];
+  return isWhoAreYouSummaryDisplayReadyForLanguage(whoAreYou.summary_text, rawAnswers, lang);
+}
+
 /**
  * @param {object} profile - user.profile
  * @param {string} [language]
  * @returns {{ ready: boolean, pending: string[] }}
  */
 function getProfileDisplayNarrativesReadiness(profile = {}, language = 'en') {
+  const enriched = enrichProfileForNarrativeChecks(profile, language);
   const lang = normalizeLangCode(language, 'en');
   const pending = [];
-  const structured = profile.structuredUserInfo || {};
+  const structured = enriched.structuredUserInfo || {};
+
+  for (const key of STRUCTURED_DIMENSION_KEYS) {
+    if (!isDimensionNarrativeDisplayReady(structured[key], lang)) {
+      pending.push(`structuredUserInfo.${key}`);
+    }
+  }
+
+  if (!isWhoAreYouNarrativeDisplayReady(enriched.who_are_you || {}, lang)) {
+    pending.push('who_are_you');
+  }
+
+  return { ready: pending.length === 0, pending };
+}
+
+function getProfileNarrativeQualityReadiness(profile = {}, language = 'en') {
+  const enriched = enrichProfileForNarrativeChecks(profile, language);
+  const lang = normalizeLangCode(language, 'en');
+  const pending = [];
+  const structured = enriched.structuredUserInfo || {};
 
   for (const key of STRUCTURED_DIMENSION_KEYS) {
     if (!isDimensionNarrativeReady(structured[key], lang)) {
@@ -89,7 +185,7 @@ function getProfileDisplayNarrativesReadiness(profile = {}, language = 'en') {
     }
   }
 
-  if (!isWhoAreYouNarrativeReady(profile.who_are_you || {}, lang)) {
+  if (!isWhoAreYouNarrativeReady(enriched.who_are_you || {}, lang)) {
     pending.push('who_are_you');
   }
 
@@ -112,7 +208,7 @@ function getDocumentNarrativeCacheReadiness(doc, language = 'en') {
     structuredUserInfo: doc.narrativeEnrichment.structuredUserInfo,
     who_are_you: doc.narrativeEnrichment.who_are_you || {},
   };
-  const contentReadiness = getProfileDisplayNarrativesReadiness(syntheticProfile, language);
+  const contentReadiness = getProfileNarrativeQualityReadiness(syntheticProfile, language);
   return {
     ready: pending.length === 0 && contentReadiness.ready,
     pending: [...pending, ...contentReadiness.pending],
@@ -120,8 +216,15 @@ function getDocumentNarrativeCacheReadiness(doc, language = 'en') {
 }
 
 module.exports = {
+  buildWhoAreYouRawAnswersFromIdentity,
+  getEffectiveIdentityAnswersForNarratives,
+  enrichProfileForNarrativeChecks,
+  isWhoAreYouSummaryDisplayReadyForLanguage,
   getProfileDisplayNarrativesReadiness,
+  getProfileNarrativeQualityReadiness,
   getDocumentNarrativeCacheReadiness,
   isWhoAreYouNarrativeReady,
+  isWhoAreYouNarrativeDisplayReady,
   isDimensionNarrativeReady,
+  isDimensionNarrativeDisplayReady,
 };

@@ -76,27 +76,18 @@ describe('isReviewUserIdentityComplete', () => {
 
 describe('saveExtractedProfileReview', () => {
   test('resolves on successful save when narratives are ready', async () => {
-    const fetchImpl = jest.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          ready: true,
-          fingerprintMatches: true,
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          seniority: validSeniority,
-          narrativesReady: true,
-          usedNarrativeCacheFastPath: true,
-          who_are_you: { raw_answers: [], summary_text: '' },
-          structuredUserInfo: {},
-          documents: [{ id: 'doc-1', name: 'resume.pdf', type: 'resume' }],
-        }),
-      });
+    const fetchImpl = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        seniority: validSeniority,
+        narrativesReady: true,
+        usedNarrativeCacheFastPath: true,
+        who_are_you: { raw_answers: [], summary_text: '' },
+        structuredUserInfo: {},
+        documents: [{ id: 'doc-1', name: 'resume.pdf', type: 'resume' }],
+      }),
+    });
     const result = await saveExtractedProfileReview({
       profileData: buildProfilePayload({ documentId: 'doc-1' }),
       refreshUser: async () => ({ success: true }),
@@ -107,9 +98,8 @@ describe('saveExtractedProfileReview', () => {
     });
 
     expect(result.reviewSaveData.success).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0][0]).toContain('/narrative-cache-status');
-    expect(fetchImpl.mock.calls[1][0]).toBe('/api/profile/review-save?lang=en');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe('/api/profile/review-save?lang=en');
     expect(invalidateFullProfileQuery).not.toHaveBeenCalled();
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
       ['profile', 'full', 'en'],
@@ -122,7 +112,7 @@ describe('saveExtractedProfileReview', () => {
     );
   });
 
-  test('save joins completed wizard warm and skips duplicate warm PUT', async () => {
+  test('save joins completed wizard warm without blocking on narrative cache', async () => {
     let warmPutCount = 0;
     let statusChecks = 0;
     const fetchImpl = jest.fn((url) => {
@@ -181,53 +171,10 @@ describe('saveExtractedProfileReview', () => {
       documentCacheWarmTimeoutMs: 0,
     });
     expect(warmPutCount).toBe(1);
+    expect(fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/review-save'))).toHaveLength(1);
   });
 
-  test('runs awaitReady warm when brief poll misses, then review-save', async () => {
-    const fetchImpl = jest.fn((url, options = {}) => {
-      if (String(url).includes('/review-save')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            success: true,
-            seniority: validSeniority,
-            narrativesReady: true,
-            usedNarrativeCacheFastPath: true,
-            who_are_you: { raw_answers: [], summary_text: '' },
-            structuredUserInfo: {},
-            documents: [],
-          }),
-        });
-      }
-      if (String(url).includes('/review-narrative-cache')) {
-        expect(options.method).toBe('PUT');
-        expect(JSON.parse(options.body).awaitReady).toBe(true);
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ success: true, ready: true, updated: true }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ success: true, ready: false, fingerprintMatches: false }),
-      });
-    });
-
-    const result = await saveExtractedProfileReview({
-      profileData: buildProfilePayload({ documentId: 'doc-1' }),
-      refreshUser: async () => ({ success: true }),
-      fetchImpl,
-      getAuthToken: () => 'token-1',
-      langQuery: 'lang=en',
-      documentCacheWarmTimeoutMs: 0,
-    });
-
-    expect(result.reviewSaveData.success).toBe(true);
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
-  });
-
-  test('proceeds to review-save when awaitReady warm also misses cache', async () => {
+  test('proceeds directly to review-save without pre-save narrative warm', async () => {
     const fetchImpl = jest.fn((url) => {
       if (String(url).includes('/review-save')) {
         return Promise.resolve({
@@ -235,7 +182,8 @@ describe('saveExtractedProfileReview', () => {
           json: async () => ({
             success: true,
             seniority: validSeniority,
-            narrativesReady: true,
+            narrativesReady: false,
+            narrativePending: ['who_are_you'],
             usedNarrativeCacheFastPath: false,
             who_are_you: { raw_answers: [], summary_text: '' },
             structuredUserInfo: {},
@@ -243,19 +191,11 @@ describe('saveExtractedProfileReview', () => {
           }),
         });
       }
-      if (String(url).includes('/review-narrative-cache')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ success: true, ready: false, updated: false }),
-        });
-      }
       return Promise.resolve({
         ok: true,
         json: async () => ({ success: true, ready: false, fingerprintMatches: false }),
       });
     });
-
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await saveExtractedProfileReview({
       profileData: buildProfilePayload({ documentId: 'doc-1' }),
@@ -267,16 +207,12 @@ describe('saveExtractedProfileReview', () => {
     });
 
     expect(result.reviewSaveData.success).toBe(true);
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
     expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('document narrative cache not ready after awaitReady warm')
-    );
-    warnSpy.mockRestore();
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(false);
   });
 
-  test('skips poll wait when cache is ready but fingerprint mismatches', async () => {
-    const fetchImpl = jest.fn((url, options = {}) => {
+  test('does not pre-check document narrative cache before review-save', async () => {
+    const fetchImpl = jest.fn((url) => {
       if (String(url).includes('/review-save')) {
         return Promise.resolve({
           ok: true,
@@ -287,12 +223,6 @@ describe('saveExtractedProfileReview', () => {
             structuredUserInfo: {},
             documents: [],
           }),
-        });
-      }
-      if (String(url).includes('/review-narrative-cache')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ success: true, ready: true }),
         });
       }
       return Promise.resolve({
@@ -311,8 +241,8 @@ describe('saveExtractedProfileReview', () => {
     });
 
     const statusCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/narrative-cache-status'));
-    expect(statusCalls.length).toBe(1);
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-narrative-cache'))).toBe(true);
+    expect(statusCalls.length).toBe(0);
+    expect(fetchImpl.mock.calls.some((call) => String(call[0]).includes('/review-save'))).toBe(true);
   });
 
   test('seeds structured lists from review snapshot when server response omits raw_items', async () => {

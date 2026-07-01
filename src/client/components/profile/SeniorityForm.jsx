@@ -5,7 +5,6 @@ import {
   Grid,
   Typography,
   Button,
-  FormControl,
   Select,
   MenuItem,
   Dialog,
@@ -43,7 +42,9 @@ const SeniorityForm = ({ initialData = {}, onSubmit, onCancel, loading, error })
     if (!formData.currentStatus || !formData.currentStatus.trim()) {
       errs.currentStatus = t('profilePage.seniorityForm.errors.currentStatusRequired');
     }
-    if (formData.yearsOfExperience !== '' && formData.yearsOfExperience !== undefined && formData.yearsOfExperience !== null) {
+    if (formData.yearsOfExperience === '' || formData.yearsOfExperience === undefined || formData.yearsOfExperience === null) {
+      errs.yearsOfExperience = t('profilePage.seniorityForm.errors.yearsRequired');
+    } else {
       const y = Number(formData.yearsOfExperience);
       if (isNaN(y) || y < 0 || y > 50) {
         errs.yearsOfExperience = t('profilePage.seniorityForm.errors.yearsRange');
@@ -92,7 +93,10 @@ const SeniorityForm = ({ initialData = {}, onSubmit, onCancel, loading, error })
     if (onCancel) onCancel();
   };
 
-  const isValid = !!formData.currentStatus?.trim() && !!formData.highestDegree?.trim() && !!formData.mostSeniorWorkExperience?.trim();
+  const isValid = !!formData.currentStatus?.trim()
+    && formData.yearsOfExperience !== '' && formData.yearsOfExperience !== undefined && formData.yearsOfExperience !== null
+    && !!formData.highestDegree?.trim()
+    && !!formData.mostSeniorWorkExperience?.trim();
 
   const currentEmploymentStatusLabel = (value) => t(`profilePage.seniorityForm.options.currentStatus.${value}`);
   const highestDegreeLabel = (value) => t(`profilePage.seniorityForm.options.highestDegree.${value}`);
@@ -148,7 +152,7 @@ const SeniorityForm = ({ initialData = {}, onSubmit, onCancel, loading, error })
           >
             {t('profilePage.seniority.yearsOfWorkExperience')}
           </Typography>
-          <FormControl fullWidth variant="outlined">
+          <RequiredSelectWrapper required fullWidth error={fieldErrors.yearsOfExperience} fieldName={t('profilePage.seniority.yearsOfWorkExperience')}>
             <Select
               name="yearsOfExperience"
               labelId="seniority-form-years-label"
@@ -158,12 +162,12 @@ const SeniorityForm = ({ initialData = {}, onSubmit, onCancel, loading, error })
               displayEmpty
               variant="outlined"
             >
-              <MenuItem value="">{t('profilePage.seniorityForm.notSpecified')}</MenuItem>
+              <MenuItem value="">{t('profilePage.seniorityForm.selectPlaceholder')}</MenuItem>
               {YEARS_OPTIONS.map(opt => (
                 <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
               ))}
             </Select>
-          </FormControl>
+          </RequiredSelectWrapper>
         </Grid>
 
         <Grid item xs={12} sm={6}>

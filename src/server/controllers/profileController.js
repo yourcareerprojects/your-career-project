@@ -53,8 +53,21 @@ const {
 } = require('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
 const { generateCareerSlogan } = require('../services/jobAnalysis/careerSloganGenerator');
 const { evaluateProfileReviewFollowUps } = require('../services/jobAnalysis/inputQualityDiagnosisService');
+const { normalizeCoachingCvContext } = require('../services/profile/coachingCvContext');
+const { advanceWorkEnjoyCoaching } = require('../services/profile/workEnjoyCoachingService');
+const { advanceTopicsIndustriesCoaching } = require('../services/profile/topicsIndustriesCoachingService');
+const { advanceNaturallyGoodAtCoaching } = require('../services/profile/naturallyGoodAtCoachingService');
+const { advanceWorkEnvironmentCoaching } = require('../services/profile/workEnvironmentCoachingService');
+const { advanceWorkingLifeAchievementCoaching } = require('../services/profile/workingLifeAchievementCoachingService');
 const { applyLocalizedFieldsToCareerPathList, applyLocalizedFieldsToCareerPathPayload } = require('../utils/localizedResponse');
-const { mergeLocalizedCareerPathStep } = require('../services/careerPathSkillService');
+const {
+  mergeLocalizedCareerPathStep,
+  listDistinctRoleSkillsForSelection,
+  listDistinctRoleSkillDomainsForSelection,
+  searchRoleSkillsForSelection,
+  resolveRoleSkillsForSelection,
+  searchRoleSkillDomainsForSelection,
+} = require('../services/careerPathSkillService');
 const localizedContentService = require('../services/localization/localizedContentService');
 const { cachedTranslate } = require('../services/ai/translationCache');
 const { translateStructured } = require('../services/ai/translateStructured');
@@ -74,9 +87,13 @@ const {
 const { getNarrativeEnrichmentFromDocument } = require('../services/profile/extractionNarrativeEnrichmentService');
 const {
   getProfileDisplayNarrativesReadiness,
+  getProfileNarrativeQualityReadiness,
   isWhoAreYouNarrativeReady,
 } = require('../services/profile/profileNarrativeReadinessService');
-const { meetsWhoAreYouNarrativesQuality } = require('../services/profile/narrativeQualityGate');
+const {
+  meetsWhoAreYouNarrativesQuality,
+  meetsWhoAreYouLineQuality,
+} = require('../services/profile/narrativeQualityGate');
 const {
   classifyIdentityAnswerChanges,
 } = require('../services/profile/identityAnswerChangeClassifier');
@@ -85,7 +102,7 @@ const { scheduleDeferredProfileNarrativesForUser } = require('../services/profil
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
 const {
   applyReviewSaveNarrativesFromDocument,
-  applyReviewSaveNarrativesWithRetry,
+  tryBuildProfileNarrativesFromDocumentCache,
   schedulePersistNarrativeEnrichmentFromApply,
 } = require('../services/profile/profileReviewNarrativeApplyService');
 const FIXED_MAX_SAVED_SIMULATIONS = 20;
@@ -483,6 +500,7 @@ function ensureSavedStepDisplayFields(step) {
 }
 
 const { filterIndustryDomainRawItems } = require('../constants/industryDomainFilters');
+const { normalizeIndustryDomains } = require('../../constants/industries');
 const { normalizeSavedStepI18n } = require('../utils/savedStepI18n');
 const { applyCareerPathAndUserLocaleToSavedStep } = require('../utils/savedCareerStepI18nMerge');
 
@@ -548,6 +566,54 @@ function isWhoAreYouPlaceholderSummaryJson(summaryText = '') {
   return parsed.length === 5 && parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER);
 }
 
+function whoAreYouSummaryJsonDiffers(leftJson = '', rightJson = '') {
+  try {
+    const left = JSON.parse(String(leftJson || '').trim());
+    const right = JSON.parse(String(rightJson || '').trim());
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== 5 || right.length !== 5) {
+      return true;
+    }
+    return left.some((line, idx) => String(line || '').trim() !== String(right[idx] || '').trim());
+  } catch (_) {
+    return true;
+  }
+}
+
+function buildDeferredWhoAreYouSummaryText({
+  parsedForQuality = [],
+  rawAnswers = [],
+  currentSummaryIsPlaceholder = false,
+  currentSummary = '',
+  changedRaw = false,
+  narrativesStaleForAnswers = false,
+  identityChangeClass = null,
+  previousRawAnswers = [],
+}) {
+  if (
+    !currentSummary
+    || currentSummaryIsPlaceholder
+    || parsedForQuality.every((value) => value === WHO_ARE_YOU_PLACEHOLDER)
+  ) {
+    return JSON.stringify(Array(5).fill(WHO_ARE_YOU_PLACEHOLDER));
+  }
+
+  const patched = [...parsedForQuality];
+  while (patched.length < 5) patched.push(WHO_ARE_YOU_PLACEHOLDER);
+  const changeClass = identityChangeClass || classifyIdentityAnswerChanges(previousRawAnswers, rawAnswers);
+  const indicesToInvalidate = new Set(changeClass.changedIndices);
+  if (narrativesStaleForAnswers && !changeClass.hasChanges) {
+    for (let idx = 0; idx < 5; idx += 1) {
+      if (!meetsWhoAreYouLineQuality(patched[idx], rawAnswers[idx])) {
+        indicesToInvalidate.add(idx);
+      }
+    }
+  }
+  for (const idx of indicesToInvalidate) {
+    if (idx >= 0 && idx < 5) patched[idx] = WHO_ARE_YOU_PLACEHOLDER;
+  }
+  return JSON.stringify(patched.slice(0, 5));
+}
+
 async function ensureBilingualWhoAreYouSummaryField(existingField, canonicalSummaryText, canonicalLanguage, localizedMap = {}) {
   const canonicalLang = normalizeLangCode(canonicalLanguage, 'en');
   const canonicalArray = parseWhoAreYouNarratives(canonicalSummaryText);
@@ -561,7 +627,7 @@ async function ensureBilingualWhoAreYouSummaryField(existingField, canonicalSumm
       continue;
     }
     const existingRaw = String(localizedContentService.get(field, lang) || '').trim();
-    if (existingRaw) continue;
+    if (existingRaw && !whoAreYouSummaryJsonDiffers(existingRaw, canonicalSummaryText)) continue;
     try {
       const translated = await cachedTranslate(canonicalArray, lang, () => translateStructured(canonicalArray, lang));
       if (Array.isArray(translated) && translated.length === 5) {
@@ -645,21 +711,30 @@ function profileWhoAreYouNeedsNarrativeWork(
 }
 
 function schedulePendingProfileNarrativesIfNeeded(userId, profile = {}, language = 'en') {
+  const narrativeStatus = ensureProfileNarrativeBackfillScheduled(userId, profile, language);
+  return {
+    narrativesReady: narrativeStatus.ready,
+    narrativePending: narrativeStatus.pending,
+  };
+}
+
+function ensureProfileNarrativeBackfillScheduled(userId, profile = {}, language = 'en') {
   const narrativeSourceLanguage = resolveNarrativeSourceLanguage(profile || {}, 'en');
-  const narrativeReadiness = getProfileDisplayNarrativesReadiness(profile || {}, language);
-  if (narrativeReadiness.ready) {
-    return { narrativesReady: true, narrativePending: [] };
+  const displayReadiness = getProfileDisplayNarrativesReadiness(profile || {}, language);
+  const qualityReadiness = getProfileNarrativeQualityReadiness(profile || {}, language);
+  if (!displayReadiness.ready || !qualityReadiness.ready) {
+    const pendingSource = !qualityReadiness.ready ? qualityReadiness : displayReadiness;
+    const dimensionKeys = pendingSource.pending
+      .filter((field) => field.startsWith('structuredUserInfo.'))
+      .map((field) => field.slice('structuredUserInfo.'.length));
+    scheduleDeferredProfileNarrativesForUser(userId, {
+      dimensionKeys,
+      deferWhoAreYou: pendingSource.pending.includes('who_are_you'),
+      language,
+      sourceLanguage: narrativeSourceLanguage,
+    });
   }
-  const dimensionKeys = narrativeReadiness.pending
-    .filter((field) => field.startsWith('structuredUserInfo.'))
-    .map((field) => field.slice('structuredUserInfo.'.length));
-  scheduleDeferredProfileNarrativesForUser(userId, {
-    dimensionKeys,
-    deferWhoAreYou: narrativeReadiness.pending.includes('who_are_you'),
-    language,
-    sourceLanguage: narrativeSourceLanguage,
-  });
-  return { narrativesReady: false, narrativePending: narrativeReadiness.pending };
+  return displayReadiness;
 }
 
 async function toNarrativeDimension(
@@ -741,7 +816,10 @@ async function normalizeStructuredUserInfoForStorage(
       let domainSanitized = false;
       if (dimension.key === 'domains') {
         const before = readDimensionRawItems(originalSource);
-        const after = filterIndustryDomainRawItems(before);
+        const after = normalizeIndustryDomains(
+          filterIndustryDomainRawItems(before),
+          { keepUnknown: true }
+        );
         if (before.length !== after.length || before.some((b, i) => b !== after[i])) {
           domainSanitized = true;
         }
@@ -885,7 +963,19 @@ async function normalizeWhoAreYouForStorage(
         || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER)
       )
     ) {
-      summaryText = JSON.stringify(Array(5).fill(WHO_ARE_YOU_PLACEHOLDER));
+      const previousRawAnswers = Array.isArray(source.who_are_you?.raw_answers)
+        ? source.who_are_you.raw_answers.map((value) => String(value || '').trim())
+        : [];
+      summaryText = buildDeferredWhoAreYouSummaryText({
+        parsedForQuality,
+        rawAnswers,
+        currentSummaryIsPlaceholder,
+        currentSummary,
+        changedRaw,
+        narrativesStaleForAnswers,
+        identityChangeClass,
+        previousRawAnswers,
+      });
       changed = true;
     }
     const needsIdentityGeneration = !deferLlm && (forceRegenerate || !currentIdentityEmbeddingText);
@@ -2465,14 +2555,26 @@ exports.getProfile = async (req, res) => {
   };
 
   try {
-    // Exclude very large embedded arrays (multi‑MB). Keep password + other fields so read-time migrations can `save()` safely.
-    const user = await User.findById(req.user.userId).select(
-      '-simulationResults -savedCareerSteps -lastSimulationResult'
-    );
+    // Exclude very large embedded arrays and per-document extraction payloads (multi‑MB).
+    const user = await User.findById(req.user.userId).select({
+      simulationResults: 0,
+      savedCareerSteps: 0,
+      lastSimulationResult: 0,
+      'profile.documents.extractedProfileData': 0,
+      'profile.documents.cvExtractLocalization': 0,
+      'profile.documents.semanticInterpretation': 0,
+      'profile.documents.narrativeEnrichment': 0,
+    }).lean();
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     logPhase('afterFind');
+
+    const narrativeStatus = ensureProfileNarrativeBackfillScheduled(
+      user._id,
+      user.profile || {},
+      req.language
+    );
 
     const cached = getCachedProfileResponse(user._id, user.updatedAt, req.language);
     if (cached) {
@@ -2480,28 +2582,19 @@ exports.getProfile = async (req, res) => {
       const responseBody = cached.completion != null
         ? cached
         : { ...cached, completion: computeProfileCompletion(cached.profile) };
-      return res.json(responseBody);
+      return res.json({
+        ...responseBody,
+        narrativesReady: narrativeStatus.ready,
+        narrativePending: narrativeStatus.pending,
+      });
     }
     logPhase('cacheMiss');
 
-    const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
-    const narrativeReadiness = getProfileDisplayNarrativesReadiness(user.profile || {}, req.language);
-    if (!narrativeReadiness.ready) {
-      const dimensionKeys = narrativeReadiness.pending
-        .filter((field) => field.startsWith('structuredUserInfo.'))
-        .map((field) => field.slice('structuredUserInfo.'.length));
-      scheduleDeferredProfileNarrativesForUser(String(user._id), {
-        dimensionKeys,
-        deferWhoAreYou: narrativeReadiness.pending.includes('who_are_you'),
-        language: req.language,
-        sourceLanguage: narrativeSourceLanguage,
-      });
-    }
-
-    const profilePayload = user.profile?.toObject ? user.profile.toObject() : { ...(user.profile || {}) };
+    const profilePayload = { ...(user.profile || {}) };
+    const cvExtractLocalization = profilePayload.cvExtractLocalization;
     profilePayload.structuredUserInfo = overlayStructuredUserInfoListsWithCvLocalization(
       profilePayload.structuredUserInfo,
-      profilePayload.cvExtractLocalization,
+      cvExtractLocalization,
       req.language
     );
     if (profilePayload.careerSimulationInputs?.structuredUserInfo) {
@@ -2509,7 +2602,7 @@ exports.getProfile = async (req, res) => {
         ...profilePayload.careerSimulationInputs,
         structuredUserInfo: overlayStructuredUserInfoListsWithCvLocalization(
           profilePayload.careerSimulationInputs.structuredUserInfo,
-          profilePayload.cvExtractLocalization,
+          cvExtractLocalization,
           req.language
         ),
       };
@@ -2518,17 +2611,16 @@ exports.getProfile = async (req, res) => {
     const mergedIdentityAnswers = mergeProfileIdentityAnswers(profilePayload);
     profilePayload.userIdentity = overlayIdentityAnswersWithCvLocalization(
       mergedIdentityAnswers,
-      profilePayload.cvExtractLocalization?.userIdentity,
+      cvExtractLocalization?.userIdentity,
       req.language
     );
-    profilePayload.who_are_you = (
-      await normalizeWhoAreYouForStorage(profilePayload, {
-        forceRegenerate: false,
-        deferLlm: true,
-        language: req.language,
-        sourceLanguage: resolveNarrativeSourceLanguage(profilePayload || {}, 'en'),
-      })
-    ).normalized;
+    const existingWhoAreYou = profilePayload.who_are_you && typeof profilePayload.who_are_you === 'object'
+      ? profilePayload.who_are_you
+      : {};
+    profilePayload.who_are_you = {
+      ...existingWhoAreYou,
+      raw_answers: buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers),
+    };
     const profileStructured = profilePayload?.structuredUserInfo || {};
 
     if (profilePayload?.careerSimulationInputs && typeof profilePayload.careerSimulationInputs === 'object') {
@@ -2540,9 +2632,13 @@ exports.getProfile = async (req, res) => {
     }
     if (Array.isArray(profilePayload.documents)) {
       profilePayload.documents = profilePayload.documents
-        .map((doc) => serializeEmbeddedDocumentForClient(doc, { uiLanguage: req.language }))
+        .map((doc) => serializeEmbeddedDocumentForClient(doc, {
+          uiLanguage: req.language,
+          includeExtractionPayload: false,
+        }))
         .filter(Boolean);
     }
+    delete profilePayload.cvExtractLocalization;
     const localizedProfilePayload = normalizeLocalizedProfileFieldsForResponse(
       profilePayload,
       req.language
@@ -2554,6 +2650,8 @@ exports.getProfile = async (req, res) => {
       completion: computeProfileCompletion(localizedProfilePayload),
       name: user.name || '',
       email: user.email,
+      narrativesReady: narrativeStatus.ready,
+      narrativePending: narrativeStatus.pending,
     };
     logPhase('beforeCacheSet');
     const bodyForCache =
@@ -2603,6 +2701,251 @@ exports.diagnoseProfileInputQuality = async (req, res) => {
   } catch (err) {
     logControllerError('diagnoseProfileInputQuality', err);
     res.status(500).json({ error: 'Failed to run input quality diagnosis', details: err.message });
+  }
+};
+
+/**
+ * POST body: { seniority, messages?: { role, content }[] }
+ * Returns the next coaching question or a summary list of work activities.
+ */
+exports.postWorkEnjoyCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const seniority = body.seniority && typeof body.seniority === 'object' ? body.seniority : null;
+    if (!seniority) {
+      return res.status(400).json({ success: false, error: 'seniority is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const result = await advanceWorkEnjoyCoaching({
+      seniority,
+      messages: body.messages,
+      cvContext: normalizeCoachingCvContext(body.cvContext),
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postWorkEnjoyCoaching', err);
+    const status = /too many|answer the current/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run work-enjoy coaching',
+      details: err.message,
+    });
+  }
+};
+
+exports.postTopicsIndustriesCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const seniority = body.seniority && typeof body.seniority === 'object' ? body.seniority : null;
+    if (!seniority) {
+      return res.status(400).json({ success: false, error: 'seniority is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const result = await advanceTopicsIndustriesCoaching({
+      seniority,
+      messages: body.messages,
+      cvContext: normalizeCoachingCvContext(body.cvContext),
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postTopicsIndustriesCoaching', err);
+    const status = /too many|answer the current/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run topics-industries coaching',
+      details: err.message,
+    });
+  }
+};
+
+exports.postNaturallyGoodAtCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const seniority = body.seniority && typeof body.seniority === 'object' ? body.seniority : null;
+    if (!seniority) {
+      return res.status(400).json({ success: false, error: 'seniority is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const result = await advanceNaturallyGoodAtCoaching({
+      seniority,
+      messages: body.messages,
+      cvContext: normalizeCoachingCvContext(body.cvContext),
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postNaturallyGoodAtCoaching', err);
+    const status = /too many|answer the current/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run naturally-good-at coaching',
+      details: err.message,
+    });
+  }
+};
+
+exports.postWorkEnvironmentCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const seniority = body.seniority && typeof body.seniority === 'object' ? body.seniority : null;
+    if (!seniority) {
+      return res.status(400).json({ success: false, error: 'seniority is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const result = await advanceWorkEnvironmentCoaching({
+      seniority,
+      messages: body.messages,
+      cvContext: normalizeCoachingCvContext(body.cvContext),
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postWorkEnvironmentCoaching', err);
+    const status = /too many|answer the current/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run work-environment coaching',
+      details: err.message,
+    });
+  }
+};
+
+exports.postWorkingLifeAchievementCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const seniority = body.seniority && typeof body.seniority === 'object' ? body.seniority : null;
+    if (!seniority) {
+      return res.status(400).json({ success: false, error: 'seniority is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const result = await advanceWorkingLifeAchievementCoaching({
+      seniority,
+      messages: body.messages,
+      cvContext: normalizeCoachingCvContext(body.cvContext),
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postWorkingLifeAchievementCoaching', err);
+    const status = /too many|answer the current/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run working-life-achievement coaching',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * GET — distinct required/optional skills across career paths (manual profile skill picker).
+ */
+exports.getRoleSkillsForSelection = async (req, res) => {
+  try {
+    const lang = req.query?.lang || req.query?.language || req.language || 'en';
+    const skills = await listDistinctRoleSkillsForSelection(lang);
+    res.json({ success: true, ...skills });
+  } catch (err) {
+    logControllerError('getRoleSkillsForSelection', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load role skills',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * POST body: { query?, contextTexts?, selectedLabels?, limit? }
+ * Returns search matches or profile-based recommendations (never the full catalog).
+ */
+exports.searchRoleSkillsForSelection = async (req, res) => {
+  try {
+    const lang = req.query?.lang || req.query?.language || req.language || 'en';
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await searchRoleSkillsForSelection(lang, {
+      query: body.query,
+      contextTexts: body.contextTexts,
+      selectedLabels: body.selectedLabels,
+      limit: body.limit,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('searchRoleSkillsForSelection', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search role skills',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * POST body: { labels?: string[] }
+ * Maps CV / free-text skill labels to canonical catalog entries.
+ */
+exports.resolveRoleSkillsForSelection = async (req, res) => {
+  try {
+    const lang = req.query?.lang || req.query?.language || req.language || 'en';
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await resolveRoleSkillsForSelection(lang, {
+      labels: body.labels,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('resolveRoleSkillsForSelection', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve role skills',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * GET — bounded skill-domain recommendations (legacy; prefer POST /role-skill-domains/search).
+ */
+exports.getRoleSkillDomainsForSelection = async (req, res) => {
+  try {
+    const lang = req.query?.lang || req.query?.language || req.language || 'en';
+    const result = await searchRoleSkillDomainsForSelection(lang, {
+      contextTexts: [],
+      limit: 24,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('getRoleSkillDomainsForSelection', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load role skill domains',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * POST body: { query?, contextTexts?, selectedLabels?, limit? }
+ * Returns search matches or profile-based recommendations (never the full catalog).
+ */
+exports.searchRoleSkillDomainsForSelection = async (req, res) => {
+  try {
+    const lang = req.query?.lang || req.query?.language || req.language || 'en';
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await searchRoleSkillDomainsForSelection(lang, {
+      query: body.query,
+      contextTexts: body.contextTexts,
+      selectedLabels: body.selectedLabels,
+      limit: body.limit,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('searchRoleSkillDomainsForSelection', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search role skill domains',
+      details: err.message,
+    });
   }
 };
 
@@ -3240,62 +3583,22 @@ exports.saveProfileReview = async (req, res) => {
     let usedNarrativeCacheFastPath = false;
     let narrativeApplyMode = 'none';
 
-    // Pick up narrative cache written by review-narrative-cache warm during steps 4–5.
-    if (documentId) {
-      const freshUser = await User.findById(req.user.userId);
-      const freshDoc = freshUser?.profile?.documents?.id?.(documentId);
-      if (freshDoc) {
-        sourceDoc = freshDoc;
-      }
-    }
-
-    let cacheApply = sourceDoc
-      ? await applyReviewSaveNarrativesWithRetry(
-        req.user.userId,
-        documentId,
+    const cacheResult = sourceDoc
+      ? tryBuildProfileNarrativesFromDocumentCache(
         sourceDoc,
         body,
         acceptedFields,
         mergedIdentityAnswers,
-        { language: req.language, sourceLanguage: narrativeSourceLanguage }
+        req.language
       )
       : { ok: false, reason: 'no_document' };
 
-    if (cacheApply.ok) {
-      const appliedReadiness = getProfileDisplayNarrativesReadiness(
-        {
-          structuredUserInfo: cacheApply.structuredUserInfo,
-          who_are_you: cacheApply.who_are_you,
-        },
-        req.language
-      );
-      if (!appliedReadiness.ready) {
-        console.log(
-          '[saveProfileReview] narrative cache apply incomplete:',
-          appliedReadiness.pending.join(', ')
-        );
-        cacheApply = {
-          ok: false,
-          reason: 'cache_incomplete',
-          pending: appliedReadiness.pending,
-        };
-      }
-    }
-
-    if (cacheApply.ok) {
+    if (cacheResult.ok) {
       usedNarrativeCacheFastPath = true;
-      narrativeApplyMode = cacheApply.applyMode || 'cache';
-      structuredUserInfo = {
-        ...cacheApply.structuredUserInfo,
-      };
-      normalizedWhoAreYou = cacheApply.who_are_you;
-      console.log(
-        '[saveProfileReview] applied document narrative cache:',
-        cacheApply.applyMode,
-        cacheApply.applyMode === 'incremental_cache'
-          ? `(dims: ${(cacheApply.regenDimensions || []).join(',') || 'none'}, who: ${cacheApply.regenWho})`
-          : ''
-      );
+      narrativeApplyMode = 'full_cache';
+      structuredUserInfo = cacheResult.structuredUserInfo;
+      normalizedWhoAreYou = cacheResult.who_are_you;
+      console.log('[saveProfileReview] applied document narrative cache: full_cache');
       if (sourceDoc && documentId) {
         schedulePersistNarrativeEnrichmentFromApply(
           req.user.userId,
@@ -3309,19 +3612,23 @@ exports.saveProfileReview = async (req, res) => {
           narrativeSourceLanguage
         );
       }
-    } else if (cacheApply.reason && cacheApply.reason !== 'no_document') {
-      console.log('[saveProfileReview] narrative cache apply skipped:', cacheApply.reason);
+    } else if (cacheResult.reason && cacheResult.reason !== 'no_document') {
+      console.log('[saveProfileReview] narrative cache not ready for fast apply:', cacheResult.reason);
     }
 
     if (!usedNarrativeCacheFastPath) {
-      narrativeApplyMode = 'full_normalize';
+      narrativeApplyMode = 'deferred';
       const dimensionsNeedingLlm = resolveDimensionKeysNeedingLlmRegeneration(mergedStructuredBody);
       if (dimensionsNeedingLlm.length > 0) {
         console.log(
-          '[saveProfileReview] regenerating dimension narratives:',
+          '[saveProfileReview] deferring dimension narratives:',
           dimensionsNeedingLlm.join(', ')
         );
       }
+
+      const storedRawAnswers = buildWhoAreYouRawAnswersFromIdentity(existingIdentity);
+      const mergedRawAnswers = buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers);
+      const identityChangeClass = classifyIdentityAnswerChanges(storedRawAnswers, mergedRawAnswers);
 
       const profileSnapshotForNarratives = {
         ...(typeof user.profile?.toObject === 'function' ? user.profile.toObject() : (user.profile || {})),
@@ -3332,22 +3639,35 @@ exports.saveProfileReview = async (req, res) => {
             : (user.profile?.who_are_you || {}),
       };
 
+      const whoNeedsDefer = !reuseExtractionWhoAreYou
+        && profileWhoAreYouNeedsNarrativeWork(
+          profileSnapshotForNarratives,
+          narrativeSourceLanguage,
+          identityChangeClass
+        );
+      if (whoNeedsDefer) {
+        console.log('[saveProfileReview] deferring who_are_you narratives');
+      }
+
       const whoAreYouPromise = reuseExtractionWhoAreYou
         ? Promise.resolve({
           normalized: {
             ...narrativeEnrichment.who_are_you,
-            raw_answers: buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers),
+            raw_answers: mergedRawAnswers,
           },
         })
         : normalizeWhoAreYouForStorage(profileSnapshotForNarratives, {
           forceRegenerate: false,
+          deferLlm: whoNeedsDefer,
           language: req.language,
           sourceLanguage: narrativeSourceLanguage,
+          identityChangeClass,
         });
 
       const normalized = await Promise.all([
         normalizeStructuredUserInfoForStorage(mergedStructuredBody, {
           forceRegenerate: false,
+          deferLlmDimensionKeys: dimensionsNeedingLlm,
           language: req.language,
           sourceLanguage: narrativeSourceLanguage,
         }),
@@ -3370,7 +3690,14 @@ exports.saveProfileReview = async (req, res) => {
 
     await user.save();
 
-    scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    const narrativeStatus = schedulePendingProfileNarrativesIfNeeded(
+      req.user.userId,
+      user.profile,
+      req.language
+    );
+    if (narrativeStatus.narrativesReady) {
+      scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
+    }
     schedulePostProfileReviewSaveWork(req.user.userId, {
       editorId: req.user.userId,
       changes: { recalculatedFromProfileReview: true },
@@ -3383,13 +3710,6 @@ exports.saveProfileReview = async (req, res) => {
       });
     }
 
-    const narrativeReadiness = getProfileDisplayNarrativesReadiness(
-      { structuredUserInfo, who_are_you: normalizedWhoAreYou },
-      req.language
-    );
-    const narrativesReadyForClient = usedNarrativeCacheFastPath
-      ? true
-      : narrativeReadiness.ready;
     const responseSeniority = readSeniorityFromProfile(user.profile);
     const profileStructured = user.profile.structuredUserInfo || {};
     const normalizedForResponse = normalizeLocalizedProfileFieldsForResponse(
@@ -3416,8 +3736,8 @@ exports.saveProfileReview = async (req, res) => {
 
     res.json({
       success: true,
-      narrativesReady: narrativesReadyForClient,
-      narrativePending: narrativesReadyForClient ? [] : narrativeReadiness.pending,
+      narrativesReady: narrativeStatus.narrativesReady,
+      narrativePending: narrativeStatus.narrativePending,
       usedNarrativeCacheFastPath,
       narrativeApplyMode,
       name: user.name || '',
@@ -3448,7 +3768,11 @@ exports.getProfileNarrativesStatus = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const readiness = getProfileDisplayNarrativesReadiness(user.profile, req.language);
+    const readiness = ensureProfileNarrativeBackfillScheduled(
+      req.user.userId,
+      user.profile || {},
+      req.language
+    );
     res.json({ success: true, ...readiness });
   } catch (err) {
     logControllerError('Get profile narratives status error', err);

@@ -3,6 +3,7 @@
  */
 
 const { PROFILE_REVIEW_MAX_GOOD_AT_PER_CATEGORY } = require('../../../constants/profileReviewFieldLimits');
+const { normalizeGermanCvResponsibilityList } = require('../../../constants/normalizeGermanCvResponsibilities');
 const { filterHeuristicSkillObjects } = require('../documents/documentProfileEnrichment');
 const { interpretCvStructuredText } = require('../documents/semanticCvInterpreter');
 const { normalizeString } = require('./cvExtractionTextUtils');
@@ -202,16 +203,32 @@ function buildProfileFromIdentityAndHeuristic(identitySemantic, heuristicResult)
   };
 }
 
-function mergeStructuredSemanticIntoProfile(existingProfile, structuredSemantic, heuristicResult) {
+function polishGermanKeyResponsibilities(profile, documentLanguage) {
+  if (documentLanguage !== 'de') return profile;
+  const sui = profile?.structuredUserInfo;
+  if (!sui || !Array.isArray(sui.keyResponsibilities) || sui.keyResponsibilities.length === 0) {
+    return profile;
+  }
+  return {
+    ...profile,
+    structuredUserInfo: {
+      ...sui,
+      keyResponsibilities: normalizeGermanCvResponsibilityList(sui.keyResponsibilities, { force: true }),
+    },
+  };
+}
+
+function mergeStructuredSemanticIntoProfile(existingProfile, structuredSemantic, heuristicResult, options = {}) {
+  const documentLanguage = options.documentLanguage === 'de' ? 'de' : 'en';
   const mapped = mapSemanticExtractionToProfile({
     structuredProfile: structuredSemantic?.structuredProfile,
     seniority: structuredSemantic?.seniority,
-  });
+  }, { documentLanguage });
   const mergedSeniority = mergeSeniorityFromHeuristic(mapped.profile, heuristicResult.profile);
   const withBaseline = mergeHeuristicStructuredBaseline(mapped.profile, heuristicResult.profile, {
     skipHeuristicGoodAtFallback: true,
   });
-  return {
+  const merged = {
     ...withBaseline,
     userIdentity: { ...(existingProfile?.userIdentity || {}) },
     name: existingProfile?.name || withBaseline.name,
@@ -226,9 +243,10 @@ function mergeStructuredSemanticIntoProfile(existingProfile, structuredSemantic,
       mostSeniorWorkExperience: mergedSeniority.mostSeniorWorkExperience ?? ''
     }
   };
+  return polishGermanKeyResponsibilities(merged, documentLanguage);
 }
 
-function buildCombinedSemanticExtraction(heuristicResult, identitySemantic, structuredSemantic) {
+function buildCombinedSemanticExtraction(heuristicResult, identitySemantic, structuredSemantic, options = {}) {
   const hasIdentity = identitySemanticHasSignals(identitySemantic);
   const hasStructuredProfile = structuredSemanticHasProfileSignals(structuredSemantic);
   const hasStructuredSeniority = structuredSeniorityHasSignals(structuredSemantic);
@@ -252,7 +270,7 @@ function buildCombinedSemanticExtraction(heuristicResult, identitySemantic, stru
   }
 
   if (hasStructuredProfile || hasStructuredSeniority) {
-    profile = mergeStructuredSemanticIntoProfile(profile, structuredSemantic, heuristicResult);
+    profile = mergeStructuredSemanticIntoProfile(profile, structuredSemantic, heuristicResult, options);
     extractedFields.push('semanticInterpretation');
   }
 

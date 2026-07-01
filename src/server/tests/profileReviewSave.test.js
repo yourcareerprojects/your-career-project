@@ -202,11 +202,14 @@ describe('profileController.saveProfileReview', () => {
     expect(payload.success).toBe(true);
     expect(payload.seniority).toMatchObject(reviewPayload.seniority);
     expect(payload.userIdentity.workEnjoyMost).toBe(reviewPayload.userIdentity.workEnjoyMost);
-    expect(scheduleRefreshUserIdentityEmbeddingForUser).toHaveBeenCalledWith(String(created._id));
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativePending.length).toBeGreaterThan(0);
+    expect(scheduleRefreshUserIdentityEmbeddingForUser).not.toHaveBeenCalled();
 
     const persisted = await User.findById(created._id).lean();
-    expect(generateWhoAreYouNarratives).toHaveBeenCalled();
-    expect(generateDimensionSummary).toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalled();
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
     expect(persisted.name).toBe('Review User');
     expect(persisted.profile.seniority).toMatchObject(reviewPayload.seniority);
     expect(persisted.profile.userIdentityAnswers.workEnjoyMost).toBe(reviewPayload.userIdentity.workEnjoyMost);
@@ -419,6 +422,38 @@ describe('profileController.getProfileNarrativesStatus', () => {
     expect(payload.ready).toBe(true);
     expect(payload.pending).toEqual([]);
   });
+
+  test('schedules deferred generation when display narratives are still placeholders', async () => {
+    const created = await User.create({
+      email: 'narratives-status-pending@example.com',
+      password: 'password123!',
+      profile: {
+        userIdentityAnswers: {
+          workEnjoyMost: 'Building products',
+        },
+        who_are_you: {
+          raw_answers: ['Building products', '', '', '', ''],
+          summary_text: JSON.stringify(Array(5).fill('No personal profile information available yet.')),
+        },
+        structuredUserInfo: {
+          skills: {
+            raw_items: ['Python'],
+            summary_text: 'No information available yet',
+          },
+        },
+      },
+    });
+
+    const req = { user: { userId: String(created._id) }, language: 'en' };
+    const res = mockRes();
+    await profileController.getProfileNarrativesStatus(req, res);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.success).toBe(true);
+    expect(payload.ready).toBe(false);
+    expect(payload.pending).toEqual(expect.arrayContaining(['who_are_you', 'structuredUserInfo.skills']));
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalled();
+  });
 });
 
 const profileReviewSaveService = require('../services/profile/profileReviewSaveService');
@@ -563,7 +598,8 @@ describe('saveProfileReview narrative regeneration', () => {
     await profileController.saveProfileReview(req, res);
 
     expect(res.status).not.toHaveBeenCalledWith(500);
-    expect(generateDimensionSummary).toHaveBeenCalled();
+    expect(generateDimensionSummary).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalled();
     const persisted = await User.findById(created._id).lean();
     expect(persisted.profile.structuredUserInfo.skills.raw_items).toEqual(
       expect.arrayContaining(['SQL', 'Python'])

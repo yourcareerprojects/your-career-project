@@ -132,7 +132,8 @@ async function generateAndPersistCvStructuredSemantic(userId, documentId, option
       doc.extractedProfileData = mergeStructuredSemanticIntoProfile(
         existingProfile,
         structuredSemantic,
-        heuristicStub
+        heuristicStub,
+        { documentLanguage: docLang }
       );
       doc.semanticInterpretation = mergeSemanticInterpretation(doc.semanticInterpretation, {
         structuredProfile: structuredSemantic.structuredProfile,

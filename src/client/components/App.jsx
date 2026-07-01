@@ -22,6 +22,7 @@ import RoleDetails from './pages/RoleDetails';
 import SimulationResultDetails from './pages/SimulationResultDetails';
 import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
+import CheckEmail from './pages/CheckEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../constants/profileCompletion';
@@ -56,7 +57,7 @@ const ProtectedRoute = ({ children }) => {
  * re-fetching /api/profile/completion and showing a full-page "Loading..." on every click.
  */
 const ProfileCompletionOutlet = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const { t } = useTranslation('common');
   const completionQuery = useProfileCompletionQuery({ enabled: isAuthenticated });
 
@@ -68,9 +69,32 @@ const ProfileCompletionOutlet = () => {
     return <Navigate to="/login" />;
   }
 
+  if (!user?.isVerified && !user?.emailVerified) {
+    return <Navigate to="/check-email" replace />;
+  }
+
   const overallCompletion = Number(completionQuery.data?.completion?.overall || 0);
   if (completionQuery.isError || overallCompletion < MIN_PROFILE_COMPLETION_REQUIRED) {
     return <Navigate to="/profile" replace />;
+  }
+
+  return <Outlet />;
+};
+
+const VerifiedEmailOutlet = () => {
+  const { isAuthenticated, loading, user } = useAuth();
+  const { t } = useTranslation('common');
+
+  if (loading) {
+    return <div>{t('app.loading')}</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!user?.isVerified && !user?.emailVerified) {
+    return <Navigate to="/check-email" replace />;
   }
 
   return <Outlet />;
@@ -157,11 +181,18 @@ const App = () => {
               />
               <Route path="/shared-result/:shareId" element={<SharedResult />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/check-email" element={<CheckEmail />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-              {/* Saved content: single auth + completion gate so navigation does not re-fetch completion */}
+              <Route element={<ProtectedOutlet />}>
+                <Route element={<VerifiedEmailOutlet />}>
+                  <Route path="/profile/fill" element={<ProfileCreation />} />
+                </Route>
+              </Route>
+
+              {/* Saved content: auth + verified email + profile completion gate */}
               <Route element={<ProtectedOutlet />}>
                 <Route element={<ProfileCompletionOutlet />}>
                   <Route path="/simulations" element={<SavedSimulations />} />
@@ -189,14 +220,6 @@ const App = () => {
                 }
               />
               <Route path="/profile/create" element={<Navigate to="/profile/fill" replace />} />
-              <Route
-                path="/profile/fill"
-                element={
-                  <ProtectedRoute>
-                    <ProfileCreation />
-                  </ProtectedRoute>
-                }
-              />
 
               {/* 404 route */}
               <Route path="*" element={<NotFound />} />

@@ -62,7 +62,8 @@
   },
   "emailVerification": {
     "resendCta": "Resend email",
-    "notice": "Please verify your email to unlock saving, sharing, and account recovery features.",
+    "notice": "Verify your email to edit your profile and upload documents.",
+    "resendNotice": "If your email is eligible, a verification email has been sent.",
     "resendSuccessFallback": "Verification email sent.",
     "resendErrorFallback": "Unable to resend."
   },

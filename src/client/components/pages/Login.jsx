@@ -16,6 +16,7 @@ import {
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '../../contexts/AuthContext';
+import { fetchAuthenticatedStartPath } from '../../hooks/useAuthenticatedStartPath';
 
 const Login = () => {
   const { t } = useTranslation('onboarding');
@@ -71,7 +72,11 @@ const Login = () => {
     try {
       const result = await login(formData.email, formData.password);
       if (result.success) {
-        navigate('/');
+        const user = result.user;
+        const target = !user?.isVerified && !user?.emailVerified
+          ? '/check-email'
+          : await fetchAuthenticatedStartPath(user);
+        navigate(target);
       } else {
         setSubmitError(result.error);
       }

@@ -16,6 +16,10 @@ import {
 import { Save as SaveIcon, Cancel as CancelIcon } from '@mui/icons-material';
 import { hasChanges } from '../../utils/changeDetection';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
+import {
+  formatInterestTopicsAsText,
+  parseInterestTopicsFromText,
+} from './TopicsIndustriesCoaching';
 
 function emptyIdentity() {
   return USER_IDENTITY_FIELDS.reduce((acc, { key }) => ({ ...acc, [key]: '' }), {});
@@ -24,7 +28,12 @@ function emptyIdentity() {
 function identityFromInitial(initialData = {}) {
   const base = emptyIdentity();
   for (const { key } of USER_IDENTITY_FIELDS) {
-    if (initialData[key] != null) base[key] = String(initialData[key]);
+    if (initialData[key] == null) continue;
+    if (key === 'topicsIndustriesInterest') {
+      base[key] = formatInterestTopicsAsText(parseInterestTopicsFromText(initialData[key]));
+    } else {
+      base[key] = String(initialData[key]);
+    }
   }
   return base;
 }

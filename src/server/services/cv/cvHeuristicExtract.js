@@ -9,6 +9,9 @@ const {
   extractWorkExperienceDescriptionLinesFromText,
 } = require('../documents/documentProfileEnrichment');
 const { inferCurrentEmploymentStatusFromText } = require('../../../constants/currentEmploymentStatus');
+const { inferIndustriesFromText } = require('../../../constants/industries');
+const { normalizeGermanCvResponsibilityList } = require('../../../constants/normalizeGermanCvResponsibilities');
+const { detectCvDocumentLanguage } = require('../documents/detectCvDocumentLanguage');
 const {
   normalizeString,
   safeDegreeFromText,
@@ -30,25 +33,7 @@ function inferYearsOfExperienceFromText(text, workExperienceCount) {
 }
 
 function inferDomainsFromText(text) {
-  const t = String(text || '').toLowerCase();
-  const rules = [
-    { name: 'Healthcare', pattern: /\bhospital\b|\bclinic\b|\bmedical\b|\bpatient\b|\bhealthcare\b/ },
-    { name: 'MedTech', pattern: /\bmedtech\b|\bmedical device\b|\bdigital health\b/ },
-    { name: 'Finance', pattern: /\bfintech\b|\bbanking\b|\bfinance\b|\bfinancial services\b|\binsurance\b/ },
-    { name: 'Education', pattern: /\bedtech\b|\beducation\b|\buniversity\b|\bteaching\b/ },
-    { name: 'E-commerce', pattern: /\be-commerce\b|\becommerce\b|\bonline retail\b|\bmarketplace\b/ },
-    { name: 'Artificial Intelligence', pattern: /\bartificial intelligence\b|\bmachine learning\b|\bai\b/ },
-    { name: 'Sustainability', pattern: /\bsustainability\b|\bclimate\b|\brenewable\b|\besg\b/ },
-    { name: 'Sports', pattern: /\bsports\b|\bathlete\b|\bfitness\b/ },
-    { name: 'Architecture', pattern: /\barchitecture\b|\burban planning\b|\bconstruction design\b/ },
-    { name: 'Mobility', pattern: /\bmobility\b|\btransport\b|\bautomotive\b|\blogistics\b/ }
-  ];
-  const out = [];
-  for (const rule of rules) {
-    if (rule.pattern.test(t)) out.push(rule.name);
-    if (out.length >= 6) break;
-  }
-  return out;
+  return inferIndustriesFromText(text, { maxItems: 6 });
 }
 
 function extractProfileDataFromDocumentTextHeuristic(text) {
@@ -205,7 +190,9 @@ function extractProfileDataFromDocumentTextHeuristic(text) {
       .map((exp) => normalizeString(exp.description, 300))
       .filter(Boolean)
       .slice(0, 8);
-    profile.structuredUserInfo.keyResponsibilities = keyResponsibilities;
+    profile.structuredUserInfo.keyResponsibilities = detectCvDocumentLanguage(text) === 'de'
+      ? normalizeGermanCvResponsibilityList(keyResponsibilities, { force: true })
+      : keyResponsibilities;
     if (keyResponsibilities.length) {
       extractedFields.push('keyResponsibilities');
     }

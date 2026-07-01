@@ -26,6 +26,14 @@ const {
   setEmailVerificationState,
   verifyEmail: verifyEmailWithService,
 } = require('../services/auth/emailVerificationService');
+const { deleteStoredDocumentBlob } = require('../services/documents/documentBlobStorage');
+const CvExtractionJob = require('../models/CvExtractionJob');
+const SimulationJob = require('../models/SimulationJob');
+const SimulationPrioritizedItem = require('../models/SimulationPrioritizedItem');
+const SimulationTraitUsage = require('../models/SimulationTraitUsage');
+const RoleFitExplanation = require('../models/RoleFitExplanation');
+const CvExtractedTextCache = require('../models/CvExtractedTextCache');
+const UploadContentFingerprint = require('../models/UploadContentFingerprint');
 
 function logAuthControllerError(context, err, extra = undefined) {
   const payload = {
@@ -658,12 +666,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    if (!isUserEmailVerified(user)) {
-      return res.status(401).json({
-        error: 'Please verify your email before logging in'
-      });
-    }
-
     // Update last login
     user.accountStatus.lastLogin = new Date();
     await user.save();
@@ -1275,6 +1277,54 @@ exports.verifyEmailChange = async (req, res) => {
   } catch (error) {
     console.error('Verify email change error:', error);
     res.status(500).json({ error: 'Failed to verify email change' });
+  }
+};
+
+// Delete authenticated user's account
+exports.deleteOwnAccount = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { currentPassword } = req.body || {};
+
+    await verifyReauthOrPassword({
+      user,
+      currentPassword,
+      req,
+      eventType: 'account_deletion'
+    });
+
+    const userId = user._id;
+    const documentBlobs = Array.isArray(user.profile?.documents) ? user.profile.documents : [];
+    for (const document of documentBlobs) {
+      await deleteStoredDocumentBlob(document).catch((error) => {
+        console.warn('[authController] Failed to delete document blob during account deletion', {
+          userId: String(userId),
+          storageKey: document?.storageKey,
+          message: error?.message || String(error)
+        });
+      });
+    }
+
+    await Promise.all([
+      CvExtractionJob.deleteMany({ userId }),
+      SimulationJob.deleteMany({ userId }),
+      SimulationPrioritizedItem.deleteMany({ userId }),
+      SimulationTraitUsage.deleteMany({ userId }),
+      RoleFitExplanation.deleteMany({ userId }),
+      CvExtractedTextCache.deleteMany({ userId }),
+      UploadContentFingerprint.deleteMany({ userId }),
+      User.deleteOne({ _id: userId })
+    ]);
+
+    return res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    const status = error.statusCode || 500;
+    return res.status(status).json({ error: error.message || 'Failed to delete account' });
   }
 };
 

@@ -52,6 +52,13 @@ function setCachedProfileResponse(userId, updatedAt, body, lang = 'en') {
   cache.set(cacheKey(userId, updatedAt, lang), body);
 }
 
+function evictProfileResponseCacheForUser(userId) {
+  const prefix = `${String(userId)}:`;
+  for (const k of [...cache.keys()]) {
+    if (k.startsWith(prefix)) cache.delete(k);
+  }
+}
+
 /** For tests or admin tooling */
 function clearProfileResponseCache() {
   cache.clear();
@@ -61,4 +68,5 @@ module.exports = {
   getCachedProfileResponse,
   setCachedProfileResponse,
   clearProfileResponseCache,
+  evictProfileResponseCacheForUser,
 };

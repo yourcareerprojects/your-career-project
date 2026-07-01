@@ -45,7 +45,6 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
     sessionStorage.setItem(STORAGE_KEYS.SIMULATION_RESULTS, dataString);
     sessionStorage.setItem(STORAGE_KEYS.SIMULATION_STATE, state);
     
-    console.log('💾 Simulation saved to session storage:', { state, timestamp: storageData.metadata.timestamp });
     return true;
   } catch (error) {
     console.error('❌ Error saving simulation to storage:', error);
@@ -68,7 +67,6 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
         };
         sessionStorage.setItem(STORAGE_KEYS.SIMULATION_RESULTS, JSON.stringify(storageData));
         sessionStorage.setItem(STORAGE_KEYS.SIMULATION_STATE, state);
-        console.log('💾 Simulation saved to session storage after clearing:', { state });
         return true;
       } catch (retryError) {
         console.error('❌ Failed to save simulation even after clearing storage:', retryError);
@@ -86,7 +84,6 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
  */
 export const loadSimulationFromStorage = () => {
   try {
-    // Check if sessionStorage is available
     if (typeof sessionStorage === 'undefined') {
       console.warn('⚠️ SessionStorage not available - cannot load simulation data');
       return null;
@@ -96,7 +93,6 @@ export const loadSimulationFromStorage = () => {
     const storedState = sessionStorage.getItem(STORAGE_KEYS.SIMULATION_STATE);
     
     if (!storedData) {
-      console.log('📭 No simulation data found in session storage');
       return null;
     }
 
@@ -108,11 +104,6 @@ export const loadSimulationFromStorage = () => {
       clearSimulationFromStorage();
       return null;
     }
-    
-    console.log('📂 Simulation loaded from session storage:', { 
-      state: storedState, 
-      timestamp: simulationData.metadata?.timestamp 
-    });
     
     return {
       results: simulationData.results,
@@ -147,7 +138,6 @@ export const clearSimulationFromStorage = () => {
     sessionStorage.removeItem(STORAGE_KEYS.SIMULATION_STATE);
     sessionStorage.removeItem(STORAGE_KEYS.SIMULATION_METADATA);
     
-    console.log('🗑️ Simulation data cleared from session storage');
     return true;
   } catch (error) {
     console.error('❌ Error clearing simulation from storage:', error);
@@ -200,12 +190,17 @@ export const hasSimulationInStorage = () => {
  * from the details flow (`currentUnsavedResults`).
  */
 export const hasActiveCareerSimulationSession = () => {
-  const stored = loadSimulationFromStorage();
-  if (stored?.results && stored.state !== 'saved') {
-    return true;
-  }
   try {
-    return Boolean(sessionStorage.getItem('currentUnsavedResults'));
+    if (typeof sessionStorage === 'undefined') return false;
+    if (sessionStorage.getItem('currentUnsavedResults')) {
+      return true;
+    }
+    const storedData = sessionStorage.getItem(STORAGE_KEYS.SIMULATION_RESULTS);
+    if (!storedData) return false;
+    const storedState = sessionStorage.getItem(STORAGE_KEYS.SIMULATION_STATE) || 'clean';
+    if (storedState === 'saved') return false;
+    const simulationData = JSON.parse(storedData);
+    return Boolean(simulationData?.results);
   } catch {
     return false;
   }
@@ -231,7 +226,6 @@ export const getSimulationStateFromStorage = () => {
 export const updateSimulationStateInStorage = (state) => {
   try {
     sessionStorage.setItem(STORAGE_KEYS.SIMULATION_STATE, state);
-    console.log('🔄 Simulation state updated in storage:', state);
     return true;
   } catch (error) {
     console.error('❌ Error updating simulation state in storage:', error);

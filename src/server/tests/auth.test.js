@@ -395,8 +395,7 @@ describe('Authentication System Tests', () => {
       expect(res.body.user).toHaveProperty('isVerified', true);
     });
 
-    test('should reject login with unverified account', async () => {
-      // Create unverified user
+    test('should login with unverified account', async () => {
       await User.create({
         email: 'unverified@example.com',
         password: 'Test123!@#',
@@ -413,8 +412,9 @@ describe('Authentication System Tests', () => {
           password: 'Test123!@#'
         });
 
-      expect(res.status).toBe(401);
-      expect(res.body.error).toContain('verify your email');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('token');
+      expect(res.body.user).toHaveProperty('isVerified', false);
     });
 
     test('should login with Gmail address that contains dots in local part', async () => {

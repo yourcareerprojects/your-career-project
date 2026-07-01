@@ -12,6 +12,7 @@ import {
 } from '../../hooks/useProfileQueries';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
+import { clearManualFillDraft } from '../../utils/manualFillDraftStorage';
 import { markProfileSaveCelebration } from '../../utils/profileSaveCelebration';
 
 const ProfileCreation = () => {
@@ -86,7 +87,7 @@ const ProfileCreation = () => {
     try {
       // Seed only (review-save response) — Profile page renders from cache immediately and
       // refetches GET /api/profile once in the background (_seededFromReviewSave path).
-      await saveExtractedProfileReview({
+      const { reviewSaveData } = await saveExtractedProfileReview({
         profileData,
         fetchImpl: fetch,
         getAuthToken: () => localStorage.getItem('token'),
@@ -95,7 +96,10 @@ const ProfileCreation = () => {
         prefetchProfile: false,
       });
 
-      if (reviewUserId) clearCvReviewDraft(reviewUserId);
+      if (reviewUserId) {
+        clearCvReviewDraft(reviewUserId);
+        clearManualFillDraft(reviewUserId);
+      }
       setProfileExists(true);
       markProfileSaveCelebration();
       void refreshSeededFullProfileInBackground(baseUILanguage()).catch((profileErr) => {
@@ -103,7 +107,10 @@ const ProfileCreation = () => {
       });
       navigate('/profile', {
         replace: true,
-        state: { celebrateProfileSaved: true },
+        state: {
+          celebrateProfileSaved: true,
+          narrativePending: reviewSaveData?.narrativePending,
+        },
       });
     } catch (err) {
       setError(buildReviewSaveUserMessage(err, t));
@@ -150,23 +157,26 @@ const ProfileCreation = () => {
       <Typography variant="h4" component="h1" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
         {fullUpdateMode ? t('profileCreation.fullUpdate.title') : t('profileCreation.default.title')}
       </Typography>
-      <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
-        {fullUpdateMode
-          ? t('profileCreation.fullUpdate.description')
-          : t('profileCreation.default.description')}
-      </Typography>
-      <DocumentUploadForm
-        onExtractedProfileReview={handleExtractedProfileReview}
-        documents={documents}
-        onDocumentsUpdate={setDocuments}
-        loading={loading}
-        parentSavingReview={savingProfile}
-        enableExtractionReview
-        defaultDocumentType="resume"
-        rollbackOnReviewCancel
-        showSectionTitle={false}
-        reviewSaveMode={fullUpdateMode ? 'replace' : 'merge'}
-      />
+      <Box sx={{ maxWidth: 640, mx: 'auto', width: '100%' }}>
+        <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
+          {fullUpdateMode
+            ? t('profileCreation.fullUpdate.description')
+            : t('profileCreation.default.description')}
+        </Typography>
+        <DocumentUploadForm
+          onExtractedProfileReview={handleExtractedProfileReview}
+          documents={documents}
+          onDocumentsUpdate={setDocuments}
+          loading={loading}
+          parentSavingReview={savingProfile}
+          enableExtractionReview
+          defaultDocumentType="resume"
+          showSectionTitle={false}
+          reviewSaveMode={fullUpdateMode ? 'replace' : 'merge'}
+          showManualFillOption
+          manualFillOnly
+        />
+      </Box>
     </Box>
   );
 };

@@ -69,7 +69,7 @@ const Home = () => {
     if (isAuthenticated) {
       const target = startPathReady
         ? authenticatedStartPath
-        : await fetchAuthenticatedStartPath();
+        : await fetchAuthenticatedStartPath(user);
       navigate(target);
       return;
     }

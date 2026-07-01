@@ -145,4 +145,25 @@ describe('serializeEmbeddedDocumentForClient deferred localization', () => {
     expect(serialized.extractedProfileData.userIdentity.workEnjoyMost).toBe('German text');
     expect(serialized.extractedProfileData.structuredUserInfo.skillDomains).toEqual(['Domain A']);
   });
+
+  test('omits extraction payload when includeExtractionPayload is false', () => {
+    const serialized = serializeEmbeddedDocumentForClient(
+      {
+        _id: new mongoose.Types.ObjectId(),
+        type: 'resume',
+        name: 'cv.pdf',
+        path: '/tmp/cv.pdf',
+        uploadDate: new Date(),
+        extractionStatus: 'completed',
+        semanticInterpretation: { skills: ['large blob'] },
+        cvExtractLocalization: { documentLanguage: 'de' },
+        extractedProfileData: { userIdentity: { q1: 'answer' } },
+      },
+      { uiLanguage: 'en', includeExtractionPayload: false }
+    );
+    expect(serialized.extractedProfileData).toBeUndefined();
+    expect(serialized.semanticInterpretation).toBeUndefined();
+    expect(serialized.cvExtractLocalization).toBeUndefined();
+    expect(serialized.reviewReady).toBe(true);
+  });
 });
