@@ -18,7 +18,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import { useTranslation } from 'react-i18next';
 import { baseUILanguage } from '../../hooks/useProfileQueries';
 import {
-  coachingChatInputAreaSx,
+  coachingChatComposerSx,
   coachingChatRootSx,
   coachingChatPageRootSx,
   coachingChatDialogRootSx,
@@ -340,6 +340,7 @@ const NaturallyGoodAtCoaching = ({
     inputAreaRef,
     inputRef,
     messagesScrollSx,
+    inputAreaSx,
     scrollToBottom,
   } = useCoachingChatAutoScroll([messages, phase, loading, bootstrapped], {
     focusInputWhen: chatInputReady,
@@ -559,16 +560,9 @@ const NaturallyGoodAtCoaching = ({
         )}
         <Box ref={messagesEndRef} sx={{ height: 0 }} aria-hidden />
       </Box>
-      <Box ref={inputAreaRef} sx={coachingChatInputAreaSx}>
+      <Box ref={inputAreaRef} sx={inputAreaSx}>
         <Divider sx={{ mb: { xs: 0.75, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
-        <Box
-          sx={{
-            display: 'flex',
-            gap: { xs: 0.75, sm: 1 },
-            alignItems: 'flex-start',
-            flexDirection: { xs: 'column', sm: 'row' },
-          }}
-        >
+        <Box sx={coachingChatComposerSx}>
           <TextField
             inputRef={inputRef}
             fullWidth
@@ -596,7 +590,6 @@ const NaturallyGoodAtCoaching = ({
             sx={{
               flexShrink: 0,
               mt: { xs: 0, sm: 0.5 },
-              width: { xs: '100%', sm: 'auto' },
               minHeight: { xs: 40, sm: 'auto' },
             }}
           >

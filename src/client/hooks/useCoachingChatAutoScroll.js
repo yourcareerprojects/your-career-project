@@ -2,11 +2,41 @@ import { useCallback, useEffect, useRef } from 'react';
 
 /** @typedef {{ smooth?: boolean }} ScrollOptions */
 
+/** Room for profile-fill dialog footer buttons below the composer on mobile. */
+const DIALOG_FOOTER_INSET_PX = 64;
+
 const HIDDEN_SCROLLBAR_SX = {
   scrollbarWidth: 'none',
   msOverflowStyle: 'none',
   '&::-webkit-scrollbar': { display: 'none' },
 };
+
+function getScrollableAncestor(node) {
+  let el = node?.parentElement;
+  while (el) {
+    const { overflowY } = window.getComputedStyle(el);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 1) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function getViewportBottomInset(extraInsetPx = 0) {
+  const viewport = window.visualViewport;
+  if (!viewport) return extraInsetPx;
+  const visibleBottom = viewport.offsetTop + viewport.height;
+  return Math.max(extraInsetPx, window.innerHeight - visibleBottom);
+}
+
+function getElementViewportOverlap(rect, extraInsetPx = 0) {
+  if (!rect) return 0;
+  const viewport = window.visualViewport;
+  if (!viewport) return 0;
+  const visibleBottom = viewport.offsetTop + viewport.height - extraInsetPx;
+  return Math.max(0, rect.bottom - visibleBottom);
+}
 
 /**
  * Keeps coaching chat scrolled to the latest message and input area (mobile-friendly).
@@ -30,6 +60,26 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
     });
   }, []);
 
+  const ensureInputVisible = useCallback((behavior = 'auto') => {
+    const inputArea = inputAreaRef.current;
+    if (!inputArea || isPageLayout) return;
+
+    inputArea.scrollIntoView({ behavior, block: 'end' });
+
+    const keyboardInset = getViewportBottomInset();
+    const bottomInset = keyboardInset > 0 ? 12 : DIALOG_FOOTER_INSET_PX;
+    const overlap = getElementViewportOverlap(inputArea.getBoundingClientRect(), bottomInset);
+    if (overlap <= 0) return;
+
+    const scrollParent = getScrollableAncestor(inputArea);
+    if (scrollParent) {
+      scrollParent.scrollBy({ top: overlap, behavior });
+      return;
+    }
+
+    window.scrollBy({ top: overlap, behavior });
+  }, [isPageLayout]);
+
   /** @param {ScrollOptions} [options] */
   const scrollToBottom = useCallback((options = {}) => {
     const { smooth = true } = options;
@@ -46,7 +96,7 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
       if (isPageLayout) return;
 
       // Keep the reply box visible inside the profile-fill dialog on mobile.
-      inputAreaRef.current?.scrollIntoView({ behavior, block: 'end' });
+      ensureInputVisible(behavior);
       if (!innerOverflow) {
         messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
       }
@@ -55,7 +105,7 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
     requestAnimationFrame(() => {
       requestAnimationFrame(run);
     });
-  }, [isPageLayout]);
+  }, [ensureInputVisible, isPageLayout]);
 
   useEffect(() => {
     scrollToBottom();
@@ -71,7 +121,7 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
 
   useEffect(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return undefined;
+    if (!viewport || isPageLayout) return undefined;
     let rafId = 0;
 
     const handleViewportChange = () => {
@@ -89,7 +139,9 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
       viewport.removeEventListener('resize', handleViewportChange);
       viewport.removeEventListener('scroll', handleViewportChange);
     };
-  }, [scrollToBottom]);
+  }, [isPageLayout, scrollToBottom]);
+
+  const inputAreaSx = isPageLayout ? coachingChatInputAreaSx : coachingChatDialogInputAreaSx;
 
   const messagesScrollSx = isPageLayout
     ? {
@@ -114,6 +166,7 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
     inputAreaRef,
     inputRef,
     messagesScrollSx,
+    inputAreaSx,
     scrollToBottom,
     focusInput,
   };
@@ -165,6 +218,25 @@ export const coachingChatInputAreaSx = {
   borderTop: { xs: '1px solid', sm: 'none' },
   borderColor: 'divider',
   bgcolor: 'background.paper',
+};
+
+/** Dialog embed: keep composer reachable above keyboard + dialog footer on mobile. */
+export const coachingChatDialogInputAreaSx = {
+  ...coachingChatInputAreaSx,
+  position: { xs: 'sticky', sm: 'static' },
+  bottom: { xs: 0, sm: 'auto' },
+  zIndex: { xs: 2, sm: 'auto' },
+  scrollMarginBottom: {
+    xs: `calc(${DIALOG_FOOTER_INSET_PX}px + env(safe-area-inset-bottom, 0px))`,
+    sm: 0,
+  },
+};
+
+export const coachingChatComposerSx = {
+  display: 'flex',
+  gap: { xs: 0.75, sm: 1 },
+  alignItems: { xs: 'flex-end', sm: 'flex-start' },
+  flexDirection: 'row',
 };
 
 /**

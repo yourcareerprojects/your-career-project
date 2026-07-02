@@ -5,6 +5,8 @@ import {
   CircularProgress,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import {
@@ -110,15 +112,11 @@ function SkillChipGroup({
     </Box>
   );}
 
-const mobileResultsPanelSx = {
+const resultsPanelSx = {
   mt: 1,
   pt: 1,
   borderTop: '1px solid',
   borderColor: 'divider',
-  maxHeight: { xs: 'min(42dvh, 320px)', sm: 'none' },
-  overflowY: { xs: 'auto', sm: 'visible' },
-  WebkitOverflowScrolling: 'touch',
-  overscrollBehavior: 'contain',
 };
 
 /**
@@ -133,6 +131,8 @@ const SkillSelectionStep = ({
   translationKeyPrefix = 'skillSelection',
 }) => {
   const { t } = useTranslation('onboarding');
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const tk = useCallback((suffix) => `${translationKeyPrefix}.${suffix}`, [translationKeyPrefix]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -281,11 +281,20 @@ const SkillSelectionStep = ({
   }, [maxSelected, onSelectedSkillsChange, selectedSkills]);
 
   const isSearchActive = debouncedSearch.length >= SEARCH_MIN_CHARS;
-  const resultsTitle = isSearchActive
+  const isSearchUiActive = search.trim().length >= SEARCH_MIN_CHARS;
+  const isMobileSearchMode = isMobile && isSearchUiActive;
+  const showRecommendations = !isMobileSearchMode;
+  const showSelectedOnMobile = !isMobile || !isSearchUiActive;
+  const resultsTitle = (isSearchActive || isMobileSearchMode)
     ? t(tk('searchResultsTitle'))
     : t(tk('recommendationsTitle'));
 
   const hasResults = catalog.requiredSkills.length > 0 || catalog.optionalSkills.length > 0;
+  const hasSearchResultsReady = isSearchActive && resultMode === 'search';
+  const isWaitingForSearch = isMobileSearchMode && !isSearchActive;
+  const showResultsLoading = isWaitingForSearch
+    || (isMobileSearchMode && (!hasSearchResultsReady || loading))
+    || (showRecommendations && loading && !hasResults);
 
   const displaySkills = useMemo(
     () => dedupeSkillsByLabel([...catalog.requiredSkills, ...catalog.optionalSkills]),
@@ -314,7 +323,7 @@ const SkillSelectionStep = ({
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         {t(tk('selectedCount'), { count: selectedNames.size, max: maxSelected })}
       </Typography>
-      {selectedLabels.length > 0 ? (
+      {selectedLabels.length > 0 && showSelectedOnMobile ? (
         <Box sx={{ mb: 1.25 }}>
           <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
             {t(tk('selectedTitle'))}
@@ -329,10 +338,11 @@ const SkillSelectionStep = ({
                 onDelete={(event) => handleToggle(label, event?.currentTarget)}
               />
             ))}
-          </Box>        </Box>
+          </Box>
+        </Box>
       ) : null}
-      <Box sx={mobileResultsPanelSx}>
-        {!isSearchActive && !loading ? (
+      <Box sx={resultsPanelSx}>
+        {showRecommendations && !loading ? (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             {t(tk('searchHint'))}
           </Typography>
@@ -342,7 +352,7 @@ const SkillSelectionStep = ({
             {error}
           </Alert>
         ) : null}
-        {loading && !hasResults ? (
+        {showResultsLoading ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
             <CircularProgress size={22} />
             <Typography variant="body2" color="text.secondary">
@@ -351,7 +361,7 @@ const SkillSelectionStep = ({
           </Box>
         ) : (
           <>
-            {loading ? (
+            {loading && showRecommendations ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <CircularProgress size={16} />
                 <Typography variant="caption" color="text.secondary">
@@ -362,9 +372,9 @@ const SkillSelectionStep = ({
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
               {resultsTitle}
             </Typography>
-            {!hasResults ? (
+            {!hasResults || (isMobileSearchMode && !hasSearchResultsReady) ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                {isSearchActive
+                {(isSearchActive || isMobileSearchMode)
                   ? t(tk('noSearchResults'))
                   : t(tk('noRecommendations'))}
               </Typography>
@@ -376,7 +386,7 @@ const SkillSelectionStep = ({
                 maxSelected={maxSelected}
               />
             )}
-            {!isSearchActive && resultMode === 'recommendations' && hasResults ? (
+            {showRecommendations && resultMode === 'recommendations' && hasResults ? (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 {t(tk('recommendationsHint'))}
               </Typography>
