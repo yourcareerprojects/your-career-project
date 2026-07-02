@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 /** @typedef {{ smooth?: boolean }} ScrollOptions */
 
@@ -21,7 +21,6 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
   const messagesEndRef = useRef(null);
   const inputAreaRef = useRef(null);
   const inputRef = useRef(null);
-  const [messagesOverflowing, setMessagesOverflowing] = useState(false);
 
   const focusInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -31,29 +30,6 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
     });
   }, []);
 
-  const updateOverflow = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    setMessagesOverflowing(el.scrollHeight > el.clientHeight + 1);
-  }, []);
-
-  useEffect(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return undefined;
-
-    updateOverflow();
-
-    const ro = new ResizeObserver(() => {
-      updateOverflow();
-    });
-    ro.observe(el);
-
-    return () => {
-      ro.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, scrollDeps);
-
   /** @param {ScrollOptions} [options] */
   const scrollToBottom = useCallback((options = {}) => {
     const { smooth = true } = options;
@@ -61,18 +37,19 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
 
     const run = () => {
       const scrollEl = messagesScrollRef.current;
-      const innerScrollable = isPageLayout
-        || (scrollEl && scrollEl.scrollHeight > scrollEl.clientHeight);
+      const innerOverflow = scrollEl && scrollEl.scrollHeight > scrollEl.clientHeight;
 
-      if (innerScrollable && scrollEl) {
+      if (innerOverflow && scrollEl) {
         scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior });
-        return;
       }
 
       if (isPageLayout) return;
 
-      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
-      inputAreaRef.current?.scrollIntoView({ behavior, block: 'nearest' });
+      // Keep the reply box visible inside the profile-fill dialog on mobile.
+      inputAreaRef.current?.scrollIntoView({ behavior, block: 'end' });
+      if (!innerOverflow) {
+        messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+      }
     };
 
     requestAnimationFrame(() => {
@@ -117,11 +94,12 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
     }
     : {
       ...coachingChatMessagesSx,
+      ...coachingChatDialogMessagesSx,
       overflowY: {
-        xs: messagesOverflowing ? 'auto' : 'hidden',
+        xs: 'auto',
         sm: 'visible',
       },
-      ...(messagesOverflowing ? HIDDEN_SCROLLBAR_SX : {}),
+      ...HIDDEN_SCROLLBAR_SX,
     };
 
   return {
@@ -145,6 +123,15 @@ export const coachingChatPageRootSx = {
   minHeight: 0,
 };
 
+/**
+ * Profile-fill dialog embed: cap total height so the reply box stays on screen while
+ * messages scroll inside the flex column (dialog title/actions/intro sit above).
+ */
+export const coachingChatDialogRootSx = {
+  maxHeight: { xs: 'calc(92dvh - 320px)', sm: 'none' },
+  minHeight: { xs: 240, sm: 0 },
+};
+
 export const coachingChatMessagesSx = {
   mb: { xs: 0, sm: 2 },
   flex: { xs: '1 1 auto', sm: '0 0 auto' },
@@ -152,6 +139,12 @@ export const coachingChatMessagesSx = {
   maxHeight: { xs: 'min(50dvh, 360px)', sm: 'none' },
   WebkitOverflowScrolling: 'touch',
   overscrollBehavior: 'contain',
+};
+
+/** Dialog embed on mobile: messages fill remaining column height instead of a fixed cap. */
+export const coachingChatDialogMessagesSx = {
+  maxHeight: { xs: 'none', sm: 'none' },
+  flex: { xs: '1 1 0', sm: '0 0 auto' },
 };
 
 /** Inner message scroll on profile page (all breakpoints). */
@@ -165,4 +158,5 @@ export const coachingChatInputAreaSx = {
   pt: { xs: 1.5, sm: 0 },
   borderTop: { xs: '1px solid', sm: 'none' },
   borderColor: 'divider',
+  bgcolor: 'background.paper',
 };

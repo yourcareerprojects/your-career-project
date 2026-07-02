@@ -21,6 +21,7 @@ import {
   coachingChatInputAreaSx,
   coachingChatRootSx,
   coachingChatPageRootSx,
+  coachingChatDialogRootSx,
   useCoachingChatAutoScroll,
 } from '../../hooks/useCoachingChatAutoScroll';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
@@ -476,7 +477,10 @@ const TopicsIndustriesCoaching = ({
   }
 
   return (
-    <Box sx={{ ...coachingChatRootSx, ...(layout === 'page' ? coachingChatPageRootSx : {}) }}>
+    <Box sx={{
+      ...coachingChatRootSx,
+      ...(layout === 'page' ? coachingChatPageRootSx : coachingChatDialogRootSx),
+    }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
