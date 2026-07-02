@@ -186,6 +186,28 @@ const normalizeDocuments = (docs) =>
     id: doc.id || doc._id,
   }));
 
+function getDocumentTimestampMs(doc) {
+  const rawValue = doc?.updatedAt || doc?.uploadDate || doc?.createdAt || doc?.date || null;
+  if (!rawValue) return 0;
+  const parsed = Date.parse(rawValue);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pickPreferredActiveCvDocument(docs, options = {}) {
+  const preferredDocumentId = options.preferredDocumentId ? String(options.preferredDocumentId) : null;
+  const activeDocs = (docs || []).filter((doc) => isActiveCvExtractionDocument(doc));
+  if (!activeDocs.length) return null;
+  if (preferredDocumentId) {
+    const preferredDoc = activeDocs.find(
+      (doc) => String(doc.id || doc._id || '') === preferredDocumentId
+    );
+    if (preferredDoc) return preferredDoc;
+  }
+  return activeDocs.reduce((latest, doc) => (
+    getDocumentTimestampMs(doc) >= getDocumentTimestampMs(latest) ? doc : latest
+  ));
+}
+
 function documentTypeChipLabel(doc, t) {
   const slug = doc.documentTypeDisplay || documentTypeDisplaySlug(doc.documentType || doc.type);
   if (slug) {
@@ -2332,7 +2354,6 @@ const DocumentUploadForm = ({
       // Reset form
       setSelectedFile(null);
       setDocumentType(defaultDocumentType || '');
-      setUploadDialog(false);
     } catch (error) {
       setUploadError(error.message || t('documentUpload.errors.uploadFailed'));
       console.error('Upload error:', error);
@@ -3186,7 +3207,14 @@ const DocumentUploadForm = ({
   useEffect(() => {
     if (enableExtractionReview && cvWizardUserCanceledRef.current) return;
     if (cvPollTarget?.documentId) return;
-    const activeDoc = (documents || []).find((d) => {
+    const savedDraft = reviewUserId ? loadCvReviewDraft(reviewUserId) : null;
+    const preferredDocumentId = (
+      restrictAutoResumeToDocumentId
+      || pendingUploadedDocId
+      || savedDraft?.pendingUploadedDocId
+      || null
+    );
+    const activeDoc = pickPreferredActiveCvDocument((documents || []).filter((d) => {
       const id = String(d.id || d._id || '');
       if (!id || isWizardCvDocDismissed(id)) return false;
       if (
@@ -3195,8 +3223,8 @@ const DocumentUploadForm = ({
       ) {
         return false;
       }
-      return isActiveCvExtractionDocument(d);
-    });
+      return true;
+    }), { preferredDocumentId });
     if (!activeDoc) return;
     const docId = String(activeDoc.id || activeDoc._id || '');
     if (!docId) return;
@@ -3221,6 +3249,8 @@ const DocumentUploadForm = ({
     cvPipelinePhase,
     isWizardCvDocDismissed,
     restrictAutoResumeToDocumentId,
+    pendingUploadedDocId,
+    reviewUserId,
   ]);
 
   useEffect(() => {
