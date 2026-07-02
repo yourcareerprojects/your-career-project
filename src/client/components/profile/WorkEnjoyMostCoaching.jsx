@@ -22,6 +22,7 @@ import {
   coachingChatRootSx,
   coachingChatPageRootSx,
   coachingChatDialogRootSx,
+  useDebouncedCoachingPersist,
   useCoachingChatAutoScroll,
 } from '../../hooks/useCoachingChatAutoScroll';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
@@ -126,17 +127,24 @@ export function WorkEnjoyActivitiesPanel({
   return (
     <Box>
       {introText ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mb: { xs: 1, sm: 2 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+        >
           {introText}
         </Typography>
       ) : null}
       {editing ? (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 2 }, mb: { xs: 1.25, sm: 2 } }}>
           {editDrafts.map((activity, idx) => (
             <TextField
               key={`edit-${idx}`}
               fullWidth
               size="small"
+              multiline
+              minRows={2}
+              maxRows={6}
               hiddenLabel
               value={activity}
               onChange={(e) => {
@@ -149,24 +157,27 @@ export function WorkEnjoyActivitiesPanel({
           ))}
         </Paper>
       ) : (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 2 }, mb: { xs: 1.25, sm: 2 } }}>
           <List dense disablePadding>
             {activities.map((activity, idx) => (
-              <ListItem key={`${idx}-${activity}`} disableGutters sx={{ py: 0.75 }}>
-                <ListItemText primary={`${idx + 1}. ${activity}`} />
+              <ListItem key={`${idx}-${activity}`} disableGutters sx={{ py: { xs: 0.25, sm: 0.75 } }}>
+                <ListItemText
+                  primary={`${idx + 1}. ${activity}`}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                />
               </ListItem>
             ))}
           </List>
         </Paper>
       )}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
         {canEdit && !editing ? (
           <>
-            <Button variant="outlined" startIcon={<EditIcon />} onClick={startEditing}>
+            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={startEditing}>
               {t('profilePage.actions.edit', { ns: 'onboarding' })}
             </Button>
             {onRestartChat ? (
-              <Button variant="outlined" startIcon={<ReplayIcon />} onClick={onRestartChat}>
+              <Button size="small" variant="outlined" startIcon={<ReplayIcon />} onClick={onRestartChat}>
                 {t('profilePage.actions.restartCoachingChat', { ns: 'onboarding' })}
               </Button>
             ) : null}
@@ -174,16 +185,17 @@ export function WorkEnjoyActivitiesPanel({
         ) : null}
         {editing ? (
           <>
-            <Button variant="contained" onClick={saveEditing}>
+            <Button size="small" variant="contained" onClick={saveEditing}>
               {t('profilePage.actions.save', { ns: 'onboarding' })}
             </Button>
-            <Button variant="text" onClick={cancelEditing}>
+            <Button size="small" variant="text" onClick={cancelEditing}>
               {t('profilePage.actions.cancel', { ns: 'onboarding' })}
             </Button>
           </>
         ) : null}
         {showConfirm && !editing ? (
           <Button
+            size="small"
             variant="contained"
             onClick={onConfirm}
             disabled={activities.length === 0}
@@ -256,16 +268,12 @@ const WorkEnjoyMostCoaching = ({
     messagesRef.current = messages;
   }, [messages]);
 
-  useEffect(() => {
-    if (!onChatPersist) return undefined;
-    onChatPersist({
-      phase,
-      messages,
-      activities,
-      userEdited,
-    });
-    return undefined;
-  }, [onChatPersist, phase, messages, activities, userEdited]);
+  useDebouncedCoachingPersist(onChatPersist, {
+    phase,
+    messages,
+    activities,
+    userEdited,
+  });
 
   const requestNext = useCallback(async (history) => {
     const token = localStorage.getItem('token');
@@ -425,15 +433,15 @@ const WorkEnjoyMostCoaching = ({
             sx={{
               display: 'flex',
               justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              mb: 1.5,
+              mb: { xs: 1, sm: 1.5 },
             }}
           >
             <Paper
               elevation={0}
               sx={{
-                px: 1.5,
-                py: 1,
-                maxWidth: '85%',
+                px: { xs: 1.25, sm: 1.5 },
+                py: { xs: 0.875, sm: 1 },
+                maxWidth: { xs: '92%', sm: '85%' },
                 bgcolor: msg.role === 'user' ? 'primary.main' : 'background.paper',
                 color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
                 borderRadius: 2,
@@ -458,11 +466,11 @@ const WorkEnjoyMostCoaching = ({
         <Box ref={messagesEndRef} sx={{ height: 0 }} aria-hidden />
       </Box>
       <Box ref={inputAreaRef} sx={coachingChatInputAreaSx}>
-        <Divider sx={{ mb: 2, display: { xs: 'none', sm: 'block' } }} />
+        <Divider sx={{ mb: { xs: 0.75, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
         <Box
           sx={{
             display: 'flex',
-            gap: 1,
+            gap: { xs: 0.75, sm: 1 },
             alignItems: 'flex-start',
             flexDirection: { xs: 'column', sm: 'row' },
           }}
@@ -471,12 +479,13 @@ const WorkEnjoyMostCoaching = ({
             inputRef={inputRef}
             fullWidth
             multiline
-            minRows={2}
-            maxRows={5}
+            minRows={1}
+            maxRows={4}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={t('workEnjoyCoaching.chat.inputPlaceholder')}
             disabled={loading || !bootstrapped}
+            size="small"
             onFocus={() => scrollToBottom({ smooth: false })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -494,6 +503,7 @@ const WorkEnjoyMostCoaching = ({
               flexShrink: 0,
               mt: { xs: 0, sm: 0.5 },
               width: { xs: '100%', sm: 'auto' },
+              minHeight: { xs: 40, sm: 'auto' },
             }}
           >
             {t('workEnjoyCoaching.chat.sendCta')}

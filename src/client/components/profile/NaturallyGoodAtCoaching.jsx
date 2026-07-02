@@ -22,6 +22,7 @@ import {
   coachingChatRootSx,
   coachingChatPageRootSx,
   coachingChatDialogRootSx,
+  useDebouncedCoachingPersist,
   useCoachingChatAutoScroll,
 } from '../../hooks/useCoachingChatAutoScroll';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
@@ -144,7 +145,7 @@ export function NaturallyGoodAtSummaryPanel({
     if (editing) {
       return (
         <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
             {label}
           </Typography>
           {drafts.map((item, idx) => (
@@ -152,6 +153,9 @@ export function NaturallyGoodAtSummaryPanel({
               key={`${label}-${idx}`}
               fullWidth
               size="small"
+              multiline
+              minRows={2}
+              maxRows={6}
               hiddenLabel
               value={item}
               onChange={(e) => {
@@ -167,14 +171,17 @@ export function NaturallyGoodAtSummaryPanel({
     }
     if (items.length === 0) return null;
     return (
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+      <Box sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
           {label}
         </Typography>
         <List dense disablePadding>
           {items.map((item, idx) => (
-            <ListItem key={`${label}-${idx}-${item}`} disableGutters sx={{ py: 0.5 }}>
-              <ListItemText primary={`${idx + 1}. ${item}`} />
+            <ListItem key={`${label}-${idx}-${item}`} disableGutters sx={{ py: 0.25 }}>
+              <ListItemText
+                primary={`${idx + 1}. ${item}`}
+                primaryTypographyProps={{ variant: 'body2' }}
+              />
             </ListItem>
           ))}
         </List>
@@ -198,11 +205,11 @@ export function NaturallyGoodAtSummaryPanel({
     }
     if (skillDomains.length === 0) return null;
     return (
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+      <Box sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
           {t('naturallyGoodAtCoaching.summary.skillDomainsHeading')}
         </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
           {skillDomains.map((item, idx) => (
             <SkillDomainChip key={`skill-domain-${idx}-${item}`} label={item} domainKey={item} />
           ))}
@@ -214,11 +221,15 @@ export function NaturallyGoodAtSummaryPanel({
   return (
     <Box>
       {introText ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mb: { xs: 1, sm: 2 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+        >
           {introText}
         </Typography>
       ) : null}
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 2 }, mb: { xs: 1.25, sm: 2 } }}>
         {renderStrengthList(
           strengths,
           strengthDrafts,
@@ -227,14 +238,14 @@ export function NaturallyGoodAtSummaryPanel({
         )}
         {renderSkillDomains()}
       </Paper>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
         {canEdit && !editing ? (
           <>
-            <Button variant="outlined" startIcon={<EditIcon />} onClick={startEditing}>
+            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={startEditing}>
               {t('profilePage.actions.edit', { ns: 'onboarding' })}
             </Button>
             {onRestartChat ? (
-              <Button variant="outlined" startIcon={<ReplayIcon />} onClick={onRestartChat}>
+              <Button size="small" variant="outlined" startIcon={<ReplayIcon />} onClick={onRestartChat}>
                 {t('profilePage.actions.restartCoachingChat', { ns: 'onboarding' })}
               </Button>
             ) : null}
@@ -242,16 +253,17 @@ export function NaturallyGoodAtSummaryPanel({
         ) : null}
         {editing ? (
           <>
-            <Button variant="contained" onClick={saveEditing}>
+            <Button size="small" variant="contained" onClick={saveEditing}>
               {t('profilePage.actions.save', { ns: 'onboarding' })}
             </Button>
-            <Button variant="text" onClick={cancelEditing}>
+            <Button size="small" variant="text" onClick={cancelEditing}>
               {t('profilePage.actions.cancel', { ns: 'onboarding' })}
             </Button>
           </>
         ) : null}
         {showConfirm && !editing ? (
           <Button
+            size="small"
             variant="contained"
             onClick={onConfirm}
             disabled={strengths.length === 0 || skillDomains.length === 0}
@@ -338,17 +350,13 @@ const NaturallyGoodAtCoaching = ({
     messagesRef.current = messages;
   }, [messages]);
 
-  useEffect(() => {
-    if (!onChatPersist) return undefined;
-    onChatPersist({
-      phase,
-      messages,
-      strengths,
-      skillDomains,
-      userEdited,
-    });
-    return undefined;
-  }, [onChatPersist, phase, messages, strengths, skillDomains, userEdited]);
+  useDebouncedCoachingPersist(onChatPersist, {
+    phase,
+    messages,
+    strengths,
+    skillDomains,
+    userEdited,
+  });
 
   const requestNext = useCallback(async (history) => {
     const token = localStorage.getItem('token');
@@ -519,15 +527,15 @@ const NaturallyGoodAtCoaching = ({
             sx={{
               display: 'flex',
               justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              mb: 1.5,
+              mb: { xs: 1, sm: 1.5 },
             }}
           >
             <Paper
               elevation={0}
               sx={{
-                px: 1.5,
-                py: 1,
-                maxWidth: '85%',
+                px: { xs: 1.25, sm: 1.5 },
+                py: { xs: 0.875, sm: 1 },
+                maxWidth: { xs: '92%', sm: '85%' },
                 bgcolor: msg.role === 'user' ? 'primary.main' : 'background.paper',
                 color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
                 borderRadius: 2,
@@ -552,11 +560,11 @@ const NaturallyGoodAtCoaching = ({
         <Box ref={messagesEndRef} sx={{ height: 0 }} aria-hidden />
       </Box>
       <Box ref={inputAreaRef} sx={coachingChatInputAreaSx}>
-        <Divider sx={{ mb: 2, display: { xs: 'none', sm: 'block' } }} />
+        <Divider sx={{ mb: { xs: 0.75, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
         <Box
           sx={{
             display: 'flex',
-            gap: 1,
+            gap: { xs: 0.75, sm: 1 },
             alignItems: 'flex-start',
             flexDirection: { xs: 'column', sm: 'row' },
           }}
@@ -565,12 +573,13 @@ const NaturallyGoodAtCoaching = ({
             inputRef={inputRef}
             fullWidth
             multiline
-            minRows={2}
-            maxRows={5}
+            minRows={1}
+            maxRows={4}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={t('naturallyGoodAtCoaching.chat.inputPlaceholder')}
             disabled={loading || !bootstrapped}
+            size="small"
             onFocus={() => scrollToBottom({ smooth: false })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -588,6 +597,7 @@ const NaturallyGoodAtCoaching = ({
               flexShrink: 0,
               mt: { xs: 0, sm: 0.5 },
               width: { xs: '100%', sm: 'auto' },
+              minHeight: { xs: 40, sm: 'auto' },
             }}
           >
             {t('naturallyGoodAtCoaching.chat.sendCta')}

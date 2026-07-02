@@ -113,10 +113,24 @@ const TasksResponsibilitiesStep = ({
               placeholder={t('tasksResponsibilitiesStep.placeholder')}
               fullWidth
               size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
               hiddenLabel
               error={Boolean(fieldErrors[fieldKey])}
               helperText={fieldErrors[fieldKey]}
               inputProps={{ maxLength: PROFILE_REVIEW_STRUCTURED_MAX.keyResponsibilities }}
+              sx={{
+                '& .MuiInputBase-inputMultiline': {
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                },
+                '& .MuiFormHelperText-root': {
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                },
+              }}
               inputRef={(el) => {
                 if (el) {
                   inputRefs.current[idx] = el;

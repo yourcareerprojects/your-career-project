@@ -1,5 +1,3 @@
-import { lockProfileSteppedScroll } from './profileSnapScroll';
-
 /**
  * Scroll a profile page section to the top of the viewport, below the fixed app header.
  * Pair with `scrollMarginTop` on section containers for consistent offset.
@@ -8,7 +6,6 @@ export function scrollProfileSectionIntoView(element) {
   if (!element || typeof element.scrollIntoView !== 'function') {
     return false;
   }
-  lockProfileSteppedScroll();
   element.scrollIntoView({ behavior: 'smooth', block: 'start' });
   return true;
 }

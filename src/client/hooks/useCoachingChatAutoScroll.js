@@ -72,14 +72,20 @@ export function useCoachingChatAutoScroll(scrollDeps = [], options = {}) {
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return undefined;
+    let rafId = 0;
 
     const handleViewportChange = () => {
-      scrollToBottom({ smooth: false });
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        scrollToBottom({ smooth: false });
+      });
     };
 
     viewport.addEventListener('resize', handleViewportChange);
     viewport.addEventListener('scroll', handleViewportChange);
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       viewport.removeEventListener('resize', handleViewportChange);
       viewport.removeEventListener('scroll', handleViewportChange);
     };
@@ -128,12 +134,12 @@ export const coachingChatPageRootSx = {
  * messages scroll inside the flex column (dialog title/actions/intro sit above).
  */
 export const coachingChatDialogRootSx = {
-  maxHeight: { xs: 'calc(92dvh - 320px)', sm: 'none' },
-  minHeight: { xs: 240, sm: 0 },
+  maxHeight: { xs: 'calc(92dvh - 270px)', sm: 'none' },
+  minHeight: { xs: 280, sm: 0 },
 };
 
 export const coachingChatMessagesSx = {
-  mb: { xs: 0, sm: 2 },
+  mb: { xs: 0.5, sm: 2 },
   flex: { xs: '1 1 auto', sm: '0 0 auto' },
   minHeight: 0,
   maxHeight: { xs: 'min(50dvh, 360px)', sm: 'none' },
@@ -155,8 +161,38 @@ export const coachingChatPageMessagesSx = {
 
 export const coachingChatInputAreaSx = {
   flexShrink: 0,
-  pt: { xs: 1.5, sm: 0 },
+  pt: { xs: 0.75, sm: 0 },
   borderTop: { xs: '1px solid', sm: 'none' },
   borderColor: 'divider',
   bgcolor: 'background.paper',
 };
+
+/**
+ * Debounces parent snapshot persistence so local chat updates do not force
+ * expensive parent re-renders on every intermediate chat state transition.
+ * @param {Function | undefined} onPersist
+ * @param {unknown} snapshot
+ * @param {number} [delayMs]
+ */
+export function useDebouncedCoachingPersist(onPersist, snapshot, delayMs = 180) {
+  const latestPersistRef = useRef(onPersist);
+  const latestSnapshotRef = useRef(snapshot);
+
+  useEffect(() => {
+    latestPersistRef.current = onPersist;
+  }, [onPersist]);
+
+  useEffect(() => {
+    latestSnapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (typeof onPersist !== 'function') return undefined;
+    const timeoutId = window.setTimeout(() => {
+      latestPersistRef.current?.(latestSnapshotRef.current);
+    }, delayMs);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [onPersist, snapshot, delayMs]);
+}

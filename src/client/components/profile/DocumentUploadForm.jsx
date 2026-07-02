@@ -4455,10 +4455,14 @@ const DocumentUploadForm = ({
                 <>
                   {!workEnjoySummaryFooter.canConfirm && (
                     <>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                      >
                         {t('workEnjoyCoaching.chat.intro')}
                       </Typography>
-                      <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
                     </>
                   )}
                   <Box {...reviewFieldAnchorProps('userIdentity.workEnjoyMost')} sx={{ mb: 2.5 }}>
@@ -4495,10 +4499,14 @@ const DocumentUploadForm = ({
                 <>
                   {!topicsSummaryFooter.canConfirm && (
                     <>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                      >
                         {t('topicsIndustriesCoaching.chat.intro')}
                       </Typography>
-                      <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
                     </>
                   )}
                   <Box {...reviewFieldAnchorProps('userIdentity.topicsIndustriesInterest')} sx={{ mb: 2.5 }}>
@@ -4550,10 +4558,14 @@ const DocumentUploadForm = ({
                 <>
                   {!strengthsSummaryFooter.canConfirm && (
                     <>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                      >
                         {t('naturallyGoodAtCoaching.chat.intro')}
                       </Typography>
-                      <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
                     </>
                   )}
                   <Box {...reviewFieldAnchorProps('userIdentity.naturallyGoodAt')} sx={{ mb: 2.5 }}>
@@ -4606,10 +4618,14 @@ const DocumentUploadForm = ({
                 <>
                   {!workEnvironmentSummaryFooter.canConfirm && (
                     <>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                      >
                         {t('workEnvironmentCoaching.chat.intro')}
                       </Typography>
-                      <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
                     </>
                   )}
                   <Box {...reviewFieldAnchorProps('userIdentity.workEnvironmentFit')} sx={{ mb: 2.5 }}>
@@ -4647,10 +4663,14 @@ const DocumentUploadForm = ({
                 <>
                   {!workingLifeAchievementSummaryFooter.canConfirm && (
                     <>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                      >
                         {t('workingLifeAchievementCoaching.chat.intro')}
                       </Typography>
-                      <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'block' } }} />
                     </>
                   )}
                   <Box {...reviewFieldAnchorProps('userIdentity.workingLifeAchievement')} sx={{ mb: 2.5 }}>
@@ -4969,7 +4989,18 @@ const DocumentUploadForm = ({
                               }
                             }));
                           }}
-                          sx={REVIEW.field}
+                          sx={{
+                            ...REVIEW.field,
+                            '& .MuiInputBase-inputMultiline': {
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word',
+                            },
+                            '& .MuiFormHelperText-root': {
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word',
+                            },
+                          }}
                           fullWidth
                           multiline
                           minRows={3}

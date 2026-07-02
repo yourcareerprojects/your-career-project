@@ -65,6 +65,22 @@ function excludeSkillLabels(skills = [], excludeLabels = []) {
   });
 }
 
+function findScrollableAncestor(element) {
+  let node = element?.parentElement || null;
+  while (node) {
+    const style = window.getComputedStyle(node);
+    const overflowY = style?.overflowY || '';
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll')
+      && node.scrollHeight > node.clientHeight
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function SkillChipGroup({
   skills,
   selectedNames,
@@ -86,13 +102,24 @@ function SkillChipGroup({
             label={label}
             skillKey={key}
             selected={selected}
-            onClick={() => onToggle(label)}
+            onClick={(event) => onToggle(label, event.currentTarget)}
             disabled={atLimit}
           />
         );
       })}
     </Box>
   );}
+
+const mobileResultsPanelSx = {
+  mt: 1,
+  pt: 1,
+  borderTop: '1px solid',
+  borderColor: 'divider',
+  maxHeight: { xs: 'min(42dvh, 320px)', sm: 'none' },
+  overflowY: { xs: 'auto', sm: 'visible' },
+  WebkitOverflowScrolling: 'touch',
+  overscrollBehavior: 'contain',
+};
 
 /**
  * Manual profile fill: search and pick skills (saved to structuredUserInfo.skills or skillsInDevelopment).
@@ -223,9 +250,17 @@ const SkillSelectionStep = ({
     return undefined;
   }, [debouncedSearch, contextKey, contextTexts, t, tk]);
 
-  const handleToggle = useCallback((label) => {
+  const handleToggle = useCallback((label, sourceEl = null) => {
     const trimmed = String(label || '').trim();
     if (!trimmed) return;
+    const scrollContainer = findScrollableAncestor(sourceEl);
+    const previousScrollTop = scrollContainer?.scrollTop ?? null;
+    const previousWindowScrollY = window.scrollY;
+    if (sourceEl instanceof HTMLElement) {
+      sourceEl.blur();
+    } else if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     const current = skillNamesFromProfile(selectedSkills);
     const exists = current.some((name) => name.toLowerCase() === trimmed.toLowerCase());
     let next;
@@ -236,6 +271,13 @@ const SkillSelectionStep = ({
       next = [...current, trimmed];
     }
     onSelectedSkillsChange(next.map((name) => ({ name })));
+    requestAnimationFrame(() => {
+      if (scrollContainer && previousScrollTop != null) {
+        scrollContainer.scrollTop = previousScrollTop;
+      } else if (window.scrollY !== previousWindowScrollY) {
+        window.scrollTo({ top: previousWindowScrollY, behavior: 'auto' });
+      }
+    });
   }, [maxSelected, onSelectedSkillsChange, selectedSkills]);
 
   const isSearchActive = debouncedSearch.length >= SEARCH_MIN_CHARS;
@@ -252,7 +294,11 @@ const SkillSelectionStep = ({
 
   return (
     <Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mb: { xs: 1, sm: 2 }, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+      >
         {t(tk('intro'))}
       </Typography>
       <TextField
@@ -261,80 +307,83 @@ const SkillSelectionStep = ({
         placeholder={t(tk('searchPlaceholder'))}
         size="small"
         fullWidth
-        sx={{ mb: 1.5 }}
+        sx={{ mb: 1 }}
         hiddenLabel
         aria-label={t(tk('searchPlaceholder'))}
       />
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         {t(tk('selectedCount'), { count: selectedNames.size, max: maxSelected })}
       </Typography>
       {selectedLabels.length > 0 ? (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        <Box sx={{ mb: 1.25 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
             {t(tk('selectedTitle'))}
           </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
             {selectedLabels.map((label) => (
               <SkillChip
                 key={label}
                 label={label}
                 skillKey={label}
                 selected
-                onDelete={() => handleToggle(label)}
+                onDelete={(event) => handleToggle(label, event?.currentTarget)}
               />
             ))}
           </Box>        </Box>
       ) : null}
-      {!isSearchActive && !loading ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {t(tk('searchHint'))}
-        </Typography>
-      ) : null}
-      {error ? (
-        <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      ) : null}
-      {loading && !hasResults ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
-          <CircularProgress size={22} />
-          <Typography variant="body2" color="text.secondary">
-            {t(tk('loading'))}
+      <Box sx={mobileResultsPanelSx}>
+        {!isSearchActive && !loading ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {t(tk('searchHint'))}
           </Typography>
-        </Box>
-      ) : (
-        <>
-          {loading ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <CircularProgress size={16} />
-              <Typography variant="caption" color="text.secondary">
-                {t(tk('loading'))}
+        ) : null}
+        {error ? (
+          <Alert severity="error" sx={{ mb: 1.25 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        ) : null}
+        {loading && !hasResults ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
+            <CircularProgress size={22} />
+            <Typography variant="body2" color="text.secondary">
+              {t(tk('loading'))}
+            </Typography>
+          </Box>
+        ) : (
+          <>
+            {loading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <CircularProgress size={16} />
+                <Typography variant="caption" color="text.secondary">
+                  {t(tk('loading'))}
+                </Typography>
+              </Box>
+            ) : null}
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+              {resultsTitle}
+            </Typography>
+            {!hasResults ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                {isSearchActive
+                  ? t(tk('noSearchResults'))
+                  : t(tk('noRecommendations'))}
               </Typography>
-            </Box>
-          ) : null}
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>
-            {resultsTitle}
-          </Typography>
-          {!hasResults ? (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              {isSearchActive
-                ? t(tk('noSearchResults'))
-                : t(tk('noRecommendations'))}
-            </Typography>
-          ) : (
-            <SkillChipGroup
-              skills={displaySkills}
-              selectedNames={selectedNames}
-              onToggle={handleToggle}
-              maxSelected={maxSelected}
-            />          )}
-          {!isSearchActive && resultMode === 'recommendations' && hasResults ? (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              {t(tk('recommendationsHint'))}
-            </Typography>
-          ) : null}
-        </>
-      )}
+            ) : (
+              <SkillChipGroup
+                skills={displaySkills}
+                selectedNames={selectedNames}
+                onToggle={handleToggle}
+                maxSelected={maxSelected}
+              />
+            )}
+            {!isSearchActive && resultMode === 'recommendations' && hasResults ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                {t(tk('recommendationsHint'))}
+              </Typography>
+            ) : null}
+          </>
+        )}
+      </Box>
     </Box>
   );
 };

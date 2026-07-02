@@ -174,7 +174,7 @@
     },
     "summary": {
       "intro": "Based on your answers, these work activities fit you well:",
-      "confirmCta": "Continue with these activities"
+      "confirmCta": "Continue"
     },
     "errors": {
       "loadFailed": "Could not start the coaching chat. Please try again.",
@@ -194,7 +194,7 @@
     "summary": {
       "intro": "Based on your answers, these interests fit you especially well.",
       "interestTopicsHeading": "Your key interests",
-      "confirmCta": "Continue with these topics"
+      "confirmCta": "Continue"
     },
     "errors": {
       "loadFailed": "Could not start the coaching chat. Please try again.",
@@ -215,7 +215,7 @@
       "intro": "Based on your answers, these are your natural strengths:",
       "strengthsHeading": "Your natural strengths",
       "skillDomainsHeading": "Your strengths",
-      "confirmCta": "Continue with these strengths"
+      "confirmCta": "Continue"
     },
     "skillDomainPicker": {
       "dialogTitle": "Choose strength domains",
@@ -252,7 +252,7 @@
       "intro": "Based on your answers, this way of working and environment suit you especially well:",
       "workStylesHeading": "Your preferred way of working",
       "workEnvironmentsHeading": "Suitable work environment",
-      "confirmCta": "Continue with this way of working"
+      "confirmCta": "Continue"
     },
     "errors": {
       "loadFailed": "Could not start the coaching chat. Please try again.",
@@ -273,7 +273,7 @@
       "intro": "Based on your answers, these are your key career goals:",
       "careerGoalsHeading": "Your key career goals",
       "prioritiesHeading": "What matters especially to you",
-      "confirmCta": "Continue with these goals"
+      "confirmCta": "Continue"
     },
     "errors": {
       "loadFailed": "Could not start the coaching chat. Please try again.",

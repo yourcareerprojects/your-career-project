@@ -48,8 +48,6 @@ import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import ProfileDocumentList from '../profile/ProfileDocumentList';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import ProfileSnapTarget from '../profile/ProfileSnapTarget';
-import { useProfileMobileScrollSnap } from '../../hooks/useProfileMobileScrollSnap';
-import { ProfileMobileSnapContext } from '../../contexts/ProfileMobileSnapContext';
 import {
   buildReviewSaveUserMessage,
   saveExtractedProfileReview,
@@ -274,7 +272,6 @@ const Profile = ({
   const narrativePollActiveRef = useRef(false);
   const narrativeStatusBootstrapDoneRef = useRef(false);
   const isProfileReadOnlyView = !editSection && !editIdentityField && !editStructuredCategory && !editCareerInputs;
-  const mobileSnapActive = useProfileMobileScrollSnap(isProfileReadOnlyView);
   const hasSimulationSession = hasActiveCareerSimulationSession();
   const lastSimulationQuery = useLastSimulationQuery({
     enabled:
@@ -2121,7 +2118,6 @@ const Profile = ({
   };
 
   return (
-    <ProfileMobileSnapContext.Provider value={mobileSnapActive}>
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {/* Prompt to complete profile if below threshold */}
       {!canEditProfile ? (
@@ -3049,7 +3045,6 @@ const Profile = ({
         }}
       />
     </Box>
-    </ProfileMobileSnapContext.Provider>
   );
 };
 

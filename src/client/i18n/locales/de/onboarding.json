@@ -174,7 +174,7 @@
     },
     "summary": {
       "intro": "Basierend auf deinen Antworten passen diese Tätigkeiten besonders gut zu dir:",
-      "confirmCta": "Mit diesen Tätigkeiten fortfahren"
+      "confirmCta": "Weiter"
     },
     "errors": {
       "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
@@ -196,7 +196,7 @@
       "interestTopicsHeading": "Deine wichtigsten Interessen",
       "industriesHeading": "Passende Branchen oder Bereiche",
       "addRow": "Zeile hinzufügen",
-      "confirmCta": "Mit diesen Themen fortfahren"
+      "confirmCta": "Weiter"
     },
     "errors": {
       "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
@@ -217,7 +217,7 @@
       "intro": "Basierend auf deinen Antworten sind das deine natürlichen Stärken:",
       "strengthsHeading": "Deine natürlichen Stärken",
       "skillDomainsHeading": "Deine Stärken",
-      "confirmCta": "Mit diesen Stärken fortfahren"
+      "confirmCta": "Weiter"
     },
     "skillDomainPicker": {
       "dialogTitle": "Stärken auswählen",
@@ -254,7 +254,7 @@
       "intro": "Basierend auf deinen Antworten passt diese Arbeitsweise und dieses Umfeld besonders gut zu dir:",
       "workStylesHeading": "Deine bevorzugte Arbeitsweise",
       "workEnvironmentsHeading": "Passendes Arbeitsumfeld",
-      "confirmCta": "Mit dieser Arbeitsweise fortfahren"
+      "confirmCta": "Weiter"
     },
     "errors": {
       "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
@@ -275,7 +275,7 @@
       "intro": "Basierend auf deinen Antworten sind das deine wichtigsten Ziele im Berufsleben:",
       "careerGoalsHeading": "Deine wichtigsten Ziele im Berufsleben",
       "prioritiesHeading": "Was dir dabei besonders wichtig ist",
-      "confirmCta": "Mit diesen Zielen fortfahren"
+      "confirmCta": "Weiter"
     },
     "errors": {
       "loadFailed": "Der Coaching-Chat konnte nicht gestartet werden. Bitte versuche es erneut.",
