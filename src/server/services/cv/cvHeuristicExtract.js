@@ -65,7 +65,7 @@ function extractProfileDataFromDocumentTextHeuristic(text) {
   try {
     // Name extraction
     const namePatterns = [
-      /Name\s*[:\-]\s*([A-Za-z\s]+)/i,
+      /Name\s*[:-]\s*([A-Za-z\s]+)/i,
       /^([A-Z][a-z]+\s+[A-Z][a-z]+)/m,
       /([A-Z][a-z]+\s+[A-Z][a-z]+)\s*[\n\r]/m
     ];
@@ -90,8 +90,8 @@ function extractProfileDataFromDocumentTextHeuristic(text) {
 
     // Phone extraction
     const phonePatterns = [
-      /(\+?\d{1,3}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{1,4}[\s\-]?\d{1,9})/,
-      /(\+?\d[\d\s\-()]{7,}\d)/
+      /(\+?\d{1,3}[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9})/,
+      /(\+?\d[\d\s()-]{7,}\d)/
     ];
     
     for (const pattern of phonePatterns) {

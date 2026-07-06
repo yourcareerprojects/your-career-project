@@ -1,7 +1,7 @@
 const Skill = require('../models/Skill');
 const CareerPath = require('../models/CareerPath');
 const CareerPathSkill = require('../models/CareerPathSkill');
-const { getEscoUriToTitleMap, findTitleForEscoUri } = require('../utils/escoUriToTitleMap');
+const { findTitleForEscoUri, resolveEscoSkillTitles } = require('../utils/escoUriToTitleMap');
 const { normalizeLanguage } = require('../utils/languageResolution');
 const {
   getLocalizedField,
@@ -175,16 +175,22 @@ async function buildSkillLabelMapByKeys(skillKeys = [], lang = FALLBACK_LANGUAGE
 
 /**
  * When requiredSkills / mapped_items store raw ESCO http(s) URIs, `normalizeSkillKey` produces a
- * non-canonical key that does not match `Skill.key`. Map URI → title via ESCO CSV, then resolve
+ * non-canonical key that does not match `Skill.key`. Map URI → title via ESCO MongoDB lookup, then resolve
  * the canonical `Skill` row by normalized title key.
  * @param {Map<string, string|null>} labelMap
  * @param {Array<{ key: string, label: string }>} flatSkills
  * @param {string} lang
- * @param {Record<string, string>|null} [preloadedUriMap] — from `getEscoUriToTitleMap()` (avoid double read)
+ * @param {Record<string, string>|null} [preloadedUriMap] — from `resolveEscoSkillTitles()` (avoid double read)
  */
 async function augmentLabelMapForEscoUris(labelMap, flatSkills, lang, preloadedUriMap = null) {
   if (!labelMap || !Array.isArray(flatSkills) || flatSkills.length === 0) return;
-  const uriMap = preloadedUriMap || (await getEscoUriToTitleMap());
+  let uriMap = preloadedUriMap;
+  if (!uriMap) {
+    const uris = flatSkills
+      .map((s) => (typeof s.label === 'string' ? s.label : ''))
+      .filter((label) => label.trim().toLowerCase().startsWith('http'));
+    uriMap = await resolveEscoSkillTitles(uris);
+  }
   const normalizedLang = normalizeLanguage(lang, FALLBACK_LANGUAGE);
   const pairs = [];
   for (const s of flatSkills) {
@@ -316,7 +322,10 @@ async function buildLocalizedSkillsResponse(
     ...optionalRaw,
     ...domainsRaw.flatMap((d) => d.items),
   ];
-  const escoUriMap = await getEscoUriToTitleMap();
+  const escoUriUris = flatForUri
+    .map((s) => (typeof s.label === 'string' ? s.label : ''))
+    .filter((label) => label.trim().toLowerCase().startsWith('http'));
+  const escoUriMap = await resolveEscoSkillTitles(escoUriUris);
   await augmentLabelMapForEscoUris(labelMap, flatForUri, normalizedLang, escoUriMap);
 
   let unmappedSkillCount = 0;
@@ -598,14 +607,6 @@ function buildHarmonizedSkillsFromDocs(skillDocs = [], skillKeys = [], keyCounts
       label: getLocalizedFieldLenient(entry.labelI18n, normalizedLang) || entry.label,
     })),
   );
-}
-
-async function buildHarmonizedSkillsForSelection(skillKeys = [], keyCounts = new Map(), lang = FALLBACK_LANGUAGE) {
-  const keys = Array.from(new Set((skillKeys || []).filter(Boolean)));
-  if (keys.length === 0) return [];
-
-  const skills = await Skill.find({ key: { $in: keys } }, { key: 1, label: 1 }).lean();
-  return buildHarmonizedSkillsFromDocs(skills, keys, keyCounts, lang);
 }
 
 /**

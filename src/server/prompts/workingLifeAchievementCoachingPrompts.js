@@ -322,7 +322,7 @@ Ask question ${questionNumber} of ${COACHING_QUESTION_COUNT} for the standalone 
 - The new topic must differ clearly from the areas already covered`;
 }
 
-function buildQuestionTaskRules({ lang, questionNumber, focus, audience = 'pupil' }) {
+function buildQuestionTaskRules({ lang, questionNumber: _questionNumber, focus, audience = 'pupil' }) {
   const isDe = String(lang || 'de').toLowerCase().startsWith('de');
   const example = focus.example;
   const styleHint = questionStyleHint(lang, audience);

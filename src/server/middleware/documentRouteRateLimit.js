@@ -28,16 +28,6 @@ function isDocumentHighFrequencyPollRequest(req) {
   return false;
 }
 
-/**
- * @deprecated Use isDocumentHighFrequencyPollRequest — kept for existing tests/imports.
- * @param {import('express').Request} req
- * @returns {boolean}
- */
-function isCvExtractionStatusPollRequest(req) {
-  if (req.method !== 'GET') return false;
-  return EXTRACTION_STATUS_PATH_RE.test(documentRoutePathOnly(req));
-}
-
 function createDocumentRouteIpLimiter() {
   return rateLimit({
     windowMs: DOCUMENT_ROUTE_IP_WINDOW_MS,
@@ -52,7 +42,6 @@ function createDocumentRouteIpLimiter() {
 module.exports = {
   DOCUMENT_ROUTE_IP_WINDOW_MS,
   DOCUMENT_ROUTE_IP_MAX,
-  isCvExtractionStatusPollRequest,
   isDocumentHighFrequencyPollRequest,
   createDocumentRouteIpLimiter,
 };

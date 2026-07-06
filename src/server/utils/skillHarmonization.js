@@ -1,4 +1,3 @@
-const { getEnglishDomainName } = require('./i18nFields');
 const {
   normalizeSkillDomainDedupeKey,
   chooseCanonicalSkillDomainVariant,

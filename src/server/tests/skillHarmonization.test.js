@@ -1,5 +1,4 @@
 const {
-  coerceSkillLabelToI18n,
   buildSkillHarmonizationPlan,
   dedupeSkillCatalogEntries,
   buildSkillLabelAliasMaps,

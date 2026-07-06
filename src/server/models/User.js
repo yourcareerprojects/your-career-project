@@ -101,13 +101,6 @@ const userSchema = new mongoose.Schema({
       domains: [String],
       workEnvironment: [String],
       locationPreferences: [String],
-      salaryExpectations: {
-        currency: String,
-        range: {
-          min: Number,
-          max: Number
-        }
-      },
       workLifeBalance: {
         type: String,
         enum: ['flexible', 'balanced', 'intensive']

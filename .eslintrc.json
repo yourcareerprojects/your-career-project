@@ -29,6 +29,8 @@
         "argsIgnorePattern": "^_"
       }
     ],
+    "react/jsx-uses-vars": "warn",
+    "react/jsx-uses-react": "off",
     "react/react-in-js-scope": "off",
     "react/prop-types": "off",
     "react-hooks/rules-of-hooks": "error",

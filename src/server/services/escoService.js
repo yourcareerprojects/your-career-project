@@ -2,7 +2,7 @@ const axios = require('axios');
 const { TIMEOUT_MS_EXTERNAL_DEFAULT } = require('../utils/httpTimeouts');
 const CareerPath = require('../models/CareerPath');
 const { attachSkillsToCareerPaths } = require('./careerPathSkillService');
-const { getEscoUriToTitleMap } = require('../utils/escoUriToTitleMap');
+const { resolveEscoSkillTitles, canonicalEscoUri } = require('./escoSkillLookupService');
 const { mergeSimulationPoolFilter } = require('./simulation/simulationCareerPathPoolFilter');
 
 const ESCO_API_BASE = 'https://ec.europa.eu/esco/api/v1';
@@ -22,23 +22,18 @@ function normalizeSkillKey(value) {
 }
 
 async function withRetry(fn, { retries = 3, minDelayMs = 250, factor = 2 } = {}) {
-  let attempt = 0;
   let delay = minDelayMs;
-  while (true) {
+  for (let attempt = 0; ; attempt += 1) {
     try {
       return await fn();
     } catch (err) {
-      attempt += 1;
-      if (attempt > retries) throw err;
+      if (attempt >= retries) throw err;
       await sleep(delay);
       delay *= factor;
     }
   }
 }
 
-async function loadSkillMapFromCsv() {
-  return getEscoUriToTitleMap();
-}
 
 /**
  * Fetches occupations from the ESCO API.
@@ -172,10 +167,11 @@ async function normalizeRequiredSkills({ requiredSkills, requiredSkillUris } = {
     }
   }
 
-  // Backfill titles from URI via local CSV map if needed
-  const skillMap = await loadSkillMapFromCsv();
-  for (const uri of uris) {
-    if (skillMap[uri]) titles.push(skillMap[uri]);
+  const uniqueUris = Array.from(new Set(uris.filter(Boolean)));
+  const skillMap = await resolveEscoSkillTitles(uniqueUris, { fetchMissing: true });
+  for (const uri of uniqueUris) {
+    const title = skillMap[canonicalEscoUri(uri)];
+    if (title) titles.push(title);
   }
 
   const dedupe = (arr) => Array.from(
@@ -287,14 +283,13 @@ async function cacheESCOOccupations(options = {}) {
  * Converts object/URI arrays into consistent titles + URIs.
  */
 async function normalizeCareerPathRequiredSkills({ batchSize = 250 } = {}) {
-  await loadSkillMapFromCsv();
-
   let updated = 0;
   let scanned = 0;
+  let docs;
 
-  while (true) {
+  do {
     // Only fetch ids + requiredSkills fields to keep memory down
-    const docs = await CareerPath.find(
+    docs = await CareerPath.find(
       {},
       { escoId: 1, requiredSkills: 1, requiredSkillUris: 1 },
       { limit: batchSize, skip: scanned }
@@ -339,7 +334,7 @@ async function normalizeCareerPathRequiredSkills({ batchSize = 250 } = {}) {
     }
 
     scanned += docs.length;
-  }
+  } while (docs.length > 0);
 
   return { scanned, updated };
 }

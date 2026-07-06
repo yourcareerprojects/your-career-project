@@ -149,7 +149,7 @@ function resetCvExtractionFanOutForTests() {
  * @param {object} options — same shape as emitHeuristicsCompletedAndFanOut minus jobId requirement
  */
 async function runInlineSemanticFanOut(text, options) {
-  const { cvLang, heuristicResult, ctx } = options;
+  const { cvLang, ctx } = options;
   const identityPromise = runSemanticLayer(
     'identity',
     () => interpretCvIdentityText(text, { documentLanguage: cvLang }),

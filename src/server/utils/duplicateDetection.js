@@ -285,7 +285,7 @@ const getDuplicateMessage = (duplicateResult) => {
     return null;
   }
   
-  const { duplicateType, existingStep, similarity } = duplicateResult;
+  const { duplicateType, similarity } = duplicateResult;
   
   switch (duplicateType) {
     case 'exact':
@@ -294,9 +294,10 @@ const getDuplicateMessage = (duplicateResult) => {
     case 'content':
       return 'This career step is already saved with the same content';
     
-    case 'semantic':
+    case 'semantic': {
       const similarityPercent = Math.round(similarity * 100);
       return `A similar career step is already saved (${similarityPercent}% similar). Would you like to update it?`;
+    }
     
     default:
       return 'A similar career step may already be saved';

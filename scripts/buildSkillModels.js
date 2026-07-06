@@ -18,7 +18,7 @@
  *     skill_weights:         { [skill]: number} – 0.1-1.0 relevance weight
  *     extraction_confidence: number             – 0.0-1.0
  *     built_at:              Date
- *     built_with:            string             – "esco_csv" | "fallback"
+ *     built_with:            string             – "esco_db" | "fallback"
  *   }
  *
  * Usage:
@@ -34,7 +34,7 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const CareerPath = require('../src/server/models/CareerPath');
-const { loadEscoSkillData, buildSkillModel } = require('../src/server/services/skillModelService');
+const { buildSkillModel } = require('../src/server/services/skillModelService');
 const { getLocalizedFieldLenient } = require('../src/server/utils/i18nFields');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/career-path-explorer';
@@ -77,10 +77,8 @@ async function main() {
   await mongoose.connect(MONGODB_URI);
   console.log('Connected to MongoDB');
 
-  // Load ESCO CSV data into memory
-  console.log('Loading ESCO skill data from CSV...');
-  await loadEscoSkillData();
-  console.log('ESCO skill data loaded.');
+  // Load ESCO reference data is stored in MongoDB (run `npm run import:esco-skills` once).
+  console.log('Using ESCO skill data from MongoDB (EscoSkill / EscoOccupationSkillRelation).');
 
   // Determine which documents to process
   const filter = flags.force
@@ -123,7 +121,7 @@ async function main() {
       lastId = doc._id;
 
       try {
-        const model = buildSkillModel(doc.escoId, {
+        const model = await buildSkillModel(doc.escoId, {
           title: doc.title,
           description: doc.description,
           requiredSkills: doc.requiredSkills

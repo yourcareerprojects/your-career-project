@@ -408,11 +408,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       roleIdentity: 1,
     };
 
-    const simulationCareerPathVectorProjection = {
-      ...simulationCareerPathMetaProjection,
-      roleVectors: 1,
-    };
-
     logStructured('[simulation-engine]', {
       userId: String(userId),
       event: 'before_career_path_load',
@@ -669,13 +664,13 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     );
 
     const abortSignal = runtimeOpts.abortSignal || null;
-    function assertNotAborted() {
+    const assertNotAborted = () => {
       if (abortSignal && abortSignal.aborted) {
         const e = new Error('memory_limit_exceeded');
         e.code = 'MEMORY_LIMIT_EXCEEDED';
         throw e;
       }
-    }
+    };
 
     const vectorCache = getSimulationRoleVectorCache();
     /** Per-run embeddings + vector dedup across phase2 hydrate calls */
@@ -692,7 +687,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       isForkChild: Boolean(runtimeOpts.isForkChild),
     });
 
-    async function fetchRoleVectorsMapForIds(rawIds, options = {}) {
+    const fetchRoleVectorsMapForIds = async (rawIds, options = {}) => {
       const { cacheScope, projection, normalizeRv, promoteFromFull } = resolveRoleVectorFetchOptions(options);
       const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
       const out = new Map();
@@ -769,23 +764,23 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       });
 
       return out;
-    }
+    };
 
-    async function phase2NextVectorLoader(ids) {
+    const phase2NextVectorLoader = async (ids) => {
       return fetchRoleVectorsMapForIds(ids, {
         cacheScope: CACHE_SCOPE_FINAL_NEXT,
         projection: ROLE_VECTORS_FINAL_NEXT_PROJECTION,
       });
-    }
+    };
 
-    async function phase2OutsideVectorLoader(ids) {
+    const phase2OutsideVectorLoader = async (ids) => {
       return fetchRoleVectorsMapForIds(ids, {
         cacheScope: CACHE_SCOPE_STRUCTURED,
         projection: ROLE_VECTORS_STRUCTURED_PROJECTION,
       });
-    }
+    };
 
-    async function phase2MetaLoader(rawIds) {
+    const phase2MetaLoader = async (rawIds) => {
       const unique = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
       const out = new Map();
       const objectIds = [];
@@ -808,7 +803,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
         loadedCount: docs.length,
       });
       return out;
-    }
+    };
 
     const scoredPaths = [];
     const totalChunks = Math.max(1, Math.ceil(pathIds.length / SCORE_CHUNK_SIZE));
@@ -956,7 +951,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
 
     // Strip roleVectors and hybrid_vector from steps before response (client doesn't need them; avoids buffer/size issues)
     const stripVectors = (step) => {
-      const { roleVectors, hybrid_vector, ...rest } = step;
+      const { roleVectors: _roleVectors, hybrid_vector: _hybrid_vector, ...rest } = step;
       return rest;
     };
     const nextRolesRaw = prioritizedLists.nextCareerRoles.map(stripVectors);
@@ -1080,7 +1075,7 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
   } finally {
     console.timeEnd('TOTAL');
   }
-};
+}
 
 module.exports = {
   executeCareerSimulation,

@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const occupationController = require('../controllers/occupationController');
 const CareerPath = require('../models/CareerPath');
-const escoService = require('../services/escoService');
 const { applyLocalizedFieldsToCareerPathList, applyLocalizedFieldsToCareerPathPayload } = require('../utils/localizedResponse');
 const {
   attachSkillsToCareerPath,

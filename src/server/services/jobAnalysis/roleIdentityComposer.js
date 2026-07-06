@@ -494,7 +494,6 @@ function phraseLeadIn(items) {
 // Deterministic composer — High Precision Identity Text (Version A)
 // ---------------------------------------------------------------------------
 
-const HP_WORD_TARGET = 280;
 const HP_WORD_CAP = 350;
 const HP_MAX_CORE_CLUSTERS = 3;
 const HP_MAX_SECONDARY_CLUSTERS = 2;

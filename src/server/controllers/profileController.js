@@ -13,24 +13,17 @@ const SimulationPrioritizedItem = require('../models/SimulationPrioritizedItem')
 const SimulationJob = require('../models/SimulationJob');
 const {
   createSimulationJob,
-  ensureDocumentEnrichmentRefreshJobQueued,
   reclaimStaleRunningSimulationJobs,
 } = require('../services/simulationJobService');
 const { runSimulationInChildProcess } = require('../services/simulation/simulationForkRunner');
 const { getSimulationJobExecutionLimitMs } = require('../services/simulation/simulationJobExecutionLimits');
-const { enrichCareerPathWithHybridScores } = require('../services/scoring/careerPathScorer');
-const { buildUserProfileForHybrid } = require('../services/scoring/hybridUserProfileForMatching');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
-const { generatePrioritizedListsPhase2 } = require('../services/simulation/prioritizedListGenerator');
-const { EMBEDDING_DIMS } = require('../services/embedding/embeddingService');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
 const {
-  ensureUserIdentityEmbeddingCachedByUserId,
   scheduleRefreshUserIdentityEmbeddingForUser,
   normalizeUserIdentityAnswers,
   USER_IDENTITY_ANSWER_KEYS,
-  topicsStringToInterestTokens,
   mergeProfileIdentityAnswers,
 } = require('../services/embedding/userIdentityEmbeddingTextService');
 const {
@@ -51,7 +44,6 @@ const {
   PLACEHOLDER: WHO_ARE_YOU_IDENTITY_PLACEHOLDER,
   generateWhoAreYouIdentityEmbeddingText,
 } = require('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
-const { generateCareerSlogan } = require('../services/jobAnalysis/careerSloganGenerator');
 const { evaluateProfileReviewFollowUps } = require('../services/jobAnalysis/inputQualityDiagnosisService');
 const { normalizeCoachingCvContext } = require('../services/profile/coachingCvContext');
 const { advanceWorkEnjoyCoaching } = require('../services/profile/workEnjoyCoachingService');
@@ -59,11 +51,10 @@ const { advanceTopicsIndustriesCoaching } = require('../services/profile/topicsI
 const { advanceNaturallyGoodAtCoaching } = require('../services/profile/naturallyGoodAtCoachingService');
 const { advanceWorkEnvironmentCoaching } = require('../services/profile/workEnvironmentCoachingService');
 const { advanceWorkingLifeAchievementCoaching } = require('../services/profile/workingLifeAchievementCoachingService');
-const { applyLocalizedFieldsToCareerPathList, applyLocalizedFieldsToCareerPathPayload } = require('../utils/localizedResponse');
+const { applyLocalizedFieldsToCareerPathPayload } = require('../utils/localizedResponse');
 const {
   mergeLocalizedCareerPathStep,
   listDistinctRoleSkillsForSelection,
-  listDistinctRoleSkillDomainsForSelection,
   searchRoleSkillsForSelection,
   resolveRoleSkillsForSelection,
   searchRoleSkillDomainsForSelection,
@@ -101,7 +92,6 @@ const { schedulePostProfileReviewSaveWork } = require('../services/profile/profi
 const { scheduleDeferredProfileNarrativesForUser } = require('../services/profile/deferredProfileNarrativeService');
 const { serializeEmbeddedDocumentForClient } = require('../services/documents/serializeEmbeddedDocument');
 const {
-  applyReviewSaveNarrativesFromDocument,
   tryBuildProfileNarrativesFromDocumentCache,
   schedulePersistNarrativeEnrichmentFromApply,
 } = require('../services/profile/profileReviewNarrativeApplyService');
@@ -116,14 +106,7 @@ function logControllerError(context, err, extra = undefined) {
   console.error(`[profileController] ${context}`, payload);
 }
 
-function normalizeStringArray(arr = []) {
-  return Array.isArray(arr)
-    ? arr.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean)
-    : [];
-}
-
 const {
-  normalizeStructuredListItemLabel,
   normalizeStructuredListItemLabels,
 } = require('../../constants/structuredListItemLabel');
 
@@ -584,7 +567,7 @@ function buildDeferredWhoAreYouSummaryText({
   rawAnswers = [],
   currentSummaryIsPlaceholder = false,
   currentSummary = '',
-  changedRaw = false,
+  changedRaw: _changedRaw = false,
   narrativesStaleForAnswers = false,
   identityChangeClass = null,
   previousRawAnswers = [],
@@ -1020,7 +1003,7 @@ function resolveDomainsFromStructuredInfo(structuredInfo = {}) {
 
 async function enrichCareerSimulationInputsForClientResponse(
   careerSimulationInputs,
-  profileStructured = {},
+  _profileStructured = {},
   options = {}
 ) {
   if (!careerSimulationInputs || typeof careerSimulationInputs !== 'object') {
@@ -1737,7 +1720,7 @@ exports.streamSimulationJobEvents = async (req, res) => {
       }
     };
 
-    function pushIfChanged(j) {
+    const pushIfChanged = (j) => {
       const fp = fingerprint(j);
       if (fp === lastFp) return false;
       lastFp = fp;
@@ -1745,7 +1728,7 @@ exports.streamSimulationJobEvents = async (req, res) => {
       if (j.error) payload.error = j.error;
       writeData(payload);
       return true;
-    }
+    };
 
     pushIfChanged(snapshot);
     if (snapshot.status === 'completed' || snapshot.status === 'failed') {
@@ -1758,13 +1741,7 @@ exports.streamSimulationJobEvents = async (req, res) => {
       cleanup();
     });
 
-    const schedulePoll = (delayMs) => {
-      if (closed) return;
-      if (pollTimer) clearTimeout(pollTimer);
-      pollTimer = setTimeout(runPoll, delayMs);
-    };
-
-    async function runPoll() {
+    const runPoll = async () => {
       if (closed) return;
       pollTimer = null;
       try {
@@ -1796,7 +1773,13 @@ exports.streamSimulationJobEvents = async (req, res) => {
         writeData({ status: 'failed', error: err.message || 'Stream error', progress: 0 });
         endStream();
       }
-    }
+    };
+
+    const schedulePoll = (delayMs) => {
+      if (closed) return;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = setTimeout(runPoll, delayMs);
+    };
 
     schedulePoll(pollDelayMs);
   } catch (err) {
@@ -3446,42 +3429,6 @@ exports.updateStructuredUserInfo = async (req, res) => {
   }
 };
 
-async function recalculateCareerSimulationInputsOnUser(user, editorId, changes = { recalculatedFromProfile: true }) {
-  const computed = await calculateCareerSimulationInputs(user.profile);
-  const defaultEnrichment = {
-    status: 'none',
-    message: '',
-    extractedSkills: [],
-    extractedWorkExperience: [],
-    extractedEducation: [],
-    extractedCertifications: [],
-    extractedProjects: [],
-    sourceDocumentIds: [],
-    lastParsedAt: null,
-  };
-  if (!user.profile.careerSimulationInputs) {
-    user.profile.careerSimulationInputs = { documentEnrichment: defaultEnrichment };
-  }
-  const csi = user.profile.careerSimulationInputs;
-  if (!csi.documentEnrichment || typeof csi.documentEnrichment !== 'object') {
-    csi.documentEnrichment = defaultEnrichment;
-  }
-  csi.structuredUserInfo = computed.structuredUserInfo;
-  csi.userIdentity = computed.userIdentity;
-  csi.seniority = computed.seniority;
-  csi.lastCalculated = new Date();
-  csi.isManuallyEdited = csi.isManuallyEdited || false;
-  if (Array.isArray(csi.editHistory)) {
-    csi.editHistory.push({
-      editedAt: new Date(),
-      editor: editorId,
-      changes,
-    });
-  } else {
-    csi.editHistory = [];
-  }
-}
-
 // Atomic CV review save: seniority, identity, structured lists, optional name — one transaction.
 exports.saveProfileReview = async (req, res) => {
   try {
@@ -4318,8 +4265,6 @@ exports.removeCareerStepFromSimulation = async (req, res) => {
           simulation.results.currentPositions = {};
         }
         simulation.results.currentPositions[listKey] = currentPosition + 1;
-
-      } else {
       }
     }
     // Fallback to old replacement pool approach for backward compatibility

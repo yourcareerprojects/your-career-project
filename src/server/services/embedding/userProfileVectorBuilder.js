@@ -28,7 +28,6 @@
 const {
   embedTextSafe,
   embedTextBatchSafe,
-  weightedFusion,
   weightedFusionMulti,
   l2Normalize,
   EMBEDDING_DIMS,

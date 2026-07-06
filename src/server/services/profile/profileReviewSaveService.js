@@ -3,7 +3,6 @@ const {
   USER_IDENTITY_ANSWER_KEYS,
 } = require('../embedding/userIdentityEmbeddingTextService');
 const localizedContentService = require('../localization/localizedContentService');
-const { EMPTY_PLACEHOLDER } = require('../jobAnalysis/dimensionSummaryGenerator');
 const { filterIndustryDomainRawItems } = require('../../constants/industryDomainFilters');
 const { normalizeIndustryDomains } = require('../../../constants/industries');
 const { getProfileStructuredListMaxItems } = require('../../../constants/profileReviewFieldLimits');

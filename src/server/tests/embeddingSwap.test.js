@@ -11,7 +11,7 @@ describe('embedding provider swap (MMR contract)', () => {
     // Provider 1: trivial embeddings by title length (sync)
     const embedFn1 = (it) => new Float32Array([it.title.length]);
     // Provider 2: another trivial embedding (constant)
-    const embedFn2 = (it) => new Float32Array([1]);
+    const embedFn2 = () => new Float32Array([1]);
 
     const [sel1, sel2] = await Promise.all([
       mmrSelect(items, { k: 2, lambda: 0.9, minNovelty: 0, embedFn: embedFn1, scoreFn: (it) => it.score }),

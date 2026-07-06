@@ -3,18 +3,15 @@
  * Polls CvExtractionJob rows in `queued`, claims atomically, runs OCR → AI semantic extraction.
  * Localization runs asynchronously after persistence.
  */
-const path = require('path');
 const mongoose = require('mongoose');
 
-const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env';
-require('dotenv').config({ path: path.resolve(__dirname, '../../', envFile) });
+require('../../config/loadEnv').loadEnv();
 
 const connectDB = require('../../config/database');
 const logger = require('../server/utils/logger');
 const CvExtractionJob = require('../server/models/CvExtractionJob');
 const User = require('../server/models/User');
 const { processCvExtractionFromFilePath } = require('../server/services/cv/cvExtractionOrchestrator');
-const { normalizeExternalApiError } = require('../server/utils/httpTimeouts');
 const {
   claimNextQueuedCvExtractionJob,
   reclaimStaleProcessingCvExtractionJobs,

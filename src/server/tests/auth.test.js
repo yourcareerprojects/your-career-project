@@ -89,7 +89,7 @@ describe('Authentication System Tests', () => {
         .createHash('sha256')
         .update(verificationToken)
         .digest('hex');
-      const user = await User.create({
+      await User.create({
         email: 'test@example.com',
         password: 'Test123!@#',
         emailVerificationToken: verificationTokenHash,

@@ -2,8 +2,6 @@
  * Production career path scoring for simulation: hybrid vectors only.
  *
  * Runs {@link scoreNextRole} and {@link scoreOutOfTheBox} (embedding fusion + seniority penalty).
- * Multi-dimensional weighted scoring (skills, experience, education modifier, calibration, etc.)
- * Full multi-dimensional scorer: `services/scoring/legacy/careerPathScorerLegacy.js` (tests / offline tools only).
  */
 // ENGLISH_ONLY_PIPELINE: Hybrid scoring consumes canonical-English vector space only.
 

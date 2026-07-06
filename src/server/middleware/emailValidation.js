@@ -1,9 +1,6 @@
 const { body } = require('express-validator');
 const dns = require('dns').promises;
 const { AUTH_EMAIL_NORMALIZE_OPTIONS } = require('../constants/authEmailNormalizeOptions');
-const { promisify } = require('util');
-const { exec } = require('child_process');
-const execAsync = promisify(exec);
 
 // List of known disposable email domains
 const disposableEmailDomains = new Set([

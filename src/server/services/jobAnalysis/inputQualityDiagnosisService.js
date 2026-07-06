@@ -1,5 +1,4 @@
 const { buildMessages } = require('../../prompts/generateInputQualityDiagnosis');
-const { buildBatchScoringMessages } = require('../../prompts/generateInputQualityBatchScoring');
 const { buildFollowUpOnlyMessages } = require('../../prompts/generateInputQualityFollowUpQuestions');
 const {
   getCachedProfileReviewDiagnosis,
@@ -188,25 +187,6 @@ function sortDiagnosesByQuality(diagnoses) {
   return [...diagnoses].sort((a, b) => {
     if (a.quality_score !== b.quality_score) return a.quality_score - b.quality_score;
     return String(a.field).localeCompare(String(b.field));
-  });
-}
-
-/**
- * @param {Record<string, string>} normalizedTextMap
- * @param {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[] }} row
- */
-function mergeInconsistentIssueForField(normalizedTextMap, row) {
-  const text = normalizedTextMap[row.field] ?? '';
-  const otherFields = { ...normalizedTextMap };
-  delete otherFields[row.field];
-  let issues = [...row.issues];
-  if (detectInconsistentWithOtherFields(text, otherFields) && !issues.includes('inconsistent_with_other_fields')) {
-    issues.push('inconsistent_with_other_fields');
-  }
-  return finalizeDiagnosis({
-    ...row,
-    issues: [...new Set(issues)],
-    follow_up_questions: []
   });
 }
 
@@ -602,32 +582,6 @@ function scoreAllSectionsHeuristically(normalizedTextMap) {
     delete otherFields[field];
     return buildDeterministicDiagnosis(field, normalizedTextMap[field] ?? '', otherFields);
   });
-}
-
-/**
- * Variant B: one batched LLM scoring call for all sections, then follow-up-only LLM for the three weakest.
- *
- * @param {Record<string, string>} normalizedTextMap
- * @param {{ llmProvider?: typeof openaiProvider, providerOpts?: object }} options
- */
-async function scoreSectionsWithBatchLlm(normalizedTextMap, options = {}) {
-  const provider = options.llmProvider || openaiProvider;
-  const providerOpts = { temperature: 0.15, ...(options.providerOpts || {}) };
-
-  /** @type {{ field: string, quality_score: number, dimension_scores: object, issues: QualityIssue[], follow_up_questions: string[] }[]} */
-  let scoringDiagnoses;
-
-  try {
-    const raw = await provider(buildBatchScoringMessages(normalizedTextMap), providerOpts);
-    const parsed = parseBatchScoringJson(raw, REVIEW_STEP3_QUALITY_FIELD_ORDER);
-    if (!parsed) throw new Error('Invalid batch scoring JSON shape');
-    scoringDiagnoses = parsed.map((row) => mergeInconsistentIssueForField(normalizedTextMap, row));
-  } catch (err) {
-    console.warn('[inputQualityDiagnosisService] Batch scoring failed, using heuristics:', err.message);
-    scoringDiagnoses = scoreAllSectionsHeuristically(normalizedTextMap);
-  }
-
-  return scoringDiagnoses;
 }
 
 /**

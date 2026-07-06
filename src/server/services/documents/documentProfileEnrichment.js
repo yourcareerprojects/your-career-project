@@ -56,7 +56,7 @@ function normalizeSkill(value) {
   return String(value || '')
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/^[•\-\*]\s*/, '')
+    .replace(/^[•*-]\s*/, '')
     .substring(0, 80);
 }
 
@@ -108,19 +108,19 @@ function parseSkillsFromSectionContent(skillsContent) {
   const stopWords = ['certification', 'experience', 'education', 'projects', 'languages'];
   let skills = skillsContent
     .split(/,/)
-    .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
+    .map((s) => s.trim().replace(/^[:-]\s*/, ''))
     .filter(Boolean);
 
   if (skills.length < 3) {
     skills = skillsContent
       .split(/\n/)
-      .map((s) => s.trim().replace(/^[:\-•*]\s*/, ''))
+      .map((s) => s.trim().replace(/^[:-•*]\s*/, ''))
       .filter((s) => s && s.length <= 50);
   }
   if (skills.length < 3) {
     skills = skillsContent
-      .split(/[•\-\*]/)
-      .map((s) => s.trim().replace(/^[:\-]\s*/, ''))
+      .split(/[•*-]/)
+      .map((s) => s.trim().replace(/^[:-]\s*/, ''))
       .filter((s) => s && s.length <= 50);
   }
 
@@ -231,7 +231,6 @@ function extractWorkExperienceDescriptionLinesFromText(text, options = {}) {
 
 function extractFromTextHeuristics(text) {
   const t = String(text || '');
-  const lower = t.toLowerCase();
 
   const extracted = {
     skills: [],

@@ -2,12 +2,7 @@ const {
   isCvNarrativeBatchEnabled,
 } = require('../../constants/cvNarrativeBatch');
 const {
-  parseUnifiedNarrativeJson,
-  buildDimensionInputs,
-} = require('../services/profile/unifiedCvNarrativeGenerator');
-const {
   bilingualPairToSummaryField,
-  whoAnswersToSummaryField,
   mapUnifiedNarrativeToEnrichmentParts,
 } = require('../services/profile/unifiedCvNarrativeMapper');
 const {
@@ -41,9 +36,8 @@ jest.mock('../services/jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator', () 
 }));
 
 const { openaiProvider } = require('../services/jobAnalysis/roleIdentityComposer');
-const { generateUnifiedCvNarrative } = require('../services/profile/unifiedCvNarrativeGenerator');
 
-const SAMPLE_LLM_JSON = JSON.stringify({
+const SAMPLE_UNIFIED_NARRATIVE = {
   dimensions: {
     skillDomains: { de: 'DE Stärken', en: 'EN Strengths' },
     skills: { de: 'DE Skills', en: 'EN Skills' },
@@ -58,7 +52,7 @@ const SAMPLE_LLM_JSON = JSON.stringify({
     },
   },
   embeddingText: 'I build reliable systems.',
-});
+};
 
 describe('cvNarrativeBatch flag', () => {
   const prev = process.env.CV_NARRATIVE_BATCH;
@@ -76,13 +70,7 @@ describe('cvNarrativeBatch flag', () => {
   });
 });
 
-describe('unifiedCvNarrative parsing and mapping', () => {
-  test('parseUnifiedNarrativeJson strips markdown fences', () => {
-    const parsed = parseUnifiedNarrativeJson(`\`\`\`json\n${SAMPLE_LLM_JSON}\n\`\`\``);
-    expect(parsed.dimensions.skillDomains.en).toBe('EN Strengths');
-    expect(parsed.whoAreYou.answers.en).toHaveLength(5);
-  });
-
+describe('unifiedCvNarrative mapping', () => {
   test('bilingualPairToSummaryField stores en and de without extra calls', () => {
     const field = bilingualPairToSummaryField({ de: 'Hallo', en: 'Hello' }, 'en');
     expect(field.translations.en).toBe('Hello');
@@ -90,27 +78,24 @@ describe('unifiedCvNarrative parsing and mapping', () => {
   });
 
   test('mapUnifiedNarrativeToEnrichmentParts matches structured dimension keys', () => {
-    const unified = parseUnifiedNarrativeJson(SAMPLE_LLM_JSON);
-    const { structuredUserInfo, who_are_you } = mapUnifiedNarrativeToEnrichmentParts(unified, {
-      lists: {
-        skillDomains: ['Leadership'],
-        skills: ['JS'],
-        skillsInDevelopment: [],
-        keyResponsibilities: ['APIs'],
-        domains: ['Software'],
-      },
-      rawAnswers: ['a', 'b', 'c', 'd', 'e'],
-      sourceLanguage: 'en',
-    });
+    const { structuredUserInfo, who_are_you } = mapUnifiedNarrativeToEnrichmentParts(
+      SAMPLE_UNIFIED_NARRATIVE,
+      {
+        lists: {
+          skillDomains: ['Leadership'],
+          skills: ['JS'],
+          skillsInDevelopment: [],
+          keyResponsibilities: ['APIs'],
+          domains: ['Software'],
+        },
+        rawAnswers: ['a', 'b', 'c', 'd', 'e'],
+        sourceLanguage: 'en',
+      }
+    );
     expect(structuredUserInfo.skillDomains.raw_items).toEqual(['Leadership']);
     expect(structuredUserInfo.skillDomains.summary_text.translations.en).toContain('EN Strengths');
     expect(who_are_you.summary_text.translations.en).toContain('e1');
     expect(who_are_you.identity_embedding_text).toContain('reliable');
-  });
-
-  test('buildDimensionInputs honors empty onlyDimensionKeys', () => {
-    const { dimensionInputs } = buildDimensionInputs({ skills: ['A'] }, []);
-    expect(Object.keys(dimensionInputs)).toHaveLength(0);
   });
 });
 
@@ -126,54 +111,11 @@ describe('estimateLegacyOpenAiCallCount', () => {
   });
 });
 
-describe('generateUnifiedCvNarrative', () => {
-  const prevKey = process.env.OPENAI_API_KEY;
-  const prevBatch = process.env.CV_NARRATIVE_BATCH;
-
-  beforeEach(() => {
-    process.env.OPENAI_API_KEY = 'test-key';
-    openaiProvider.mockReset();
-  });
-
-  afterEach(() => {
-    if (prevKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = prevKey;
-    if (prevBatch === undefined) delete process.env.CV_NARRATIVE_BATCH;
-    else process.env.CV_NARRATIVE_BATCH = prevBatch;
-  });
-
-  test('uses a single OpenAI call for full profile snapshot', async () => {
-    openaiProvider.mockResolvedValue(SAMPLE_LLM_JSON);
-
-    const profileData = {
-      userIdentity: {
-        workEnjoyMost: 'Building',
-        topicsIndustriesInterest: 'Tech',
-        naturallyGoodAt: 'Code',
-        workEnvironmentFit: 'Remote',
-        workingLifeAchievement: 'Shipped',
-      },
-      structuredUserInfo: {
-        skillDomains: ['Leadership'],
-        skills: ['JS'],
-        skillsInDevelopment: [],
-        keyResponsibilities: ['APIs'],
-        domains: ['Software'],
-      },
-    };
-
-    const result = await generateUnifiedCvNarrative(profileData, null, { sourceLanguage: 'en' });
-    expect(openaiProvider).toHaveBeenCalledTimes(1);
-    expect(result.openAiCallCount).toBe(1);
-    expect(result.dimensions.skillDomains.en).toContain('EN Strengths');
-    expect(result.whoAreYou.en[0]).toBe('e1');
-    expect(result.embeddingText).toContain('reliable');
-  });
-});
-
 describe('extractionNarrativeEnrichment batched vs legacy', () => {
   const prevKey = process.env.OPENAI_API_KEY;
   const prevBatch = process.env.CV_NARRATIVE_BATCH;
+
+  const SAMPLE_LLM_JSON = JSON.stringify(SAMPLE_UNIFIED_NARRATIVE);
 
   beforeEach(() => {
     process.env.OPENAI_API_KEY = 'test-key';

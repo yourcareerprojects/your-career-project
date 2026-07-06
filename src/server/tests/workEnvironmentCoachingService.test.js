@@ -6,7 +6,6 @@ const {
 } = require('../services/profile/workEnvironmentCoachingService');
 const {
   buildQuestionSystemPrompt,
-  buildQuestionTurnUserMessage,
   buildSummarySystemPrompt,
 } = require('../prompts/workEnvironmentCoachingPrompts');
 const {

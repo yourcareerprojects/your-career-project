@@ -3,47 +3,44 @@ const request = require('supertest');
 const {
   DOCUMENT_ROUTE_IP_MAX,
   DOCUMENT_ROUTE_IP_WINDOW_MS,
-  isCvExtractionStatusPollRequest,
   isDocumentHighFrequencyPollRequest,
   createDocumentRouteIpLimiter,
 } = require('../middleware/documentRouteRateLimit');
 const { getAdaptivePollDelayMs, getExtractionPollMaxDurationMs } = require('../../constants/cvExtractionTiming');
 
 describe('documentRouteRateLimit', () => {
-  describe('isCvExtractionStatusPollRequest', () => {
+  describe('isDocumentHighFrequencyPollRequest', () => {
+    const docId = '507f1f77bcf86cd799439011';
+
     test('matches GET extraction-status under /api/documents', () => {
       expect(
-        isCvExtractionStatusPollRequest({
+        isDocumentHighFrequencyPollRequest({
           method: 'GET',
-          originalUrl: '/api/documents/507f1f77bcf86cd799439011/extraction-status?_ts=1',
+          originalUrl: `/api/documents/${docId}/extraction-status?_ts=1`,
         })
       ).toBe(true);
     });
 
     test('does not match other document routes', () => {
       expect(
-        isCvExtractionStatusPollRequest({
+        isDocumentHighFrequencyPollRequest({
           method: 'GET',
-          originalUrl: '/api/documents/507f1f77bcf86cd799439011',
+          originalUrl: `/api/documents/${docId}`,
         })
       ).toBe(false);
       expect(
-        isCvExtractionStatusPollRequest({
+        isDocumentHighFrequencyPollRequest({
           method: 'POST',
           originalUrl: '/api/documents/upload',
         })
       ).toBe(false);
       expect(
-        isCvExtractionStatusPollRequest({
+        isDocumentHighFrequencyPollRequest({
           method: 'GET',
-          originalUrl: '/api/documents/507f1f77bcf86cd799439011/download',
+          originalUrl: `/api/documents/${docId}/download`,
         })
       ).toBe(false);
     });
-  });
-
-  describe('isDocumentHighFrequencyPollRequest', () => {
-    const docId = '507f1f77bcf86cd799439011';
 
     test('matches narrative-cache-status GET and POST', () => {
       expect(

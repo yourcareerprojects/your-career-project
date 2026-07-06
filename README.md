@@ -6,7 +6,7 @@ A career path exploration tool that helps users discover and plan their professi
 
 ### Prerequisites
 
-- **Node.js** 18 LTS or newer (recommended; required by current Mongoose and Webpack toolchains)
+- **Node.js** 20.x LTS (matches `package.json` `engines`; required by current Mongoose and Webpack toolchains)
 - **MongoDB** (local instance, Docker, or Atlas connection string)
 - **npm** (or yarn)
 
@@ -24,7 +24,7 @@ After installing Node.js, open a **new** terminal and run `node --version` and `
 
 2. **Environment variables**
 
-   Copy `env-template.txt` to `.env` in the project root and set at least:
+   Create a `.env` file in the project root (gitignored) with at least:
 
    ```env
    MONGODB_URI=mongodb://localhost:27017/career-path-explorer
@@ -34,9 +34,20 @@ After installing Node.js, open a **new** terminal and run `node --version` and `
    OPENAI_API_KEY=your-api-key-here
    ```
 
-   Optional (OpenAI-compatible providers): `OPENAI_BASE_URL`, `OPENAI_MODEL` — see comments in `env-template.txt`.
+   Optional:
+
+   ```env
+   # Production SPA origin(s) for CORS (comma-separated)
+   # CORS_ORIGIN=https://your-app.example.com
+
+   # OpenAI-compatible provider overrides
+   # OPENAI_BASE_URL=https://api.openai.com/v1
+   # OPENAI_MODEL=gpt-4o-mini
+   ```
 
    **Secrets:** Use a long random `JWT_SECRET` (e.g. `openssl rand -hex 32`). Never commit `.env` or real secret values. `server.js` exits on startup if `JWT_SECRET` is missing or empty.
+
+   **Production deployments:** Configure environment variables on the host (Render, Docker, etc.). The app reads `process.env` directly in production; a `.env` file is optional and only used for local development when present.
 
 3. **MongoDB**
 
@@ -57,9 +68,9 @@ After installing Node.js, open a **new** terminal and run `node --version` and `
 
    - **Main UI (development):** http://localhost:3001  
    - **API:** http://localhost:3000  
-   - **Health check:** http://GET localhost:3000/api/health  
+   - **Health check:** http://localhost:3000/api/health  
 
-   The API server also serves a few static HTML pages under `/`, `/about`, and `/register` from `views/pages/` and static assets from `public/`. User-facing flows are primarily the React app on port 3001 in dev.
+   In production, `server.js` serves the built SPA from `public/dist/` plus `/api` and `/uploads` on port 3000 (or `PORT` from `.env`).
 
 ### MongoDB options
 
@@ -96,18 +107,18 @@ On Windows, PowerShell **execution policy** can block npm. Any of these works:
 
 ### Production build
 
-1. `npm run build` — emits the compiled React app into `public/dist/`.
-2. `npm start` — runs `server.js`, which serves `public/` (including `dist/`), **`/api`**, and **`/uploads`** on port **3000** (or `PORT` from `.env`).
+1. `npm run build` — emits the compiled React app into `public/dist/` (reads `.env` when present for any client build-time variables).
+2. `npm start` — runs `server.js`, which serves `public/` (including `dist/`), **`/api`**, and **`/uploads`** on port **3000** (or `PORT` from the environment).
 3. Open **http://localhost:3000/dist/** for the bundled SPA and use the same host for the API (e.g. **http://localhost:3000/api/...**). If script requests 404 at the site root, set webpack **`output.publicPath`** to **`'/dist/'`** for production builds and rebuild.
+
+**Hosted production:** Set at least `JWT_SECRET`, `MONGODB_URI`, `NODE_ENV=production`, and your email/LLM variables in the hosting provider’s environment settings. Do not rely on a `.env.production` file on the server.
 
 ## Project structure
 
 ```
 ├── config/                 # Database connection (e.g. database.js)
-├── evaluation/             # Offline evaluation runners and output
 ├── public/                 # Static assets; webpack emits to public/dist/
-├── routes/                 # Unused legacy file(s); API lives under src/server/routes/
-├── scripts/                # Data builds, migrations, ESCO sync, embedding rebuilds
+├── scripts/                # Data builds, ESCO sync, embedding rebuilds, i18n QA
 ├── src/
 │   ├── client/             # React app (entry: index.js, App.jsx)
 │   │   ├── components/
@@ -124,8 +135,7 @@ On Windows, PowerShell **execution policy** can block npm. Any of these works:
 │   │   ├── services/       # Matching, embeddings, ESCO, documents, simulation, etc.
 │   │   └── tests/
 │   └── uploads/            # Created at runtime: documents/, profile-pictures/ (served at /uploads)
-├── views/pages/            # Static HTML served by server.js for a few legacy routes
-├── env-template.txt
+├── .env                    # Local secrets (gitignored; not committed)
 ├── server.js               # Production/dev API entry (listen, mount routes)
 └── webpack.config.js
 ```
@@ -150,19 +160,17 @@ On Windows, PowerShell **execution policy** can block npm. Any of these works:
 
 | Script | Purpose |
 |--------|---------|
-| `npm run migrate:duplicates` | Career-step duplicate migration |
 | `npm run build:skills` | Skill model build (`:force`, `:dry` variants) |
+| `npm run build:required-skills` | Required skills build (`:force`, `:dry`) |
 | `npm run build:seniority` | Seniority levels (`:force`, `:dry`) |
 | `npm run build:responsibilities` | Key responsibilities (`:force`, `:dry`, `:heuristic`) |
-| `npm run rebuild:role-embeddings` | Rebuild role embeddings (`:dry-run`) |
+| `npm run build:role-identity-texts` | Role identity texts for embedding (`:force`, `:dry`, `:changed-only`) |
+| `npm run rebuild:role-embeddings` | Rebuild role embeddings (`:dry-run`; run `build:role-identity-texts` first) |
+| `npm run migrate:skills` | Relink Skill collection after required-skills build (`:dry`) |
+| `npm run check:i18n-integrity` | Validate embedded `{ en, de }` fields on CareerPath/Skill/User |
 | `npm run sync:esco` | Sync ESCO occupation data |
-
-### Evaluation
-
-| Script | Purpose |
-|--------|---------|
-| `npm run evaluate` | Run `evaluation/evaluationRunner.js` |
-| `npm run evaluate:ranking-tables` | Generate ranking tables markdown under `evaluation/output/` |
+| `npm run import:esco-skills` | One-time import of ESCO skill CSVs into MongoDB (replaces runtime `skills_en.csv`) |
+| `npm run career-paths:normalize-skills` | Backfill career path skill titles from stored URIs |
 
 ## HTTP API (server.js)
 
@@ -178,7 +186,7 @@ All JSON APIs are under `/api` unless noted.
 | `/api/share` | `src/server/routes/share.js` |
 | `/api/job-analysis` | `src/server/routes/jobAnalysis.js` |
 
-**Simulation & saved-simulation HTTP paths** (methods + `/api/profile/...` suffixes): single canonical table in **[`SIMULATION_IMPLEMENTATION_REQUIREMENTS.md`](./SIMULATION_IMPLEMENTATION_REQUIREMENTS.md) §7** — prefer that over duplicating routes in README or feature docs.
+**Simulation & saved-simulation HTTP paths** (methods + `/api/profile/...` suffixes): single canonical table in **[`REQUIREMENTS_SIMULATION.md`](./REQUIREMENTS_SIMULATION.md) §5** — prefer that over duplicating routes in README or feature docs.
 
 **Authentication:** Protected routes expect `Authorization: Bearer <JWT>`. Tokens are issued by the auth controller and verified in `src/server/middleware/auth.js`.
 
@@ -190,7 +198,6 @@ All JSON APIs are under `/api` unless noted.
 
 - React 18, React Router 6
 - MUI (Material UI) 5, Emotion
-- Formik, Yup
 - Axios (HTTP)
 - Webpack 5, Babel
 - @dnd-kit (sortable lists / reordering)
@@ -201,11 +208,11 @@ All JSON APIs are under `/api` unless noted.
 - Express.js
 - MongoDB with Mongoose
 - JWT (`jsonwebtoken`) for API authentication
-- express-validator, express-rate-limit, helmet, compression, morgan
+- express-validator, express-rate-limit, helmet, compression
 - Multer (uploads), Nodemailer (email)
 - OpenAI SDK (OpenAI-compatible APIs for prompts / analysis)
 
-The repo still lists Passport-related packages for OAuth strategies; the **running** app in `server.js` does not mount `src/server/index.js`. Use JWT middleware as the source of truth for how requests are authenticated today.
+The app authenticates API requests with JWT (`jsonwebtoken`) via `src/server/middleware/auth.js` — not Passport.
 
 ## Features (high level)
 
@@ -215,7 +222,6 @@ The repo still lists Passport-related packages for OAuth strategies; the **runni
 - ESCO occupation search and integration
 - Job analysis and LLM-assisted extraction (responsibilities, identity text, etc.) where configured
 - Document upload and optional profile enrichment
-- Offline evaluation tooling under `evaluation/`
 
 ## Understanding the codebase
 
@@ -254,15 +260,9 @@ Start here when you need behavior or contracts beyond the code:
 
 | Document | Role |
 |----------|------|
-| **`requirements.md`** | Master **as-built** index; **§11** = Core Features (`### 9.x` labels for citations). Long change history is in git. |
-| **`SIMULATION_IMPLEMENTATION_REQUIREMENTS.md`** | Simulation **as-built**: inputs, path pool, APIs (**§7** route table), results JSON, profile gate—aligned with current code. |
-| **`CAREER_MATCHING_ALGORITHM_TECHNICAL_OVERVIEW.md`** | **Canonical** numeric matching spec: hybrid weights, MMR, exploration, pools; live `POST /api/profile/simulation` pipeline. |
-| **`ARCHITECTURE.md`** | Simulation feature architecture (as-built) with pointers to main server/client modules. |
-| **`SIMULATION_CARD_ACTIONS_HARMONIZED_REQUIREMENTS.md`** | Save / dislike / remove semantics for simulation cards. |
-| **`REMOVE_CAREER_STEPS_FEATURE.md`** | Remove + list-based replacement, DELETE route, client behavior. |
-| **`SAVE_CHANGES_TO_EXISTING_SIMULATIONS_REQUIREMENTS.md`** | Updating saved simulations (`PUT` workflow). |
-| **`*_REQUIREMENTS.md`** (root) | Other feature-specific specs (profile, UI, ESCO, etc.). |
-| **`ESCO_ALT_LABELS_SYNONYMS_REQUIREMENTS.md`** | Occupation synonyms (`altLabels`). |
+| **`REQUIREMENTS.md`** | Master **as-built** index; **§11** = Core Features (`### 9.x` labels for citations). Long change history is in git. |
+| **`REQUIREMENTS_SIMULATION.md`** | Simulation **as-built**: layers & data flow (§1.3), inputs, algorithm, Keep/Skip/Dislike evaluation, APIs, persistence, navigation guard |
+| **`REQUIREMENTS_PROFILE.md`**, **`REQUIREMENTS_CAREER_STEP.md`**, etc. | Other feature-specific specs (profile, career step details, UI, etc.). |
 
 **Setup / tooling (this README):** Prerequisites, **MongoDB options**, **Windows: PowerShell and npm** (`cmd /c`, `npm.ps1`), env vars, and **Common issues**—consolidated from older standalone setup guides.
 

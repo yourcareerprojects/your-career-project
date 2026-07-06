@@ -5,7 +5,7 @@ jest.mock('../models/Skill', () => ({
 }));
 
 jest.mock('../utils/escoUriToTitleMap', () => ({
-  getEscoUriToTitleMap: jest.fn().mockResolvedValue({}),
+  resolveEscoSkillTitles: jest.fn().mockResolvedValue({}),
   findTitleForEscoUri: jest.fn(),
 }));
 

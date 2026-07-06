@@ -16,7 +16,6 @@ const {
   withoutHeuristicGoodAtFields,
   mapSemanticExtractionToProfile,
   buildSemanticInterpretationBlob,
-  buildSemanticInterpretationBlobFromFull,
 } = require('./cvSemanticMap');
 
 /** Identity fields come from LLM only (no heuristic backfill). */

@@ -472,9 +472,9 @@ async function saveExtractedProfileReview({
   translate = (key) => key,
   onSavePhase,
   prefetchProfile = false,
-  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
-  pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
-  documentCacheWarmTimeoutMs = DOCUMENT_CACHE_INFLIGHT_POLL_MS,
+  pollIntervalMs: _pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  pollMaxAttempts: _pollMaxAttempts = DEFAULT_POLL_MAX_ATTEMPTS,
+  documentCacheWarmTimeoutMs: _documentCacheWarmTimeoutMs = DOCUMENT_CACHE_INFLIGHT_POLL_MS,
   fetchFullProfileImpl,
   queryClientImpl,
 }) {

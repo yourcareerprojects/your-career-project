@@ -237,7 +237,7 @@ function coachRoleLabel(lang, audience) {
   return isDe ? 'Du bist ein erfahrener Berufscoach.' : 'You are an experienced career coach.';
 }
 
-function questionStyleHint(lang, audience, questionNumber) {
+function questionStyleHint(lang, audience, _questionNumber) {
   const isDe = String(lang || 'de').toLowerCase().startsWith('de');
   if (audience === 'pupil') {
     return isDe

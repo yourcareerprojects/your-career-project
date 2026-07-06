@@ -114,7 +114,6 @@ describe('saveExtractedProfileReview', () => {
 
   test('save joins completed wizard warm without blocking on narrative cache', async () => {
     let warmPutCount = 0;
-    let statusChecks = 0;
     const fetchImpl = jest.fn((url) => {
       if (String(url).includes('/review-narrative-cache')) {
         warmPutCount += 1;
@@ -136,7 +135,6 @@ describe('saveExtractedProfileReview', () => {
           }),
         });
       }
-      statusChecks += 1;
       return Promise.resolve({
         ok: true,
         json: async () => ({
@@ -611,7 +609,7 @@ describe('review dialog stays open when parent save rejects', () => {
   test('dialog stays open when parent save rejects', async () => {
     const openAfterFailure = await simulateReviewSave(async () => {
       throw new ProfileReviewSaveError('Identity validation failed', {
-        userMessage: 'profileCreation.errors.identityQuestionsRequired',
+        userMessage: 'documentUpload.review.errors.fixHighlightedFields',
       });
     });
     expect(openAfterFailure).toBe(true);

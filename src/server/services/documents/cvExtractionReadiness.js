@@ -67,6 +67,13 @@ function deriveNarrativeTaskStatus(doc, pipeline, structuredTask, options = {}) 
     return 'idle';
   }
   if (!doc?.extractedProfileData) return 'skipped';
+
+  // Non-CV uploads (e.g. legacy reference/transcript) do not use the CV narrative pipeline.
+  const docType = String(doc?.type || '').trim();
+  if (docType && !isCvDocumentType(docType)) {
+    return doc?.narrativeEnrichment?.structuredUserInfo ? 'complete' : 'skipped';
+  }
+
   if (structuredTask === 'pending') return 'idle';
   if (
     needsDeferredStructuredSemantic({

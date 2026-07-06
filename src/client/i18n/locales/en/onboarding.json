@@ -101,7 +101,6 @@
     "loading": "Loading...",
     "errors": {
       "verifyEmailRequired": "Please verify your email before adding profile details.",
-      "identityQuestionsRequired": "Please answer all five identity questions before saving your profile.",
       "sessionExpired": "Your session expired. Please sign in again and retry saving.",
       "saveFailed": "Error saving profile. Please try again."
     },
@@ -912,10 +911,8 @@
         "ariaLabel": "Profile setup step {{current}} of {{total}}"
       },
       "step2Intro": "Review and refine your answers to these identity questions. They help us understand what matters to you at work.",
-      "step2IntroManual": "Answer these identity questions about what matters to you at work. There are no wrong answers — write in your own words.",
       "structuredLoading": "Processing your profile insights…",
       "step3Intro": "Review skills, domains, and strengths extracted from your CV. Keep the items you want on your profile and edit or add as needed.",
-      "step3IntroManual": "Review and complete your profile strengths. Skills you selected earlier are pre-filled — edit or add other categories as needed, then save.",
       "step4Intro": "We scored your answers and identified some gaps. Answer each follow-up below, then continue.",
       "step4NoFollowUps": "No additional questions are needed. Continue to confirm your experience level.",
       "step5Intro": "Confirm your experience level and background so we can tailor simulations to your seniority. Then save your profile.",

@@ -123,7 +123,7 @@ function formatCoachingTurnMessage(raw, { allowPreamble = false } = {}) {
   const stripPrefix = (value) => {
     const input = String(value || '').trim();
     const patterns = [
-      /^\d+[\).:\-]\s+/,
+      /^\d+[).:-]\s+/,
       /^(?:Frage|Question)\s+\d+\s*[:.)-]\s+/i,
     ];
     for (const pattern of patterns) {
@@ -162,7 +162,7 @@ function extractSingleCoachingQuestion(raw) {
   const stripPrefix = (value) => {
     const input = String(value || '').trim();
     const patterns = [
-      /^\d+[\).:\-]\s+/,
+      /^\d+[).:-]\s+/,
       /^(?:Frage|Question)\s+\d+\s*[:.)-]\s+/i,
     ];
     for (const pattern of patterns) {

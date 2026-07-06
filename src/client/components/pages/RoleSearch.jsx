@@ -15,7 +15,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import { Search as SearchIcon, ArrowForward as ArrowForwardIcon } from '@mui/icons-material';
-import { useDebounce } from '../../hooks/useValidation';
+import { useDebounce } from '../../hooks/useDebounce';
 import { useOccupationSearch } from '../../hooks/useOccupationSearch';
 
 const RoleSearch = () => {

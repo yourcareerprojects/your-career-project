@@ -64,7 +64,7 @@ router.post('/generate-link', auth, async (req, res) => {
 // Share via email (with authentication)
 router.post('/email', auth, async (req, res) => {
   try {
-    const { recipient, message, resultId, shareableLink, privacySettings, title } = req.body;
+    const { recipient, message, resultId: _resultId, shareableLink, privacySettings: _privacySettings, title } = req.body;
     const userId = req.user.userId || req.user.id;
     const currentUser = await User.findById(userId).select('email');
 

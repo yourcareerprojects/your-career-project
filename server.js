@@ -1,6 +1,5 @@
 const path = require('path');
-const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env';
-require('dotenv').config({ path: path.resolve(__dirname, envFile) });
+require('./config/loadEnv').loadEnv();
 
 const logger = require('./src/server/utils/logger');
 
@@ -27,7 +26,7 @@ if (isProduction) {
 const jwtSecret = process.env.JWT_SECRET && String(process.env.JWT_SECRET).trim();
 if (!jwtSecret) {
   console.error(
-    'FATAL: JWT_SECRET is missing or empty. Copy env-template.txt to .env and set JWT_SECRET to a long random string (e.g. openssl rand -hex 32).'
+    'FATAL: JWT_SECRET is missing or empty. Set JWT_SECRET in .env to a long random string (e.g. openssl rand -hex 32).'
   );
   process.exit(1);
 }

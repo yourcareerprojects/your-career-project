@@ -207,7 +207,7 @@ function buildStepObject(scoredPath, { category }) {
     skillModel
   };
 
-  // Optional: present only when paths were scored with legacy careerPathScorerLegacy (evaluation / tooling)
+  // Optional: present when paths include multi-dimensional legacy score fields on stored data
   if (scoredPath.score != null && Number.isFinite(scoredPath.score)) step.score = scoredPath.score;
   if (scoredPath.scoreBreakdown != null) step.scoreBreakdown = scoredPath.scoreBreakdown;
   if (scoredPath.scoringDebug != null) step.scoringDebug = scoredPath.scoringDebug;

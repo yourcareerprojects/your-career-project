@@ -4,9 +4,7 @@ const {
   flattenRoleSkillCatalog,
   splitSkillsByType,
   shortlistSkillDomainsForCoaching,
-  resolveRoleSkillsForSelection,
   resolveSelectedSkillCatalogEntries,
-  getCachedRoleSkillCatalog,
   buildRoleSkillSearchBundle,
 } = require('../services/careerPathSkillService');
 

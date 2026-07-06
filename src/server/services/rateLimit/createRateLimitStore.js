@@ -9,7 +9,6 @@ function createRateLimitStore() {
   const redisUrl = process.env.REDIS_URL && String(process.env.REDIS_URL).trim();
   if (redisUrl) {
     try {
-      // eslint-disable-next-line global-require, import/no-extraneous-dependencies
       const Redis = require('ioredis');
       const RedisRateLimitStore = require('./RedisRateLimitStore');
       const client = new Redis(redisUrl, {

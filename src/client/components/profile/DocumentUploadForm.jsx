@@ -99,8 +99,6 @@ import ProfileCreationProgress from './ProfileCreationProgress';
 import ProfileReviewStepTitle from './ProfileReviewStepTitle';
 import HomeGetStartedButton from '../home/HomeGetStartedButton';
 import WorkEnjoyMostCoaching, {
-  WorkEnjoyActivitiesPanel,
-  formatActivitiesAsText,
   parseActivitiesFromText,
 } from './WorkEnjoyMostCoaching';
 import TopicsIndustriesCoaching, {
@@ -110,17 +108,12 @@ import TopicsIndustriesCoaching, {
 import NaturallyGoodAtCoaching, {
   formatNaturallyGoodAtAsText,
   parseNaturallyGoodAtFromText,
-  parseStrengthsFromText,
 } from './NaturallyGoodAtCoaching';
 import WorkEnvironmentCoaching, {
-  formatWorkEnvironmentAsText,
   parseWorkEnvironmentFromText,
-  parseWorkStylesFromText,
 } from './WorkEnvironmentCoaching';
 import WorkingLifeAchievementCoaching, {
-  formatWorkingLifeAchievementAsText,
   parseWorkingLifeAchievementFromText,
-  parseCareerGoalsFromText,
 } from './WorkingLifeAchievementCoaching';
 import SkillSelectionStep from './SkillSelectionStep';
 import SkillPicker from './SkillPicker';
@@ -489,7 +482,7 @@ const REVIEW = {
     flex: 1,
     minWidth: 0,
   },
-  /** Matches Profile.jsx / UserIdentityTextForm subcategory question labels. */
+  /** Matches Profile.jsx identity editor subcategory question labels. */
   subcategoryTitle: {
     color: '#950202',
     fontWeight: 600,
@@ -692,7 +685,7 @@ function restoreManualFillDraftUiState(draft, setters) {
   if (typeof draft.reviewStep === 'number') {
     let step = draft.reviewStep;
     // Manual fill does not use CV-only identity (2), good-at overview (3), or context follow-up (4).
-    if (step === 2 || step === 4 || step === MANUAL_FILL_REVIEW_STEPS.GOOD_AT) {
+    if (step === 2 || step === 3 || step === 4) {
       step = MANUAL_FILL_REVIEW_STEPS.SKILLS_TO_LEARN;
     } else if (!MANUAL_FILL_STEP_ORDER.includes(step)) {
       step = MANUAL_FILL_STEP_ORDER[0];
@@ -3802,12 +3795,6 @@ const DocumentUploadForm = ({
 
   const handleReviewContinue = async () => {
     setReviewDialogError('');
-    if (manualFillMode && (reviewStep === 2 || reviewStep === 3 || reviewStep === 4)) {
-      setReviewStep(optionalCvSkipped
-        ? MANUAL_FILL_REVIEW_STEPS.SENIORITY
-        : MANUAL_FILL_REVIEW_STEPS.OPTIONAL_CV);
-      return;
-    }
     if (manualFillMode && reviewStep === 5) {
       const seniorityCheck = validateSeniorityPayload(reviewProfile.seniority || {});
       if (!seniorityCheck.ok) {
@@ -3998,7 +3985,6 @@ const DocumentUploadForm = ({
       return;
     }
     if (reviewStep === 4) {
-      if (manualFillMode) return;
       void handleContinueFromContextStep();
     }
   };
@@ -4779,23 +4765,10 @@ const DocumentUploadForm = ({
               {reviewStep === 2 && !manualFillMode && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {manualFillMode
-                      ? t('documentUpload.review.step2IntroManual')
-                      : t('documentUpload.review.step2Intro')}
+                    {t('documentUpload.review.step2Intro')}
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
-                  {USER_IDENTITY_FIELDS.filter(({ key }) => {
-                      if (manualFillMode && (
-                        key === 'workEnjoyMost'
-                        || key === 'topicsIndustriesInterest'
-                        || key === 'naturallyGoodAt'
-                        || key === 'workEnvironmentFit'
-                        || key === 'workingLifeAchievement'
-                      )) {
-                        return false;
-                      }
-                      return true;
-                    }).map(({ key, questionKey }) => {
+                  {USER_IDENTITY_FIELDS.map(({ key, questionKey }) => {
                     const identityFieldKey = `userIdentity.${key}`;
                     const identityValue = reviewProfile.userIdentity?.[key] || '';
                     return (
@@ -4803,90 +4776,6 @@ const DocumentUploadForm = ({
                       <Typography variant="body1" sx={REVIEW.subcategoryTitle}>
                         {t(questionKey)}
                       </Typography>
-                      {manualFillMode && key === 'workEnjoyMost' && identityValue ? (
-                        <WorkEnjoyActivitiesPanel
-                          activities={parseActivitiesFromText(identityValue)}
-                          onActivitiesChange={(nextActivities) => {
-                            clearReviewFieldError(identityFieldKey);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              userIdentity: {
-                                ...(prev.userIdentity || {}),
-                                workEnjoyMost: formatActivitiesAsText(nextActivities),
-                              },
-                            }));
-                          }}
-                          onUserEdited={() => setWorkEnjoyMostUserEdited(true)}
-                        />
-                      ) : manualFillMode && key === 'topicsIndustriesInterest' && identityValue ? (
-                        <WorkEnjoyActivitiesPanel
-                          activities={parseInterestTopicsFromText(identityValue)}
-                          onActivitiesChange={(nextTopics) => {
-                            clearReviewFieldError(identityFieldKey);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              userIdentity: {
-                                ...(prev.userIdentity || {}),
-                                topicsIndustriesInterest: formatInterestTopicsAsText(nextTopics),
-                              },
-                            }));
-                          }}
-                          onUserEdited={() => setTopicsIndustriesUserEdited(true)}
-                        />
-                      ) : manualFillMode && key === 'naturallyGoodAt' && identityValue ? (
-                        <WorkEnjoyActivitiesPanel
-                          activities={parseStrengthsFromText(identityValue)}
-                          onActivitiesChange={(nextStrengths) => {
-                            clearReviewFieldError(identityFieldKey);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              userIdentity: {
-                                ...(prev.userIdentity || {}),
-                                naturallyGoodAt: formatNaturallyGoodAtAsText({ strengths: nextStrengths }),
-                              },
-                            }));
-                          }}
-                          onUserEdited={() => setNaturallyGoodAtUserEdited(true)}
-                        />
-                      ) : manualFillMode && key === 'workEnvironmentFit' && identityValue ? (
-                        <WorkEnjoyActivitiesPanel
-                          activities={parseWorkStylesFromText(identityValue)}
-                          onActivitiesChange={(nextStyles) => {
-                            clearReviewFieldError(identityFieldKey);
-                            const parsed = parseWorkEnvironmentFromText(identityValue);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              userIdentity: {
-                                ...(prev.userIdentity || {}),
-                                workEnvironmentFit: formatWorkEnvironmentAsText({
-                                  workStyles: nextStyles,
-                                  workEnvironments: parsed.workEnvironments,
-                                }),
-                              },
-                            }));
-                          }}
-                          onUserEdited={() => setWorkEnvironmentFitUserEdited(true)}
-                        />
-                      ) : manualFillMode && key === 'workingLifeAchievement' && identityValue ? (
-                        <WorkEnjoyActivitiesPanel
-                          activities={parseCareerGoalsFromText(identityValue)}
-                          onActivitiesChange={(nextGoals) => {
-                            clearReviewFieldError(identityFieldKey);
-                            const parsed = parseWorkingLifeAchievementFromText(identityValue);
-                            setReviewProfile((prev) => ({
-                              ...prev,
-                              userIdentity: {
-                                ...(prev.userIdentity || {}),
-                                workingLifeAchievement: formatWorkingLifeAchievementAsText({
-                                  careerGoals: nextGoals,
-                                  priorities: parsed.priorities,
-                                }),
-                              },
-                            }));
-                          }}
-                          onUserEdited={() => setWorkingLifeAchievementUserEdited(true)}
-                        />
-                      ) : (
                       <TextField
                         value={
                           key === 'topicsIndustriesInterest'
@@ -4915,11 +4804,10 @@ const DocumentUploadForm = ({
                         }
                         inputProps={{ maxLength: PROFILE_REVIEW_USER_IDENTITY_MAX }}
                       />
-                      )}
                     </Box>
                     );
                   })}
-                  {(structuredReviewLoading || !structuredExtractionReady) && !manualFillMode && (
+                  {(structuredReviewLoading || !structuredExtractionReady) && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1 }}>
                       <CircularProgress size={20} />
                       <Typography variant="body2" color="text.secondary">

@@ -183,6 +183,8 @@ async function watchCvExtractionUntilTerminal({
   let lastSnapshot = null;
   let lastPollPhase = null;
 
+  // Poll until terminal status, timeout, or abort.
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     if (signal?.aborted) {
       return { kind: 'aborted' };

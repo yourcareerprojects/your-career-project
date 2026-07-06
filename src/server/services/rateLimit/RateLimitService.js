@@ -94,12 +94,6 @@ class RateLimitService {
     await this.checkGlobalQueuePressure();
   }
 
-  /** @deprecated Use assertUploadLimitsOnly + recordUploadAttempt */
-  async assertUploadAllowed(userId) {
-    await this.assertUploadLimitsOnly(userId);
-    await this.recordUploadAttempt(userId);
-  }
-
   /**
    * Record a successful upload attempt against minute/hour windows.
    * @param {string|import('mongoose').Types.ObjectId} userId

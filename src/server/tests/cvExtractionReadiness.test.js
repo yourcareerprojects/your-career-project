@@ -196,4 +196,27 @@ describe('deriveNarrativeTaskStatus', () => {
     expect(readiness.narrativesReady).toBe(true);
     expect(readiness.phase).toBe('ready');
   });
+
+  test('legacy reference doc with narrative enrichment bypasses CV narrative quality gate', () => {
+    expect(
+      deriveNarrativeTaskStatus(
+        {
+          type: 'reference',
+          extractedProfileData: { foo: 1 },
+          narrativeEnrichment: {
+            structuredUserInfo: {
+              skillDomains: {},
+              skills: {},
+              skillsInDevelopment: {},
+              keyResponsibilities: {},
+              domains: {},
+            },
+            who_are_you: { raw_answers: [] },
+          },
+        },
+        'completed',
+        'idle'
+      )
+    ).toBe('complete');
+  });
 });

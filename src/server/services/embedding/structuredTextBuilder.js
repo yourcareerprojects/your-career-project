@@ -12,10 +12,6 @@
 
 const { getEnglishField } = require('../../utils/i18nFields');
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-
 /**
  * Canonicalize a token: lowercase, strip non-alphanumeric, collapse whitespace.
  */

@@ -6,7 +6,6 @@ const {
 } = require('../services/profile/naturallyGoodAtCoachingService');
 const {
   buildQuestionSystemPrompt,
-  buildQuestionTurnUserMessage,
   buildSummarySystemPrompt,
 } = require('../prompts/naturallyGoodAtCoachingPrompts');
 const {

@@ -101,7 +101,6 @@
     "loading": "Laden...",
     "errors": {
       "verifyEmailRequired": "Bitte bestätige deine E-Mail, bevor du Profildetails hinzufügst.",
-      "identityQuestionsRequired": "Bitte beantworte alle fünf Identitätsfragen, bevor du dein Profil speicherst.",
       "sessionExpired": "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an und speichere noch einmal.",
       "saveFailed": "Fehler beim Speichern des Profils. Bitte versuche es erneut."
     },
@@ -914,10 +913,8 @@
         "ariaLabel": "Profil-Einrichtung Schritt {{current}} von {{total}}"
       },
       "step2Intro": "Prüfe und passe deine Antworten zu diesen Identitätsfragen an. Sie helfen uns zu verstehen, was dir bei der Arbeit wichtig ist.",
-      "step2IntroManual": "Beantworte diese Identitätsfragen zu dem, was dir bei der Arbeit wichtig ist. Es gibt keine falschen Antworten — schreib in deinen eigenen Worten.",
       "structuredLoading": "Deine Profil-Insights werden verarbeitet…",
       "step3Intro": "Prüfe Fähigkeiten, Bereiche und Stärken aus deinem Lebenslauf. Behalte die Einträge, die ins Profil sollen, und bearbeite oder ergänze sie.",
-      "step3IntroManual": "Prüfe und vervollständige deine Profil-Stärken. Fähigkeiten, die du zuvor ausgewählt hast, sind vorausgefüllt — bearbeite oder ergänze die anderen Kategorien und speichere anschließend.",
       "step4Intro": "Wir haben Rückfragen zu deinen Antworten. Beantworte die Folgefragen und fahre dann fort.",
       "step4NoFollowUps": "Es sind keine weiteren Fragen nötig. Fahre fort, um dein Erfahrungsniveau zu bestätigen.",
       "step5Intro": "Bestätige dein Erfahrungsniveau und deinen Hintergrund, damit wir Simulationen passend zu deiner Seniorität ausrichten können. Speichere anschließend dein Profil.",

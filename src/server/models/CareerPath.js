@@ -17,8 +17,8 @@ const SkillModelSchema = new mongoose.Schema({
   extraction_confidence: { type: Number, default: 0 },
   // When this skill model was last built
   built_at: { type: Date },
-  // Method used: "esco_csv" | "llm" | "manual"
-  built_with: { type: String, default: 'esco_csv' }
+  // Method used: "esco_db" | "esco_csv" | "llm" | "manual"
+  built_with: { type: String, default: 'esco_db' }
 }, { _id: false });
 
 const SenioritySchema = new mongoose.Schema({

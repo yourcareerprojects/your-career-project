@@ -21,6 +21,32 @@ function createTokenForUser(user) {
   );
 }
 
+/** Minimal profile that satisfies requireCompletedProfile (85% without a CV upload). */
+function buildSimulationReadyProfile() {
+  return {
+    seniority: {
+      currentStatus: 'employed',
+      yearsOfExperience: 5,
+      highestDegree: 'bachelors',
+      mostSeniorWorkExperience: 'mid_level',
+    },
+    userIdentityAnswers: {
+      workEnjoyMost: 'Building products',
+      topicsIndustriesInterest: 'Technology',
+      naturallyGoodAt: 'Problem solving',
+      workEnvironmentFit: 'Collaborative teams',
+      workingLifeAchievement: 'Meaningful work',
+    },
+    structuredUserInfo: {
+      skillDomains: { raw_items: ['Engineering'] },
+      skills: { raw_items: ['JavaScript'] },
+      skillsInDevelopment: { raw_items: ['TypeScript'] },
+      keyResponsibilities: { raw_items: ['Build APIs'] },
+      domains: { raw_items: ['Software'] },
+    },
+  };
+}
+
 describe('POST /api/profile/saved-career-steps/bulk-delete', () => {
   it('removes all matching saved career steps atomically and returns counts', async () => {
     const user = await User.create({
@@ -32,6 +58,7 @@ describe('POST /api/profile/saved-career-steps/bulk-delete', () => {
         isVerified: true,
         isActive: true,
       },
+      profile: buildSimulationReadyProfile(),
       savedCareerSteps: [
         {
           stepId: 'step-a',
@@ -81,6 +108,7 @@ describe('POST /api/profile/saved-career-steps/bulk-delete', () => {
         isVerified: true,
         isActive: true,
       },
+      profile: buildSimulationReadyProfile(),
       savedCareerSteps: [
         {
           stepId: 'step-z',
