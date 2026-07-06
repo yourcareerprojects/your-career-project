@@ -26,9 +26,6 @@
       "description": "Only then can you start the career simulation.",
       "cta": "Check your inbox"
     },
-    "info": {
-      "updateProfileHint": "If you are not happy with your simulation results, go back to your profile page and update your information there."
-    },
     "tooltips": {
       "completeProfileFirst": "Complete at least {{min}}% of your profile first",
       "verifyEmailFirst": "Verify your email address first",
@@ -115,7 +112,6 @@
         "saveToSavedList": "Save this role to your saved list"
       }
     },
-    "sloganTitle": "Your Slogan",
     "preparingRoleEvaluation": "Preparing role evaluation...",
     "categories": {
       "nextRoles": "Next Career Roles",
@@ -187,7 +183,6 @@
       "additionalInformation": "Additional Information",
       "resourceHelpText": "This resource or advice is designed to help you in your career development journey.",
       "actions": "Actions",
-      "selectedCareerGoal": "Selected Career Goal",
       "profileEnrichmentTitle": "Profile enrichment from uploaded documents",
       "profileEnrichmentFallback": "Document-derived signals were applied to improve recommendations.",
       "nextCareerSteps": "Next Career Steps",

@@ -429,10 +429,8 @@ function plainSimulationResultEntry(sim) {
 function normalizeSimulationResultEntryForResponse(sim, language = 'en') {
   const simulationData = plainSimulationResultEntry(sim);
   if (!simulationData || typeof simulationData !== 'object') return simulationData;
-  return {
-    ...simulationData,
-    careerGoal: localizedContentService.normalizeForResponse(simulationData.careerGoal, language) || '',
-  };
+  const { careerGoal: _careerGoal, ...rest } = simulationData;
+  return rest;
 }
 
 /**
@@ -1359,12 +1357,10 @@ async function buildSimulationForkJobResultPayload(jobDoc, { attempts = 3, delay
     /* eslint-enable no-await-in-loop */
     const lsr = user?.lastSimulationResult;
     if (user && lsr?.results) {
-      const careerGoal = localizedContentService.normalizeForResponse(lsr.selectedGoal, lang) || '';
       const profileCompletion = computeProfileCompletion(user.profile).overall;
       return {
         success: true,
         results: lsr.results,
-        careerGoal,
         profileCompletion,
       };
     }
@@ -1853,7 +1849,6 @@ exports.getLastSimulationResult = async (req, res) => {
     return res.json({
       success: true,
       results: localizedResults,
-      selectedGoal: localizedContentService.normalizeForResponse(user.lastSimulationResult.selectedGoal, req.language) || '',
       date: user.lastSimulationResult.date
     });
   } catch (err) {
@@ -2344,7 +2339,7 @@ exports.saveSimulationResult = async (req, res) => {
     }
     
     // Accept data directly from request body (frontend sends it this way)
-    const { name, results, careerGoal, profileCompletion } = req.body;
+    const { name, results, profileCompletion } = req.body;
     
     if (!results) {
       logControllerError('Missing results payload', new Error('No results provided in request body'));
@@ -2408,7 +2403,6 @@ exports.saveSimulationResult = async (req, res) => {
       name: name || `Simulation - ${new Date().toLocaleString()}`,
       results,
       resultsCount, // Add the required resultsCount field
-      careerGoal: localizedContentService.set(null, 'en', careerGoal || ''),
       profileCompletion: profileCompletion || 100,
       timestamp: new Date(),
       profileSnapshot: user.profile || {}, // Add the required profileSnapshot field
@@ -2442,11 +2436,6 @@ exports.saveSimulationResult = async (req, res) => {
       user.simulationResults[existingIndex] = {
         ...user.simulationResults[existingIndex],
         ...newSimulation,
-        careerGoal: localizedContentService.set(
-          user.simulationResults[existingIndex].careerGoal,
-          'en',
-          careerGoal || ''
-        ),
       };
     } else {
       const activeSimulations = user.simulationResults.filter((sim) => sim.status === 'active');
@@ -3922,7 +3911,6 @@ exports.getSavedSimulations = async (req, res) => {
       const simulationData = plainSimulationResultEntry(sim);
       delete simulationData.description;
       simulationData.results = localizedResults;
-      simulationData.careerGoal = localizedContentService.normalizeForResponse(simulationData.careerGoal, req.language) || '';
 
       return {
       ...simulationData,
@@ -3965,7 +3953,6 @@ exports.getSavedSimulation = async (req, res) => {
         const simulationData = plainSimulationResultEntry(simulation);
         delete simulationData.description;
         simulationData.results = localizedResults;
-        simulationData.careerGoal = localizedContentService.normalizeForResponse(simulationData.careerGoal, req.language) || '';
         return simulationData;
       })(),
       resultsCount: {
@@ -4583,17 +4570,11 @@ exports.updateSimulationResult = async (req, res) => {
     };
     
     // Update the simulation with new data
-    const incomingCareerGoal = localizedContentService.normalizeForResponse(validatedData.careerGoal, 'en') || '';
     user.simulationResults[simulationIndex] = {
       ...existingSimulation,
       ...validatedData,
       // Preserve original metadata
       name: validatedData.name || existingSimulation.name,
-      careerGoal: localizedContentService.set(
-        existingSimulation.careerGoal,
-        'en',
-        incomingCareerGoal || (localizedContentService.normalizeForResponse(existingSimulation.careerGoal, 'en') || '')
-      ),
       profileCompletion: validatedData.profileCompletion || existingSimulation.profileCompletion,
       profileSnapshot: validatedData.profileSnapshot || existingSimulation.profileSnapshot,
       status: validatedData.status || existingSimulation.status

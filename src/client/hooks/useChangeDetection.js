@@ -28,8 +28,7 @@ const useChangeDetection = (originalData, currentData) => {
     // Check if other important fields have changed
     const otherFieldsChanged =
       original.name !== current.name ||
-      original.description !== current.description ||
-      original.careerGoal !== current.careerGoal;
+      original.description !== current.description;
 
     return resultsChanged || otherFieldsChanged;
   }, []);
@@ -113,15 +112,6 @@ const useChangeDetection = (originalData, currentData) => {
         type: 'text_change',
         original: originalData.description,
         current: currentData.description
-      });
-    }
-
-    if (originalData.careerGoal !== currentData.careerGoal) {
-      changes.push({
-        category: 'Career Goal',
-        type: 'text_change',
-        original: originalData.careerGoal,
-        current: currentData.careerGoal
       });
     }
 

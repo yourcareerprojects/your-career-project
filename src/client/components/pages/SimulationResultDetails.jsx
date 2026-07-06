@@ -285,7 +285,6 @@ const SimulationResultDetails = () => {
         saveSimulationToStorage(
           {
             results: patchedStoredResults,
-            careerGoal: stored.metadata?.careerGoal || '',
             simulationDate: stored.metadata?.simulationDate || new Date().toISOString(),
             profileCompletion: stored.metadata?.profileCompletion ?? null,
           },

@@ -26,9 +26,6 @@
       "description": "Erst dann kannst du die Berufssimulation starten.",
       "cta": "Posteingang prüfen"
     },
-    "info": {
-      "updateProfileHint": "Wenn du mit deinen Simulationsergebnissen nicht zufrieden bist, gehe zu deinem Profil zurück und aktualisiere dort deine Angaben."
-    },
     "tooltips": {
       "completeProfileFirst": "Vervollständige zuerst mindestens {{min}}% deines Profils",
       "verifyEmailFirst": "Bestätige zuerst deine E-Mail-Adresse",
@@ -115,7 +112,6 @@
         "saveToSavedList": "Diese Rolle in deiner gespeicherten Liste speichern"
       }
     },
-    "sloganTitle": "Dein Slogan",
     "preparingRoleEvaluation": "Rollenbewertung wird vorbereitet...",
     "categories": {
       "nextRoles": "Naheliegende Berufsideen",
@@ -187,7 +183,6 @@
       "additionalInformation": "Zusätzliche Informationen",
       "resourceHelpText": "Diese Ressource bzw. Empfehlung unterstützt dich in deiner beruflichen Entwicklung.",
       "actions": "Aktionen",
-      "selectedCareerGoal": "Dein Slogan",
       "profileEnrichmentTitle": "Profilanreicherung aus hochgeladenen Dokumenten",
       "profileEnrichmentFallback": "Dokumentbasierte Signale wurden angewendet, um Empfehlungen zu verbessern.",
       "nextCareerSteps": "Naheliegende Berufsideen",

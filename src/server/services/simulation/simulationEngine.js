@@ -19,8 +19,6 @@ const {
   normalizeUserIdentityAnswers,
   topicsStringToInterestTokens,
 } = require('../embedding/userIdentityEmbeddingTextService');
-const { generateCareerSlogan } = require('../jobAnalysis/careerSloganGenerator');
-const localizedContentService = require('../localization/localizedContentService');
 const { enrichCareerPathWithHybridScores } = require('../scoring/careerPathScorer');
 const { buildUserProfileForHybrid } = require('../scoring/hybridUserProfileForMatching');
 const { generatePrioritizedListsPhase2 } = require('./prioritizedListGenerator');
@@ -332,37 +330,11 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     const bio =
       mergedIdentityAnswers.workEnjoyMost ||
       (profile.personalInfo?.bio ? String(profile.personalInfo.bio).trim() : '');
-    const rawCareerGoal =
+    const careerGoal =
       mergedIdentityAnswers.workingLifeAchievement ||
-      (reqLike.body?.careerGoal ? String(reqLike.body.careerGoal).trim() : null) ||
-      null;
-    logStructured('[simulation-engine]', {
-      userId: String(userId),
-      event: 'before_career_goal_generation',
-      isForkChild: Boolean(runtimeOpts.isForkChild),
-      hasRawCareerGoal: Boolean(rawCareerGoal && String(rawCareerGoal).trim()),
-    });
-    const careerSloganTimeoutMs = runtimeOpts.isForkChild
-      ? 0
-      : toPositiveIntEnv(process.env.SIMULATION_CAREER_SLOGAN_TIMEOUT_MS, 30000);
-    const careerGoalResult = await generateCareerSlogan(rawCareerGoal || '', {
-      lang: reqLike.language,
-      returnBundle: true,
-      // Worker subprocess: skip LLM so scoring is not blocked on chat completions.
-      deterministicOnly: Boolean(runtimeOpts.isForkChild),
-      // API / in-process path: cap wall-clock wait; falls back to deterministic slogan.
-      timeoutMs: careerSloganTimeoutMs > 0 ? careerSloganTimeoutMs : undefined,
-    });
-    const careerGoal = careerGoalResult.canonical;
-    const localizedCareerGoal = careerGoalResult.localized?.[reqLike.language] || '';
-    logStructured('[simulation-engine]', {
-      userId: String(userId),
-      event: 'after_career_goal_generation',
-      careerGoalLength: careerGoal ? String(careerGoal).length : 0,
-      careerSloganTimeoutMs: careerSloganTimeoutMs > 0 ? careerSloganTimeoutMs : null,
-      careerSloganDeterministicOnly: Boolean(runtimeOpts.isForkChild),
-    });
-    logMemory('after_career_goal_generation', {
+      (reqLike.body?.careerGoal ? String(reqLike.body.careerGoal).trim() : '') ||
+      '';
+    logMemory('after_career_goal_resolution', {
       userId: String(userId),
       userSkillCount: userSkills.length,
       userSkillKeyCount: userSkillNames.length,
@@ -1015,13 +987,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       $set: {
         lastSimulationResult: {
           results,
-          selectedGoal: (() => {
-            let field = localizedContentService.set(null, 'en', careerGoal || '');
-            if (localizedCareerGoal && reqLike.language !== 'en') {
-              field = localizedContentService.set(field, reqLike.language, localizedCareerGoal);
-            }
-            return field;
-          })(),
           date: new Date()
         }
       }
@@ -1043,7 +1008,6 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     return resLike.json({
       success: true,
       results,
-      careerGoal: localizedCareerGoal || careerGoal || '',
       profileCompletion: completion,
     });
   } catch (err) {

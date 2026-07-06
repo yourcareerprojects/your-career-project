@@ -826,22 +826,6 @@ const SavedSimulationDetails = () => {
         </Box>
       </Paper>
 
-      {/* Career Goal */}
-      {localizeAiText(simulation.careerGoal, '') && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
-          <Card sx={{ backgroundColor: 'var(--color-surface-info)', borderLeft: '6px solid var(--color-primary)', minWidth: 320 }}>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                {t('details.labels.selectedCareerGoal', { ns: 'dashboard' })}
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                {localizeAiText(simulation.careerGoal, '')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-      )}
-
       {/* Phase 3: document enrichment summary */}
       {simulation.results?.profileEnrichment && (
         <Box sx={{ mb: 3 }}>

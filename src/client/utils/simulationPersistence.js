@@ -27,7 +27,6 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
     const storageData = {
       results: simulationData.results,
       metadata: {
-        careerGoal: simulationData.careerGoal,
         simulationDate: simulationData.simulationDate,
         profileCompletion: simulationData.profileCompletion,
         timestamp: new Date().toISOString()
@@ -58,7 +57,6 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
         const storageData = {
           results: simulationData.results,
           metadata: {
-            careerGoal: simulationData.careerGoal,
             simulationDate: simulationData.simulationDate,
             profileCompletion: simulationData.profileCompletion,
             timestamp: new Date().toISOString()

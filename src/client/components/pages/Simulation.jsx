@@ -114,7 +114,6 @@ const Simulation = () => {
   const [simulationProgress, setSimulationProgress] = useState(0);
   const [simResults, setSimResults] = useState(null);
   const [loadingLast, setLoadingLast] = useState(true);
-  const [backendGoal, setBackendGoal] = useState('');
   const [simError, setSimError] = useState('');
   // Career goal autocomplete (server-side search, supports ESCO altLabels)
   const [simulationDate, setSimulationDate] = useState(null);
@@ -195,7 +194,6 @@ const Simulation = () => {
         saveSimulationToStorage(
           {
             results: nextResults,
-            careerGoal: backendGoal,
             simulationDate: simulationDate || new Date(),
             profileCompletion,
           },
@@ -205,7 +203,7 @@ const Simulation = () => {
         console.warn('Session persistence failed:', e);
       }
     },
-    [backendGoal, simulationDate, profileCompletion]
+    [simulationDate, profileCompletion]
   );
 
   const handleEvaluationCommit = useCallback(
@@ -405,7 +403,6 @@ const Simulation = () => {
           // Mark session storage as 'saved' to prevent server fetch on return
           const simulationData = {
             results: null,
-            careerGoal: '',
             simulationDate: null,
             profileCompletion: 0
           };
@@ -472,7 +469,6 @@ const Simulation = () => {
         
         // Set metadata if available
         if (storedData.metadata) {
-          setBackendGoal(localizeAiText(storedData.metadata.careerGoal || ''));
           setSimulationDate(storedData.metadata.simulationDate || new Date());
           setProfileCompletion(storedData.metadata.profileCompletion || 0);
         }
@@ -744,7 +740,6 @@ const Simulation = () => {
           try {
             const parsedResults = JSON.parse(storedUnsavedResults);
             setSimResults(parsedResults.results);
-            setBackendGoal(localizeAiText(parsedResults.selectedGoal || ''));
             setSimulationDate(parsedResults.date);
             setHasUnsavedChanges(true);
           } catch (err) {
@@ -898,7 +893,6 @@ const Simulation = () => {
       try {
         const parsedResults = JSON.parse(storedUnsavedResults);
         safeSetSimResults(parsedResults.results);
-        setBackendGoal(localizeAiText(parsedResults.selectedGoal || ''));
         setSimulationDate(parsedResults.date);
         setHasUnsavedChanges(true);
         setLoadingLast(false);
@@ -962,8 +956,6 @@ const Simulation = () => {
           const flow = mergeEvaluationFlowFromResults(sanitized, simResultsRef.current?.evaluationFlow);
           const merged = flow ? { ...sanitized, evaluationFlow: flow } : sanitized;
           safeSetSimResults(merged);
-          const goalDisplay = localizeAiText(data.selectedGoal || '');
-          setBackendGoal(goalDisplay);
           setSimulationDate(data.date); // Store the simulation date
           setHasUnsavedChanges(false);
           setIsViewingSavedSimulation(false); // Last simulation is not from saved simulations
@@ -974,7 +966,6 @@ const Simulation = () => {
             saveSimulationToStorage(
               {
                 results: merged,
-                careerGoal: goalDisplay,
                 simulationDate: data.date ? new Date(data.date) : new Date(),
                 profileCompletion,
               },
@@ -1003,7 +994,6 @@ const Simulation = () => {
       const data = await res.json();
       if (data.success) {
         safeSetSimResults(data.simulation.results);
-        setBackendGoal(localizeAiText(data.simulation.careerGoal || ''));
         setSelectedSimulation(data.simulation);
         setSimulationDate(data.simulation.timestamp); // Store the simulation timestamp
         setHasUnsavedChanges(false);
@@ -1120,7 +1110,6 @@ const Simulation = () => {
         if (lastRes.ok && lastData?.results) {
           return {
             results: lastData.results,
-            careerGoal: lastData.selectedGoal || '',
             profileCompletion: profileCompletion || 0,
           };
         }
@@ -1217,7 +1206,6 @@ const Simulation = () => {
           if (lastRes.ok && lastData?.results) {
             data = {
               results: lastData.results,
-              careerGoal: lastData.selectedGoal || '',
               profileCompletion: profileCompletion || 0,
             };
           }
@@ -1231,9 +1219,7 @@ const Simulation = () => {
 
       if (data && data.results) {
         invalidateLastSimulationQuery();
-        const careerGoalFromProfile = localizeAiText(data.careerGoal || '');
         setSimResults(data.results);
-        setBackendGoal(careerGoalFromProfile);
         setSimulationDate(new Date()); // Set current date for new simulation
         setSimulationState('clean'); // New simulation starts in clean state
         
@@ -1246,7 +1232,6 @@ const Simulation = () => {
         // Save clean simulation results to session storage
         const simulationData = {
           results: data.results,
-          careerGoal: careerGoalFromProfile,
           simulationDate: new Date(),
           profileCompletion: data.profileCompletion || 0
         };
@@ -1344,7 +1329,6 @@ const Simulation = () => {
         body: JSON.stringify({
           name: simulationName,
           results: resultsPayload,
-          careerGoal: backendGoal,
           profileCompletion: 100
         })
       });
@@ -1359,7 +1343,6 @@ const Simulation = () => {
         
         // Clear simulation results after saving (simulation "moved" to saved list)
         setSimResults(null);
-        setBackendGoal('');
         setSimulationDate(null);
         setSelectedSimulation(null);
         setIsViewingSavedSimulation(false);
@@ -1490,7 +1473,6 @@ const Simulation = () => {
       const data = await res.json();
       if (data.success) {
         safeSetSimResults(data.simulation.results);
-        setBackendGoal(localizeAiText(data.simulation.careerGoal));
         setSelectedSimulation(data.simulation);
         setSimulationDate(data.simulation.timestamp); // Store the simulation timestamp
         setHasUnsavedChanges(false);
@@ -1501,7 +1483,6 @@ const Simulation = () => {
         // Mark session storage as 'saved' since we're loading a saved simulation
         const simulationData = {
           results: null,
-          careerGoal: '',
           simulationDate: null,
           profileCompletion: 0
         };
@@ -1734,7 +1715,6 @@ const Simulation = () => {
       // Store the current unsaved simulation results
       sessionStorage.setItem('currentUnsavedResults', JSON.stringify({
         results: simResults,
-        selectedGoal: backendGoal,
         date: simulationDate
       }));
     }
@@ -2125,8 +2105,8 @@ const Simulation = () => {
           // State consistency tracking (removed verbose logging)
           
           const resultsHeaderOrder = simResults
-            ? { title: { xs: 1, sm: 0 }, subtitle: { xs: 2, sm: 1 }, profileGate: { xs: 3, sm: 2 }, info: { xs: 4, sm: 3 }, actions: { xs: 0, sm: 5 } }
-            : { title: 0, subtitle: 1, profileGate: 2, info: 3, actions: 3 };
+            ? { title: { xs: 1, sm: 0 }, subtitle: { xs: 2, sm: 1 }, profileGate: { xs: 3, sm: 2 }, actions: { xs: 0, sm: 4 } }
+            : { title: 0, subtitle: 1, profileGate: 2, actions: 3 };
 
           return (
             <>
@@ -2222,20 +2202,6 @@ const Simulation = () => {
                       min: MIN_PROFILE_COMPLETION_REQUIRED,
                     })}
                   </Typography>
-                </Alert>
-              )}
-
-              {simResults && (
-                <Alert
-                  severity="info"
-                  sx={{
-                    order: resultsHeaderOrder.info,
-                    mb: { xs: 1.5, sm: 3 },
-                    maxWidth: 860,
-                    mx: 'auto',
-                  }}
-                >
-                  {t('simulation.info.updateProfileHint', { ns: 'dashboard' })}
                 </Alert>
               )}
 
@@ -2591,36 +2557,6 @@ const Simulation = () => {
                           />
                         </span>
                       </Tooltip>
-                    </Box>
-                  )}
-                  
-                  {backendGoal && (
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        mb: { xs: 3, sm: 4 },
-                        px: { xs: 1, sm: 0 },
-                        width: '100%',
-                        boxSizing: 'border-box',
-                      }}
-                    >
-                      <Card
-                        sx={{
-                          backgroundColor: 'var(--color-surface-info)',
-                          borderLeft: '6px solid var(--color-primary)',
-                          minWidth: 0,
-                          maxWidth: '100%',
-                          width: { xs: '100%', sm: 'auto' },
-                        }}
-                      >
-                        <CardContent>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                            {t('simulation.sloganTitle', { ns: 'dashboard' })}
-                          </Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 700 }}>{backendGoal}</Typography>
-                        </CardContent>
-                      </Card>
                     </Box>
                   )}
 

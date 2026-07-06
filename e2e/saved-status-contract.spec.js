@@ -45,7 +45,6 @@ test.describe('saved-status contract', () => {
           ranked: { nextSteps: null, outsideTheBox: null },
         },
       },
-      selectedGoal: 'User Experience',
       date: new Date().toISOString(),
     };
 
@@ -56,7 +55,6 @@ test.describe('saved-status contract', () => {
         _id: simulationIdA,
         name: 'Saved Simulation A',
         timestamp: new Date().toISOString(),
-        careerGoal: 'User Experience',
         results: {
           nextSteps: [],
           outsideTheBox: [
@@ -251,7 +249,6 @@ test.describe('saved-status contract', () => {
           ranked: { nextSteps: null, outsideTheBox: null },
         },
       },
-      selectedGoal: 'Product',
       date: new Date().toISOString(),
     };
 
@@ -262,7 +259,6 @@ test.describe('saved-status contract', () => {
         _id: simulationIdA,
         name: 'Saved Simulation Next',
         timestamp: new Date().toISOString(),
-        careerGoal: 'Product',
         results: {
           nextSteps: [
             {
