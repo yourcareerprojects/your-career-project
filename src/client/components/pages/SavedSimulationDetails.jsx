@@ -28,6 +28,7 @@ import EditIcon from '@mui/icons-material/Edit';
 
 // Import components
 import CareerStepCardWithReplacement from '../common/CareerStepCardWithReplacement';
+import SimulationEvaluationFlow from '../common/SimulationEvaluationFlow';
 import SimulationCategoryEvaluation from '../common/SimulationCategoryEvaluation';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import SaveChangesButton from '../common/SaveChangesButton';
@@ -44,6 +45,9 @@ import {
   buildRankedRows,
   buildRankedRowsFromOrderedRoles,
   isEvaluationComplete,
+  unlockMobileOutsideTheBox,
+  lockMobileOutsideTheBox,
+  markCategoryRankingSeen,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
 import {
@@ -550,11 +554,14 @@ const SavedSimulationDetails = () => {
       if (!isEvaluationComplete(roles)) return prev;
       const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
       const ranked = buildRankedRows(roles, rankSlug);
-      const nextFlow = {
-        ...flow,
-        phases: { ...flow.phases, [categoryKey]: 'ranked' },
-        ranked: { ...flow.ranked, [categoryKey]: ranked },
-      };
+      const nextFlow = markCategoryRankingSeen(
+        {
+          ...flow,
+          phases: { ...flow.phases, [categoryKey]: 'ranked' },
+          ranked: { ...flow.ranked, [categoryKey]: ranked },
+        },
+        categoryKey
+      );
       return {
         ...prev,
         results: { ...prev.results, evaluationFlow: nextFlow },
@@ -566,10 +573,25 @@ const SavedSimulationDetails = () => {
     setSimulation((prev) => {
       const flow = prev.results?.evaluationFlow;
       if (!flow) return prev;
-      const nextFlow = {
+      let nextFlow = {
         ...flow,
         phases: { ...flow.phases, [categoryKey]: 'eval' },
       };
+      if (categoryKey === 'nextSteps') {
+        nextFlow = lockMobileOutsideTheBox(nextFlow);
+      }
+      return {
+        ...prev,
+        results: { ...prev.results, evaluationFlow: nextFlow },
+      };
+    });
+  }, []);
+
+  const handleUnlockMobileOutsideTheBox = useCallback(() => {
+    setSimulation((prev) => {
+      const flow = prev.results?.evaluationFlow;
+      if (!flow) return prev;
+      const nextFlow = unlockMobileOutsideTheBox(flow);
       return {
         ...prev,
         results: { ...prev.results, evaluationFlow: nextFlow },
@@ -846,6 +868,28 @@ const SavedSimulationDetails = () => {
         </Box>
       )}
 
+      {savedNextUsesEvaluationUi && savedOutsideUsesEvaluationUi ? (
+        <Box sx={{ mb: 4 }}>
+          <SimulationEvaluationFlow
+            evaluationFlow={evaluationFlow}
+            onUnlockMobileOutsideTheBox={handleUnlockMobileOutsideTheBox}
+            nextStepsTitle={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
+            outsideTheBoxTitle={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
+            onEvaluate={handleEvaluationCommit}
+            onSeeRanking={handleSeeRoleRanking}
+            onEditRatings={handleEditRoleRanking}
+            onReorderRankedRoles={handleReorderRankedRoles}
+            isStepSaved={isStepSaved}
+            isStepSaving={isStepSaving}
+            onToggleSave={(role) => handleToggleSaveStep(role, simulation.id)}
+            guardedNavigate={guardedNavigate}
+            isViewingSavedSimulation
+            savedSimulationId={simulation.id}
+            simulationIdForCards={simulation.id}
+          />
+        </Box>
+      ) : (
+        <>
       {/* Next Career Roles — saved ranking (evaluationFlow) or legacy grid order */}
       {results?.nextSteps && results.nextSteps.length > 0 && (
         <Box sx={{ mb: 4 }}>
@@ -976,6 +1020,8 @@ const SavedSimulationDetails = () => {
             </>
           )}
         </Box>
+      )}
+        </>
       )}
 
       {/* Edit Dialog */}

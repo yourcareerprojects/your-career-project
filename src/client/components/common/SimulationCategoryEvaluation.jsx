@@ -1235,8 +1235,16 @@ export default function SimulationCategoryEvaluation({
             {complete
               ? t('simulation.evaluationFlow.allRolesRated', { total })
               : hasStarted
-                ? t('simulation.evaluationFlow.continue')
-                : t('simulation.evaluationFlow.start')}
+                ? t(
+                    isMobileViewport
+                      ? 'simulation.evaluationFlow.continueMobile'
+                      : 'simulation.evaluationFlow.continue'
+                  )
+                : t(
+                    isMobileViewport
+                      ? 'simulation.evaluationFlow.startMobile'
+                      : 'simulation.evaluationFlow.start'
+                  )}
           </Typography>
 
           <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>

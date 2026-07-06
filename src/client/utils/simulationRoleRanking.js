@@ -202,6 +202,72 @@ export function buildRankedRowsFromOrderedRoles(orderedRoles, rankCategory) {
  * @param {object} results — full simulation results
  * @returns {object}
  */
+export const MOBILE_EVAL_VIEWS = {
+  NEXT_ONLY: 'nextOnly',
+  TRANSITION: 'transition',
+  OOTB_ONLY: 'ootbOnly',
+  BOTH: 'both',
+};
+
+export function isMobileOutsideTheBoxUnlocked(evaluationFlow) {
+  if (!evaluationFlow) return false;
+  if (evaluationFlow.hasStarted?.outsideTheBox) return true;
+  return evaluationFlow.mobilePhaseGate?.outsideTheBox === 'unlocked';
+}
+
+/**
+ * Which evaluation sections to show on narrow viewports (sequential two-phase flow).
+ * @param {object | null | undefined} evaluationFlow
+ * @returns {typeof MOBILE_EVAL_VIEWS[keyof typeof MOBILE_EVAL_VIEWS]}
+ */
+export function hasSeenCategoryRanking(evaluationFlow, categoryKey) {
+  if (!evaluationFlow) return false;
+  if (evaluationFlow.hasSeenRanking?.[categoryKey]) return true;
+  return evaluationFlow.phases?.[categoryKey] === 'ranked';
+}
+
+export function markCategoryRankingSeen(flow, categoryKey) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return {
+    ...flow,
+    hasSeenRanking: { ...flow.hasSeenRanking, [categoryKey]: true },
+  };
+}
+
+export function getMobileEvaluationView(evaluationFlow) {
+  if (!evaluationFlow) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
+
+  const nextComplete = isEvaluationComplete(evaluationFlow.nextSteps);
+  const ootbComplete = isEvaluationComplete(evaluationFlow.outsideTheBox);
+  const nextRanked = evaluationFlow.phases?.nextSteps === 'ranked';
+  const ootbRanked = evaluationFlow.phases?.outsideTheBox === 'ranked';
+  const ootbUnlocked = isMobileOutsideTheBoxUnlocked(evaluationFlow);
+  const seenNextRanking = hasSeenCategoryRanking(evaluationFlow, 'nextSteps');
+
+  if (nextRanked && ootbRanked) return MOBILE_EVAL_VIEWS.BOTH;
+  if (ootbUnlocked && (!ootbComplete || !ootbRanked)) return MOBILE_EVAL_VIEWS.OOTB_ONLY;
+  if (!nextComplete) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
+  if (!ootbUnlocked && !seenNextRanking) return MOBILE_EVAL_VIEWS.TRANSITION;
+  if (!ootbUnlocked) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
+  return MOBILE_EVAL_VIEWS.BOTH;
+}
+
+export function unlockMobileOutsideTheBox(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return {
+    ...flow,
+    mobilePhaseGate: { ...flow.mobilePhaseGate, outsideTheBox: 'unlocked' },
+  };
+}
+
+export function lockMobileOutsideTheBox(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return {
+    ...flow,
+    mobilePhaseGate: { ...flow.mobilePhaseGate, outsideTheBox: 'locked' },
+  };
+}
+
 export function createInitialEvaluationFlow(results) {
   const simulationId = results.simulationId || 'local';
   return {
@@ -211,6 +277,8 @@ export function createInitialEvaluationFlow(results) {
     hasStarted: { nextSteps: false, outsideTheBox: false },
     phases: { nextSteps: 'eval', outsideTheBox: 'eval' },
     ranked: { nextSteps: null, outsideTheBox: null },
+    mobilePhaseGate: { outsideTheBox: 'locked' },
+    hasSeenRanking: { nextSteps: false, outsideTheBox: false },
   };
 }
 
@@ -230,11 +298,19 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
     (flowKey === resultsKey ||
       (flowKey === 'local' && resultsKey && resultsKey !== 'local'));
   if (sameSimulationRun) {
+    const ootbAlreadyStarted = Boolean(currentFlow.hasStarted?.outsideTheBox);
     return {
       ...currentFlow,
       simulationId: resultsKey,
       nextSteps: buildEvaluationRolesList(results, 'nextSteps', currentFlow.nextSteps),
       outsideTheBox: buildEvaluationRolesList(results, 'outsideTheBox', currentFlow.outsideTheBox),
+      mobilePhaseGate: currentFlow.mobilePhaseGate ?? {
+        outsideTheBox: ootbAlreadyStarted ? 'unlocked' : 'locked',
+      },
+      hasSeenRanking: currentFlow.hasSeenRanking ?? {
+        nextSteps: currentFlow.phases?.nextSteps === 'ranked',
+        outsideTheBox: currentFlow.phases?.outsideTheBox === 'ranked',
+      },
     };
   }
   return createInitialEvaluationFlow({ ...results, simulationId: resultsKey });

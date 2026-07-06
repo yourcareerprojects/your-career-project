@@ -93,6 +93,13 @@
       "noRolesInCategory": "No roles in this category.",
       "dropHere": "Drop here",
       "finalRankingDescription": "Final ranking for {{category}}. Groups reflect your Keep, Skip, and Dislike choices.",
+      "startMobile": "Rate each role one at a time. Choose Keep, Skip, or Dislike. After you finish all roles you can see your ranking.",
+      "continueMobile": "Rate the next role. Choose Keep, Skip, or Dislike. After you finish all roles you can see your ranking.",
+      "mobileTransition": {
+        "title": "Next up: outside-the-box roles",
+        "description": "You have finished rating the next career roles. Now you will rate {{count}} outside-the-box role suggestions, one at a time.",
+        "continue": "Continue"
+      },
       "actions": {
         "keep": "Keep",
         "skip": "Skip",

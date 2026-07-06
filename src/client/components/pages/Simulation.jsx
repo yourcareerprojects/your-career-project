@@ -45,7 +45,7 @@ import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
-import SimulationCategoryEvaluation from '../common/SimulationCategoryEvaluation';
+import SimulationEvaluationFlow from '../common/SimulationEvaluationFlow';
 import {
   ensureEvaluationFlow,
   buildRankedRows,
@@ -53,6 +53,9 @@ import {
   areBothSimulationRankingsComplete,
   isEvaluationComplete,
   mergeEvaluationFlowFromResults,
+  unlockMobileOutsideTheBox,
+  lockMobileOutsideTheBox,
+  markCategoryRankingSeen,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
 import SaveChangesButton from '../common/SaveChangesButton';
@@ -235,11 +238,14 @@ const Simulation = () => {
         if (!isEvaluationComplete(roles)) return prev;
         const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
         const ranked = buildRankedRows(roles, rankSlug);
-        const nextFlow = {
-          ...flow,
-          phases: { ...flow.phases, [categoryKey]: 'ranked' },
-          ranked: { ...flow.ranked, [categoryKey]: ranked },
-        };
+        const nextFlow = markCategoryRankingSeen(
+          {
+            ...flow,
+            phases: { ...flow.phases, [categoryKey]: 'ranked' },
+            ranked: { ...flow.ranked, [categoryKey]: ranked },
+          },
+          categoryKey
+        );
         const next = { ...prev, evaluationFlow: nextFlow };
         setTimeout(() => persistSimResultsToSession(next), 0);
         return next;
@@ -255,10 +261,13 @@ const Simulation = () => {
       setSimResults((prev) => {
         if (!prev?.evaluationFlow) return prev;
         const flow = prev.evaluationFlow;
-        const nextFlow = {
+        let nextFlow = {
           ...flow,
           phases: { ...flow.phases, [categoryKey]: 'eval' },
         };
+        if (categoryKey === 'nextSteps') {
+          nextFlow = lockMobileOutsideTheBox(nextFlow);
+        }
         const next = { ...prev, evaluationFlow: nextFlow };
         setTimeout(() => persistSimResultsToSession(next), 0);
         return next;
@@ -268,6 +277,18 @@ const Simulation = () => {
     },
     [persistSimResultsToSession]
   );
+
+  const handleUnlockMobileOutsideTheBox = useCallback(() => {
+    setSimResults((prev) => {
+      if (!prev?.evaluationFlow) return prev;
+      const nextFlow = unlockMobileOutsideTheBox(prev.evaluationFlow);
+      const next = { ...prev, evaluationFlow: nextFlow };
+      setTimeout(() => persistSimResultsToSession(next), 0);
+      return next;
+    });
+    setHasUnsavedChanges(true);
+    setSimulationState('modified');
+  }, [persistSimResultsToSession]);
 
   const handleReorderRankedRoles = useCallback(
     (categoryKey, reorderedRows) => {
@@ -2569,67 +2590,43 @@ const Simulation = () => {
                     </Box>
                   ) : (
                     <>
-                      <ProfileUpdateRecommendation
-                        category="nextSteps"
-                        profileCompletion={profileCompletion}
-                        onUpdateProfile={handleUpdateProfile}
-                        onDismiss={handleDismissRecommendation}
-                        isVisible={showProfileRecommendation && recommendationCategory === 'nextSteps'}
+                      <SimulationEvaluationFlow
+                        evaluationFlow={safeSimResults.evaluationFlow}
+                        onUnlockMobileOutsideTheBox={handleUnlockMobileOutsideTheBox}
+                        nextStepsTitle={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
+                        outsideTheBoxTitle={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
+                        onEvaluate={handleEvaluationCommit}
+                        onSeeRanking={handleSeeRoleRanking}
+                        onEditRatings={handleEditRoleRanking}
+                        onReorderRankedRoles={handleReorderRankedRoles}
+                        isStepSaved={(role) => isStepSaved(role)}
+                        isStepSaving={(role) => isStepSaving(role)}
+                        onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
+                        guardedNavigate={guardedNavigate}
+                        isViewingSavedSimulation={isViewingSavedSimulation}
+                        savedSimulationId={selectedSimulation?.id}
+                        simulationIdForCards={
+                          selectedSimulation?.id || safeSimResults?.simulationId || 'local'
+                        }
+                        nextStepsProfileRecommendation={
+                          <ProfileUpdateRecommendation
+                            category="nextSteps"
+                            profileCompletion={profileCompletion}
+                            onUpdateProfile={handleUpdateProfile}
+                            onDismiss={handleDismissRecommendation}
+                            isVisible={showProfileRecommendation && recommendationCategory === 'nextSteps'}
+                          />
+                        }
+                        outsideTheBoxProfileRecommendation={
+                          <ProfileUpdateRecommendation
+                            category="outsideTheBox"
+                            profileCompletion={profileCompletion}
+                            onUpdateProfile={handleUpdateProfile}
+                            onDismiss={handleDismissRecommendation}
+                            isVisible={showProfileRecommendation && recommendationCategory === 'outsideTheBox'}
+                          />
+                        }
                       />
-                      <SimulationCategoryEvaluation
-                          title={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
-                          categoryKey="nextSteps"
-                          roles={safeSimResults.evaluationFlow.nextSteps}
-                          phase={safeSimResults.evaluationFlow.phases?.nextSteps || 'eval'}
-                          rankedRows={safeSimResults.evaluationFlow.ranked?.nextSteps}
-                          hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.nextSteps}
-                          onEvaluate={(stepId, evaluation) =>
-                            handleEvaluationCommit('nextSteps', stepId, evaluation)
-                          }
-                          onSeeRanking={() => handleSeeRoleRanking('nextSteps')}
-                          onEditRatings={() => handleEditRoleRanking('nextSteps')}
-                          onReorderRankedRoles={(rows) => handleReorderRankedRoles('nextSteps', rows)}
-                          isStepSaved={(role) => isStepSaved(role)}
-                          isStepSaving={(role) => isStepSaving(role)}
-                          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
-                          guardedNavigate={guardedNavigate}
-                          isViewingSavedSimulation={isViewingSavedSimulation}
-                          savedSimulationId={selectedSimulation?.id}
-                          simulationIdForCards={
-                            selectedSimulation?.id || safeSimResults?.simulationId || 'local'
-                          }
-                        />
-                      <Divider sx={{ my: 4 }} />
-                      <ProfileUpdateRecommendation
-                        category="outsideTheBox"
-                        profileCompletion={profileCompletion}
-                        onUpdateProfile={handleUpdateProfile}
-                        onDismiss={handleDismissRecommendation}
-                        isVisible={showProfileRecommendation && recommendationCategory === 'outsideTheBox'}
-                      />
-                      <SimulationCategoryEvaluation
-                          title={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
-                          categoryKey="outsideTheBox"
-                          roles={safeSimResults.evaluationFlow.outsideTheBox}
-                          phase={safeSimResults.evaluationFlow.phases?.outsideTheBox || 'eval'}
-                          rankedRows={safeSimResults.evaluationFlow.ranked?.outsideTheBox}
-                          hasStarted={!!safeSimResults.evaluationFlow.hasStarted?.outsideTheBox}
-                          onEvaluate={(stepId, evaluation) =>
-                            handleEvaluationCommit('outsideTheBox', stepId, evaluation)
-                          }
-                          onSeeRanking={() => handleSeeRoleRanking('outsideTheBox')}
-                          onEditRatings={() => handleEditRoleRanking('outsideTheBox')}
-                          onReorderRankedRoles={(rows) => handleReorderRankedRoles('outsideTheBox', rows)}
-                          isStepSaved={(role) => isStepSaved(role)}
-                          isStepSaving={(role) => isStepSaving(role)}
-                          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
-                          guardedNavigate={guardedNavigate}
-                          isViewingSavedSimulation={isViewingSavedSimulation}
-                          savedSimulationId={selectedSimulation?.id}
-                          simulationIdForCards={
-                            selectedSimulation?.id || safeSimResults?.simulationId || 'local'
-                          }
-                        />
                     </>
                   )}
                 </Box>

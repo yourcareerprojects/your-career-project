@@ -93,6 +93,13 @@
       "noRolesInCategory": "Keine Rollen in dieser Kategorie.",
       "dropHere": "Hier ablegen",
       "finalRankingDescription": "Finales Ranking für {{category}}. Die Gruppen spiegeln deine Auswahl Cool, Weiß nicht und Uncool wider.",
+      "startMobile": "Bewerte jede Rolle einzeln mit Cool, Weiß nicht oder Uncool. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
+      "continueMobile": "Bewerte die nächste Rolle mit Cool, Weiß nicht oder Uncool. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
+      "mobileTransition": {
+        "title": "Als Nächstes: ungewöhnliche Berufsideen",
+        "description": "Du hast die naheliegenden Berufsideen bewertet. Als Nächstes bewertest du {{count}} ungewöhnliche Vorschläge – jeweils eine Rolle nach der anderen.",
+        "continue": "Weiter"
+      },
       "actions": {
         "keep": "Cool",
         "skip": "Weiß nicht",
