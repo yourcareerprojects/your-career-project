@@ -35,25 +35,20 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef(null);
-  const previewTimeoutRef = useRef(null);
 
   // Load current picture when dialog opens
   React.useEffect(() => {
     if (open && currentPicture) {
       const imageUrl = `/uploads/${currentPicture}`;
       setImageSrc(imageUrl);
-      // Set initial preview to the original image
-      setPreviewUrl(imageUrl);
       // Reset crop and zoom when loading existing image
       setCrop({ x: 0, y: 0 });
       setZoom(1);
       setCroppedAreaPixels(null);
     } else if (open && !currentPicture) {
       setImageSrc(null);
-      setPreviewUrl(null);
       setCroppedAreaPixels(null);
     }
   }, [open, currentPicture]);
@@ -61,26 +56,14 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
   // Reset state when dialog closes
   React.useEffect(() => {
     if (!open) {
-      // Clear any pending preview updates
-      if (previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-        previewTimeoutRef.current = null;
-      }
-      
-      // Clean up blob URLs
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      
       setImageSrc(null);
       setCrop({ x: 0, y: 0 });
       setZoom(1);
       setCroppedAreaPixels(null);
       setError(null);
-      setPreviewUrl(null);
       setShowDeleteConfirm(false);
     }
-  }, [open, previewUrl]);
+  }, [open]);
 
   const handleFileSelect = (event) => {
     const file = event.target.files?.[0];
@@ -104,48 +87,17 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
     const reader = new FileReader();
     reader.addEventListener('load', () => {
       setImageSrc(reader.result);
-      setPreviewUrl(reader.result);
       setZoom(1);
       setCrop({ x: 0, y: 0 });
     });
     reader.readAsDataURL(file);
   };
 
-  const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
-    // Only set croppedAreaPixels if we have valid data
+  const onCropComplete = useCallback((_croppedArea, croppedAreaPixels) => {
     if (croppedAreaPixels && croppedAreaPixels.width > 0 && croppedAreaPixels.height > 0) {
       setCroppedAreaPixels(croppedAreaPixels);
-      
-      // Clear any pending preview update
-      if (previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-      }
-      
-      // Update preview only if we have a valid image source and crop area
-      // Only create preview for data URLs or blob URLs (newly selected images)
-      // For existing images loaded from server, skip preview generation on initial load
-      if (imageSrc && croppedAreaPixels && 
-          (imageSrc.startsWith('data:') || imageSrc.startsWith('blob:'))) {
-        // Debounce preview updates to avoid too many calls
-        previewTimeoutRef.current = setTimeout(() => {
-          getCroppedImg(imageSrc, croppedAreaPixels, 0)
-            .then((blob) => {
-              // Clean up old preview URL if it's a blob URL
-              setPreviewUrl(prev => {
-                if (prev && prev.startsWith('blob:') && prev !== URL.createObjectURL(blob)) {
-                  URL.revokeObjectURL(prev);
-                }
-                return URL.createObjectURL(blob);
-              });
-            })
-            .catch((err) => {
-              console.error('Error creating preview:', err);
-              // Don't show error to user for preview failures, just log it
-            });
-        }, 100);
-      }
     }
-  }, [imageSrc]);
+  }, []);
 
   const handleSave = async () => {
     if (!imageSrc || !croppedAreaPixels) {
@@ -172,11 +124,6 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
       });
 
       if (response.data.success) {
-        // Clean up preview URL
-        if (previewUrl && previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
-        }
-        
         // Notify parent component with the new picture filename
         if (onPictureUpdate) {
           onPictureUpdate(response.data.profilePicture);
@@ -208,11 +155,6 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
       const response = await axios.delete('/api/profile/profile-picture');
       
       if (response.data.success) {
-        // Clean up preview URL
-        if (previewUrl && previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
-        }
-        
         // Notify parent component
         if (onPictureUpdate) {
           onPictureUpdate(null);
@@ -238,10 +180,6 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
   };
 
   const handleCancel = () => {
-    // Clean up preview URL if it's a blob URL
-    if (previewUrl && previewUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewUrl);
-    }
     onClose();
   };
 
@@ -359,26 +297,6 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
                   {t('profilePage.photo.editor.cropHint')}
                 </Typography>
               </Box>
-
-              {/* Preview */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Typography variant="subtitle2">{t('profilePage.photo.editor.previewLabel')}</Typography>
-                <Avatar
-                  src={previewUrl}
-                  alt={t('profilePage.photo.editor.previewAlt')}
-                  sx={{ width: 96, height: 96 }}
-                />
-              </Box>
-
-              {/* Change Image Button */}
-              <Button
-                variant="outlined"
-                startIcon={<CameraIcon />}
-                onClick={() => fileInputRef.current?.click()}
-                sx={{ mb: 2 }}
-              >
-                {t('profilePage.photo.editor.changeImage')}
-              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -389,7 +307,7 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'nowrap', gap: 1 }}>
           {currentPicture && (
             <Button
               color="error"
@@ -401,6 +319,16 @@ const ProfilePictureEditor = ({ open, onClose, currentPicture, onPictureUpdate }
             </Button>
           )}
           <Box sx={{ flexGrow: 1 }} />
+          {imageSrc && (
+            <Button
+              variant="outlined"
+              startIcon={<CameraIcon />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || deleting}
+            >
+              {t('profilePage.photo.editor.changeImage')}
+            </Button>
+          )}
           <Button onClick={handleCancel} disabled={uploading || deleting}>
             {t('profilePage.actions.cancel')}
           </Button>
