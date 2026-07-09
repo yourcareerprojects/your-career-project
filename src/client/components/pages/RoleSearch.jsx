@@ -17,6 +17,7 @@ import {
 import { Search as SearchIcon, ArrowForward as ArrowForwardIcon } from '@mui/icons-material';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useOccupationSearch } from '../../hooks/useOccupationSearch';
+import PageHeader from '../common/PageHeader';
 
 const RoleSearch = () => {
   const { t } = useTranslation('dashboard');
@@ -35,13 +36,8 @@ const RoleSearch = () => {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        {t('roleSearch.pageTitle')}
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        {t('roleSearch.subtitle')}
-      </Typography>
+    <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
+      <PageHeader title={t('roleSearch.pageTitle')} description={t('roleSearch.subtitle')} />
 
       <Paper sx={{ p: 2, mb: 3 }}>
         <TextField

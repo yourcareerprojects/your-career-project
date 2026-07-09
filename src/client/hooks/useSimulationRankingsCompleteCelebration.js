@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { areBothSimulationRankingsComplete } from '../utils/simulationRoleRanking';
+import { isSimulationRankingOverviewCelebrationEligible } from '../utils/simulationRoleRanking';
 import { fireStarBurstConfetti } from '../utils/profileCreatedConfetti';
 
 function normalizeFlowKey(evaluationFlow) {
@@ -14,16 +14,17 @@ function isSameFlowSession(previousKey, nextKey) {
 }
 
 /**
- * Fires a one-time star burst when both simulation category rankings become visible.
- * Skips celebration when opening a simulation that already had both rankings complete.
+ * Fires a one-time star burst when a simulation ranking overview becomes visible —
+ * either both categories are ranked, or next-role ranking after skipping OOTB for now.
+ * Skips celebration when opening a simulation that already reached that state.
  */
 export function useSimulationRankingsCompleteCelebration(evaluationFlow) {
   const flowKeyRef = useRef(null);
   const initializedRef = useRef(false);
-  const wasCompleteRef = useRef(false);
+  const wasCelebrationEligibleRef = useRef(false);
 
   const flowKey = evaluationFlow ? normalizeFlowKey(evaluationFlow) : null;
-  const bothComplete = areBothSimulationRankingsComplete(evaluationFlow);
+  const celebrationEligible = isSimulationRankingOverviewCelebrationEligible(evaluationFlow);
 
   useEffect(() => {
     if (!evaluationFlow || flowKey == null) return;
@@ -34,20 +35,20 @@ export function useSimulationRankingsCompleteCelebration(evaluationFlow) {
     ) {
       flowKeyRef.current = flowKey;
       initializedRef.current = false;
-      wasCompleteRef.current = false;
+      wasCelebrationEligibleRef.current = false;
     } else {
       flowKeyRef.current = flowKey;
     }
 
     if (!initializedRef.current) {
       initializedRef.current = true;
-      wasCompleteRef.current = bothComplete;
+      wasCelebrationEligibleRef.current = celebrationEligible;
       return;
     }
 
-    if (bothComplete && !wasCompleteRef.current) {
+    if (celebrationEligible && !wasCelebrationEligibleRef.current) {
       fireStarBurstConfetti();
     }
-    wasCompleteRef.current = bothComplete;
-  }, [bothComplete, evaluationFlow, flowKey]);
+    wasCelebrationEligibleRef.current = celebrationEligible;
+  }, [celebrationEligible, evaluationFlow, flowKey]);
 }

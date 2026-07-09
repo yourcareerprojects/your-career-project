@@ -18,6 +18,7 @@ import {
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CareerStepRoleInsightsCard, CareerStepRoleDetailsCard } from '../common/CareerStepRoleSections';
+import PageHeader from '../common/PageHeader';
 
 const splitDescriptionIntoParagraphs = (text) => {
   const normalizedText = String(text || '').replace(/\r\n/g, '\n').trim();
@@ -154,15 +155,10 @@ const SharedResult = () => {
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
-          {t('sharedResult.title', { ns: 'common' })}
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {t('sharedResult.subtitle', { ns: 'common' })}
-        </Typography>
-      </Box>
+      <PageHeader
+        title={t('sharedResult.title', { ns: 'common' })}
+        description={t('sharedResult.subtitle', { ns: 'common' })}
+      />
 
       {/* Header Section */}
       <Paper 

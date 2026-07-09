@@ -10,16 +10,18 @@ import {
   Tooltip,
   Divider,
   CircularProgress,
+  IconButton,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ThumbUpAltOutlinedIcon from '@mui/icons-material/ThumbUpAltOutlined';
-import EditIcon from '@mui/icons-material/Edit';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import {
   DndContext,
   DragOverlay,
@@ -50,6 +52,7 @@ import { getRoleTitleForLocale, getRoleTitleEnglishForMatch } from '../../utils/
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
 import CareerStepCardWithReplacement from './CareerStepCardWithReplacement';
 import localizedContentService from '../../utils/localizedContentService';
+import { CareerStepRoleInlineBody } from './CareerStepRoleSections';
 import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
 import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
 
@@ -113,7 +116,7 @@ const OOTB_SAVE_SAVED_BUTTON_SX = {
   '&:hover': { bgcolor: 'var(--color-ootb-action-saved-hover)' },
 };
 
-function RoleEvaluationCard({
+export function RoleEvaluationCard({
   role,
   categoryKey,
   isViewingSavedSimulation,
@@ -126,6 +129,8 @@ function RoleEvaluationCard({
   showEvalNudge = false,
   getButtonNudgeSx,
   nudgeInteractionHandlers,
+  inlineDetails = false,
+  simulationIdForCards = null,
 }) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('dashboard');
@@ -134,11 +139,14 @@ function RoleEvaluationCard({
   const roleDescription = localizedContentService.getLocalizedWithFallback(role.description, uiLang, '');
   const pct = getCareerStepMatchScorePercent(role);
   const roleTestId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title) || 'role';
+  const simulationScopeId = simulationIdForCards || role?.simulationId || 'local';
 
   const nudgeSx = (buttonKey) => (
     showEvalNudge && typeof getButtonNudgeSx === 'function' ? getButtonNudgeSx(buttonKey) : {}
   );
   const nudgeHandlers = showEvalNudge ? nudgeInteractionHandlers : {};
+  const accentColor =
+    categoryKey === 'nextSteps' ? 'var(--color-primary)' : 'var(--color-ootb-action)';
 
   const handleMore = () => {
     const stepId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title);
@@ -158,33 +166,119 @@ function RoleEvaluationCard({
 
   return (
     <Card
-      sx={{
-        borderLeft: `6px solid ${categoryKey === 'nextSteps' ? 'var(--color-primary)' : 'var(--color-warning)'}`,
-        minHeight: 300,
+      variant="outlined"
+      elevation={0}
+      sx={(theme) => ({
+        borderStyle: 'solid',
+        borderWidth: '3px 1px 1px 6px',
+        borderColor: `${accentColor} ${theme.palette.divider} ${theme.palette.divider} ${accentColor}`,
+        borderRadius: 2,
+        boxShadow: theme.shadows[1],
+        bgcolor: 'background.paper',
+        minHeight: inlineDetails ? undefined : 300,
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
-      }}
+        height: inlineDetails ? 'auto' : '100%',
+      })}
     >
-      <CardContent sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'space-between' }}>
+      <CardContent
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          flexGrow: 1,
+          justifyContent: inlineDetails ? 'flex-start' : 'space-between',
+          gap: inlineDetails ? 2 : 0,
+        }}
+      >
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, minHeight: '2.5em' }}>
-            {roleTitle}
-          </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
+          <Box
             sx={{
-              mb: 1.5,
-              display: '-webkit-box',
-              WebkitLineClamp: 4,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              minHeight: '5.6em',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 0.5,
+              mb: 1,
             }}
           >
-            {roleDescription || 'No description available.'}
-          </Typography>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 600,
+                flex: 1,
+                minWidth: 0,
+                minHeight: inlineDetails ? undefined : '2.5em',
+              }}
+            >
+              {roleTitle}
+            </Typography>
+            <Tooltip
+              title={
+                isStepSaved
+                  ? t('details.actions.removeFromSavedSteps')
+                  : t('details.actions.saveToSavedSteps')
+              }
+              arrow
+            >
+              <span>
+                <IconButton
+                  onClick={onSave}
+                  disabled={savingStep}
+                  size="small"
+                  data-testid={`simulation-list-save-toggle-${roleTestId}`}
+                  aria-label={
+                    isStepSaved
+                      ? t('details.actions.removeFromSavedSteps')
+                      : t('details.actions.saveToSavedSteps')
+                  }
+                  sx={{
+                    flexShrink: 0,
+                    mt: -0.25,
+                    color:
+                      categoryKey === 'outsideTheBox'
+                        ? 'var(--color-ootb-action)'
+                        : 'primary.main',
+                    ...(isStepSaved && !savingStep
+                      ? {
+                          bgcolor:
+                            categoryKey === 'outsideTheBox'
+                              ? 'rgba(211, 47, 47, 0.12)'
+                              : 'action.selected',
+                        }
+                      : {}),
+                    '&:hover': {
+                      bgcolor:
+                        categoryKey === 'outsideTheBox'
+                          ? 'rgba(211, 47, 47, 0.18)'
+                          : 'action.hover',
+                    },
+                  }}
+                >
+                  {savingStep ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : isStepSaved ? (
+                    <StarIcon fontSize="small" />
+                  ) : (
+                    <StarBorderIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+          {!inlineDetails ? (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                mb: 1.5,
+                display: '-webkit-box',
+                WebkitLineClamp: 4,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                minHeight: '5.6em',
+              }}
+            >
+              {roleDescription || 'No description available.'}
+            </Typography>
+          ) : null}
           <Box sx={{ mb: 1 }}>
             <Typography variant="caption" color="text.secondary">
               {t('details.labels.matchScore')}
@@ -194,9 +288,7 @@ function RoleEvaluationCard({
               {pct}%
             </Typography>
           </Box>
-        </Box>
 
-        <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
             {t('simulation.evaluationFlow.rateThisRole')}
           </Typography>
@@ -205,7 +297,7 @@ function RoleEvaluationCard({
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
               gap: 1,
-              mb: 1.5,
+              mb: inlineDetails ? 0 : 1.5,
             }}
           >
             <Tooltip title={t('simulation.evaluationFlow.tooltips.keepStrongFit')} arrow>
@@ -290,8 +382,17 @@ function RoleEvaluationCard({
               </span>
             </Tooltip>
           </Box>
+        </Box>
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+        {inlineDetails ? (
+          <CareerStepRoleInlineBody
+            stepDetails={role}
+            simulationScopeId={simulationScopeId}
+          />
+        ) : null}
+
+        {!inlineDetails ? (
+          <Box>
             <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
               <span>
                 <Button
@@ -312,58 +413,8 @@ function RoleEvaluationCard({
                 </Button>
               </span>
             </Tooltip>
-            <Tooltip
-              title={
-                isStepSaved
-                  ? t('simulation.evaluationFlow.tooltips.savedRemove')
-                  : t('simulation.evaluationFlow.tooltips.saveToSavedList')
-              }
-              arrow
-            >
-              <span>
-                <Button
-                  variant="contained"
-                  color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-                  size="small"
-                  startIcon={
-                    savingStep ? (
-                      <CircularProgress size={14} color="inherit" />
-                    ) : isStepSaved ? (
-                      <StarIcon sx={{ fontSize: '1rem' }} />
-                    ) : (
-                      <StarBorderIcon sx={{ fontSize: '1rem' }} />
-                    )
-                  }
-                  onClick={onSave}
-                  data-testid={`simulation-list-save-toggle-${roleTestId}`}
-                  disabled={savingStep}
-                  sx={{
-                    width: '100%',
-                    ...(categoryKey === 'outsideTheBox'
-                      ? {
-                          ...OOTB_ACTION_BUTTON_SX,
-                          ...(isStepSaved && !savingStep ? OOTB_SAVE_SAVED_BUTTON_SX : {}),
-                        }
-                      : isStepSaved && !savingStep
-                        ? ROLE_CARD_SAVE_SAVED_SX
-                        : {}),
-                  }}
-                  aria-label={
-                    isStepSaved
-                      ? t('simulation.evaluationFlow.tooltips.savedRemove')
-                      : t('simulation.evaluationFlow.tooltips.saveToSavedList')
-                  }
-                >
-                  {savingStep
-                    ? t('simulation.evaluationFlow.actions.saving')
-                    : isStepSaved
-                      ? t('simulation.evaluationFlow.actions.saved')
-                      : t('simulation.evaluationFlow.actions.save')}
-                </Button>
-              </span>
-            </Tooltip>
           </Box>
-        </Box>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -472,7 +523,11 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
       variant="outlined"
       sx={{
         borderLeft: '4px solid',
-        borderColor: isOver ? 'primary.main' : 'var(--color-ranked-role-card-border)',
+        borderColor: isOver
+          ? 'primary.main'
+          : categoryKey === 'outsideTheBox'
+            ? 'var(--color-ootb-action)'
+            : 'var(--color-primary)',
         backgroundColor: isOver ? 'action.selected' : 'background.paper',
         boxShadow: isOver ? 3 : 0,
         transition: 'background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
@@ -604,14 +659,16 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
   );
 });
 
-function RankColumn({ groupKey, title, rows, itemIds, overMeta, children }) {
+function RankColumn({ groupKey, title, rows, itemIds, overMeta, children, collapsible = false, defaultCollapsed = false }) {
   const { t } = useTranslation('dashboard');
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const containerId = getContainerId(groupKey);
   const { setNodeRef } = useDroppable({
     id: containerId,
     data: { type: 'container', groupKey },
   });
   const isOverContainer = overMeta?.groupKey === groupKey && overMeta?.overType === 'container';
+  const showRoleList = !collapsible || !collapsed;
 
   return (
     <Box
@@ -624,45 +681,78 @@ function RankColumn({ groupKey, title, rows, itemIds, overMeta, children }) {
         backgroundColor: isOverContainer ? 'action.hover' : 'transparent',
         transition: 'border-color 140ms ease, background-color 140ms ease',
         p: 1,
-        minHeight: 78,
+        minHeight: showRoleList ? 78 : 'auto',
       }}
     >
-      <Typography variant="subtitle1" sx={{ mb: 1, ...rankGroupHeadingSx(groupKey) }}>
-        {title}
-      </Typography>
-      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {rows.length ? (
-            children
+      <Box
+        component={collapsible ? 'button' : 'div'}
+        type={collapsible ? 'button' : undefined}
+        onClick={collapsible ? () => setCollapsed((prev) => !prev) : undefined}
+        aria-expanded={collapsible ? !collapsed : undefined}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          mb: showRoleList ? 1 : 0,
+          width: '100%',
+          border: 'none',
+          background: 'none',
+          padding: 0,
+          cursor: collapsible ? 'pointer' : 'default',
+          textAlign: 'left',
+          color: 'inherit',
+        }}
+      >
+        {collapsible ? (
+          collapsed ? (
+            <ExpandMoreIcon fontSize="small" color="action" aria-hidden />
           ) : (
-            <Box
-              sx={{
-                minHeight: 56,
-                borderRadius: 1,
-                border: '1px dashed',
-                borderColor: isOverContainer ? 'primary.main' : 'divider',
-                backgroundColor: isOverContainer ? 'primary.50' : 'action.hover',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 140ms ease',
-              }}
-            >
-              <Typography variant="caption" color="text.secondary">
-                {t('simulation.evaluationFlow.dropHere')}
-              </Typography>
-            </Box>
-          )}
-        </Box>
-      </SortableContext>
+            <ExpandLessIcon fontSize="small" color="action" aria-hidden />
+          )
+        ) : null}
+        <Typography variant="subtitle1" component="span" sx={{ ...rankGroupHeadingSx(groupKey) }}>
+          {title}
+          {collapsible && rows.length > 0 ? ` (${rows.length})` : ''}
+        </Typography>
+      </Box>
+      {showRoleList ? (
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {rows.length ? (
+              children
+            ) : (
+              <Box
+                sx={{
+                  minHeight: 56,
+                  borderRadius: 1,
+                  border: '1px dashed',
+                  borderColor: isOverContainer ? 'primary.main' : 'divider',
+                  backgroundColor: isOverContainer ? 'primary.50' : 'action.hover',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 140ms ease',
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {t('simulation.evaluationFlow.dropHere')}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </SortableContext>
+      ) : null}
     </Box>
   );
 }
 
-function RankedGroupsView({
+export function RankedGroupsView({
   rankedRows,
   rankCategoryLabel,
   categoryKey,
+  rankingDescription,
+  resolveRowCategoryKey,
+  rankingStorageCategoryKey,
   isStepSaved,
   isStepSaving,
   onToggleSave,
@@ -677,15 +767,17 @@ function RankedGroupsView({
   const [activeId, setActiveId] = useState(null);
   const [overMeta, setOverMeta] = useState(null);
   const [persistedLayout, setPersistedLayout] = useState(null);
+  const getRowCategoryKey = resolveRowCategoryKey || (() => categoryKey);
+  const storageCategoryKey = rankingStorageCategoryKey || categoryKey;
   const storageKey = useMemo(
     () =>
       buildRankingStorageKey({
-        categoryKey,
+        categoryKey: storageCategoryKey,
         isViewingSavedSimulation,
         savedSimulationId,
         simulationIdForCards,
       }),
-    [categoryKey, isViewingSavedSimulation, savedSimulationId, simulationIdForCards]
+    [storageCategoryKey, isViewingSavedSimulation, savedSimulationId, simulationIdForCards]
   );
 
   const openStepDetails = (role) => {
@@ -917,7 +1009,8 @@ function RankedGroupsView({
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {t('simulation.evaluationFlow.finalRankingDescription', { category: rankCategoryLabel })}
+        {rankingDescription
+          || t('simulation.evaluationFlow.finalRankingDescription', { category: rankCategoryLabel })}
       </Typography>
 
       <DndContext
@@ -949,7 +1042,7 @@ function RankedGroupsView({
                 onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
-                categoryKey={categoryKey}
+                categoryKey={getRowCategoryKey(row)}
               />
             );
           })}
@@ -960,6 +1053,8 @@ function RankedGroupsView({
           rows={groups.skip}
           itemIds={itemIdsByGroup.skip}
           overMeta={overMeta}
+          collapsible
+          defaultCollapsed
         >
           {groups.skip.map((row) => {
             const id = getItemId('skip', row._dndId);
@@ -975,7 +1070,7 @@ function RankedGroupsView({
                 onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
-                categoryKey={categoryKey}
+                categoryKey={getRowCategoryKey(row)}
               />
             );
           })}
@@ -986,6 +1081,8 @@ function RankedGroupsView({
           rows={groups.dislike}
           itemIds={itemIdsByGroup.dislike}
           overMeta={overMeta}
+          collapsible
+          defaultCollapsed
         >
           {groups.dislike.map((row) => {
             const id = getItemId('dislike', row._dndId);
@@ -1001,7 +1098,7 @@ function RankedGroupsView({
                 onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
-                categoryKey={categoryKey}
+                categoryKey={getRowCategoryKey(row)}
               />
             );
           })}
@@ -1049,7 +1146,6 @@ export default function SimulationCategoryEvaluation({
   hasStarted,
   onEvaluate,
   onSeeRanking,
-  onEditRatings,
   isStepSaved,
   isStepSaving,
   onToggleSave,
@@ -1072,9 +1168,8 @@ export default function SimulationCategoryEvaluation({
   const evaluated = countEvaluatedRoles(roles);
   const total = roles.length;
   const complete = isEvaluationComplete(roles);
-  /** All roles rated but user has not opened the ranking yet (`ranked` is only set after "See your ranking"). */
-  const awaitingRankingReveal =
-    complete && phase === 'eval' && !rankedRows?.length;
+  /** First-time reveal after all roles are rated (ranking not opened yet). */
+  const awaitingRankingReveal = complete && phase === 'eval' && !rankedRows?.length;
 
   const focusRoleId = useMemo(() => {
     if (phase !== 'eval' || awaitingRankingReveal || complete) return null;
@@ -1121,27 +1216,6 @@ export default function SimulationCategoryEvaluation({
           >
             {t('simulation.evaluationFlow.yourRankingTitle', { title })}
           </Typography>
-          {typeof onEditRatings === 'function' ? (
-            <Button
-              variant="contained"
-              color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-              size="medium"
-              startIcon={<EditIcon />}
-              onClick={onEditRatings}
-              sx={{
-                fontWeight: 600,
-                px: 3,
-                py: 1.5,
-                fontSize: '1rem',
-                alignSelf: { xs: 'stretch', sm: 'auto' },
-                width: { xs: '100%', sm: 'auto' },
-                whiteSpace: { xs: 'normal', sm: 'nowrap' },
-                ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
-              }}
-            >
-              {t('simulation.evaluationFlow.changeYourRanking')}
-            </Button>
-          ) : null}
         </Box>
         <RankedGroupsView
           rankedRows={rankedRows}
@@ -1235,16 +1309,16 @@ export default function SimulationCategoryEvaluation({
             {complete
               ? t('simulation.evaluationFlow.allRolesRated', { total })
               : hasStarted
-                ? t(
-                    isMobileViewport
-                      ? 'simulation.evaluationFlow.continueMobile'
-                      : 'simulation.evaluationFlow.continue'
-                  )
-                : t(
-                    isMobileViewport
-                      ? 'simulation.evaluationFlow.startMobile'
-                      : 'simulation.evaluationFlow.start'
-                  )}
+                  ? t(
+                      isMobileViewport
+                        ? 'simulation.evaluationFlow.continueMobile'
+                        : 'simulation.evaluationFlow.continue'
+                    )
+                  : t(
+                      isMobileViewport
+                        ? 'simulation.evaluationFlow.startMobile'
+                        : 'simulation.evaluationFlow.start'
+                    )}
           </Typography>
 
           <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>
@@ -1267,25 +1341,6 @@ export default function SimulationCategoryEvaluation({
               </Grid>
             ))}
           </Grid>
-
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-            <Button
-              variant={complete ? 'contained' : 'outlined'}
-              color="primary"
-              size="medium"
-              startIcon={<ThumbUpAltOutlinedIcon />}
-              disabled={!complete}
-              onClick={onSeeRanking}
-              sx={{
-                fontWeight: 600,
-                px: 3,
-                py: 1.5,
-                fontSize: '1rem',
-              }}
-            >
-              {t('simulation.evaluationFlow.seeYourRanking')}
-            </Button>
-          </Box>
         </>
       )}
     </Box>

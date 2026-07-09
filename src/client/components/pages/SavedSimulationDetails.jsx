@@ -42,12 +42,14 @@ import useChangeDetection from '../../hooks/useChangeDetection';
 import { getMatchScoreFieldsForSave } from '../../utils/careerStepMatchScore';
 import { pickUserEvaluationForSave } from '../../utils/savedCareerStepUserEvaluation';
 import {
-  buildRankedRows,
   buildRankedRowsFromOrderedRoles,
   isEvaluationComplete,
   unlockMobileOutsideTheBox,
-  lockMobileOutsideTheBox,
-  markCategoryRankingSeen,
+  promoteCategoryToRanked,
+  skipOutsideTheBoxForNow,
+  resumeOutsideTheBoxEvaluation,
+  applyAutoRankingRevealWhenBothComplete,
+  applyCombinedRankedReorder,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
 import {
@@ -231,9 +233,20 @@ const SavedSimulationDetails = () => {
       const data = await res.json();
       
       if (data.success) {
-        setSimulation(data.simulation);
-        setOriginalSimulationData(JSON.parse(JSON.stringify(data.simulation)));
-        setEditName(data.simulation.name);
+        let loadedSimulation = data.simulation;
+        const flow = loadedSimulation?.results?.evaluationFlow;
+        if (flow) {
+          const revealed = applyAutoRankingRevealWhenBothComplete(flow);
+          if (revealed !== flow) {
+            loadedSimulation = {
+              ...loadedSimulation,
+              results: { ...loadedSimulation.results, evaluationFlow: revealed },
+            };
+          }
+        }
+        setSimulation(loadedSimulation);
+        setOriginalSimulationData(JSON.parse(JSON.stringify(loadedSimulation)));
+        setEditName(loadedSimulation.name);
       } else {
         setError(data.message || t('simulation.messages.loadFailed', { ns: 'dashboard' }));
       }
@@ -538,7 +551,12 @@ const SavedSimulationDetails = () => {
         r.id === stepId ? { ...r, userEvaluation: evaluation } : r
       );
       const hasStarted = { ...flow.hasStarted, [categoryKey]: true };
-      const nextFlow = { ...flow, [categoryKey]: roles, hasStarted };
+      let nextFlow = {
+        ...flow,
+        [categoryKey]: roles,
+        hasStarted,
+      };
+      nextFlow = applyAutoRankingRevealWhenBothComplete(nextFlow);
       return {
         ...prev,
         results: { ...prev.results, evaluationFlow: nextFlow },
@@ -549,37 +567,9 @@ const SavedSimulationDetails = () => {
   const handleSeeRoleRanking = useCallback((categoryKey) => {
     setSimulation((prev) => {
       const flow = prev.results?.evaluationFlow;
-      if (!flow || !Array.isArray(flow[categoryKey])) return prev;
-      const roles = flow[categoryKey];
-      if (!isEvaluationComplete(roles)) return prev;
-      const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
-      const ranked = buildRankedRows(roles, rankSlug);
-      const nextFlow = markCategoryRankingSeen(
-        {
-          ...flow,
-          phases: { ...flow.phases, [categoryKey]: 'ranked' },
-          ranked: { ...flow.ranked, [categoryKey]: ranked },
-        },
-        categoryKey
-      );
-      return {
-        ...prev,
-        results: { ...prev.results, evaluationFlow: nextFlow },
-      };
-    });
-  }, []);
-
-  const handleEditRoleRanking = useCallback((categoryKey) => {
-    setSimulation((prev) => {
-      const flow = prev.results?.evaluationFlow;
       if (!flow) return prev;
-      let nextFlow = {
-        ...flow,
-        phases: { ...flow.phases, [categoryKey]: 'eval' },
-      };
-      if (categoryKey === 'nextSteps') {
-        nextFlow = lockMobileOutsideTheBox(nextFlow);
-      }
+      const nextFlow = promoteCategoryToRanked(flow, categoryKey);
+      if (nextFlow === flow) return prev;
       return {
         ...prev,
         results: { ...prev.results, evaluationFlow: nextFlow },
@@ -592,6 +582,44 @@ const SavedSimulationDetails = () => {
       const flow = prev.results?.evaluationFlow;
       if (!flow) return prev;
       const nextFlow = unlockMobileOutsideTheBox(flow);
+      return {
+        ...prev,
+        results: { ...prev.results, evaluationFlow: nextFlow },
+      };
+    });
+  }, []);
+
+  const handleSkipOutsideTheBox = useCallback(() => {
+    setSimulation((prev) => {
+      const flow = prev.results?.evaluationFlow;
+      if (!flow) return prev;
+      const nextFlow = skipOutsideTheBoxForNow(flow);
+      if (nextFlow === flow) return prev;
+      return {
+        ...prev,
+        results: { ...prev.results, evaluationFlow: nextFlow },
+      };
+    });
+  }, []);
+
+  const handleResumeOutsideTheBox = useCallback(() => {
+    setSimulation((prev) => {
+      const flow = prev.results?.evaluationFlow;
+      if (!flow) return prev;
+      const nextFlow = resumeOutsideTheBoxEvaluation(flow);
+      return {
+        ...prev,
+        results: { ...prev.results, evaluationFlow: nextFlow },
+      };
+    });
+  }, []);
+
+  const handleReorderCombinedRankedRoles = useCallback((reorderedRows) => {
+    setSimulation((prev) => {
+      const flow = prev?.results?.evaluationFlow;
+      if (!flow || !Array.isArray(reorderedRows) || !reorderedRows.length) return prev;
+      const nextFlow = applyCombinedRankedReorder(flow, reorderedRows);
+      if (nextFlow === flow) return prev;
       return {
         ...prev,
         results: { ...prev.results, evaluationFlow: nextFlow },
@@ -873,12 +901,14 @@ const SavedSimulationDetails = () => {
           <SimulationEvaluationFlow
             evaluationFlow={evaluationFlow}
             onUnlockMobileOutsideTheBox={handleUnlockMobileOutsideTheBox}
+            onSkipOutsideTheBox={handleSkipOutsideTheBox}
+            onResumeOutsideTheBox={handleResumeOutsideTheBox}
             nextStepsTitle={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
             outsideTheBoxTitle={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
             onEvaluate={handleEvaluationCommit}
             onSeeRanking={handleSeeRoleRanking}
-            onEditRatings={handleEditRoleRanking}
             onReorderRankedRoles={handleReorderRankedRoles}
+            onReorderCombinedRankedRoles={handleReorderCombinedRankedRoles}
             isStepSaved={isStepSaved}
             isStepSaving={isStepSaving}
             onToggleSave={(role) => handleToggleSaveStep(role, simulation.id)}
@@ -905,7 +935,6 @@ const SavedSimulationDetails = () => {
                 handleEvaluationCommit('nextSteps', stepId, evaluation)
               }
               onSeeRanking={() => handleSeeRoleRanking('nextSteps')}
-              onEditRatings={() => handleEditRoleRanking('nextSteps')}
               onReorderRankedRoles={(rows) => handleReorderRankedRoles('nextSteps', rows)}
               isStepSaved={isStepSaved}
               isStepSaving={isStepSaving}
@@ -971,7 +1000,6 @@ const SavedSimulationDetails = () => {
                 handleEvaluationCommit('outsideTheBox', stepId, evaluation)
               }
               onSeeRanking={() => handleSeeRoleRanking('outsideTheBox')}
-              onEditRatings={() => handleEditRoleRanking('outsideTheBox')}
               onReorderRankedRoles={(rows) => handleReorderRankedRoles('outsideTheBox', rows)}
               isStepSaved={isStepSaved}
               isStepSaving={isStepSaving}

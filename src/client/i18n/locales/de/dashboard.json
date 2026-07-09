@@ -95,10 +95,21 @@
       "finalRankingDescription": "Finales Ranking für {{category}}. Die Gruppen spiegeln deine Auswahl Cool, Weiß nicht und Uncool wider.",
       "startMobile": "Bewerte jede Rolle einzeln mit Cool, Weiß nicht oder Uncool. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
       "continueMobile": "Bewerte die nächste Rolle mit Cool, Weiß nicht oder Uncool. Nach der letzten Bewertung kannst du dein Ranking ansehen.",
+      "combinedRankingTitle": "Dein Ranking",
+      "combinedFinalRankingDescription": "Deine bewerteten Rollen aus unseren Vorschlägen.",
+      "reEditDescription": "Passe deine Bewertungen unten an. Alle Rollen aus beiden Vorschlagslisten werden angezeigt, damit du sie an einem Ort ändern kannst.",
+      "reEditCategoryHint": "Ändere Cool, Weiß nicht oder Uncool für jede Rolle.",
+      "finishReEdit": "Ranking speichern",
       "mobileTransition": {
         "title": "Als Nächstes: ungewöhnliche Berufsideen",
-        "description": "Du hast die naheliegenden Berufsideen bewertet. Als Nächstes bewertest du {{count}} ungewöhnliche Vorschläge – jeweils eine Rolle nach der anderen.",
-        "continue": "Weiter"
+        "description": "Du hast die naheliegenden Berufsideen bewertet. Als Nächstes haben wir {{count}} ungewöhnliche Vorschläge für dich. Möchtest du diese jetzt bewerten?",
+        "continue": "Weiter",
+        "skipForNow": "Jetzt überspringen und mein Ranking ansehen"
+      },
+      "deferredOotb": {
+        "title": "Ungewöhnliche Berufsideen warten noch",
+        "description": "Du hast die Bewertung von {{count}} ungewöhnlichen Vorschlägen übersprungen. Du kannst sie jederzeit bewerten, um sie in dein vollständiges Ranking aufzunehmen.",
+        "resume": "Ungewöhnliche Berufsideen bewerten"
       },
       "actions": {
         "keep": "Cool",
@@ -120,6 +131,30 @@
       }
     },
     "preparingRoleEvaluation": "Rollenbewertung wird vorbereitet...",
+    "wizard": {
+      "loadingTitle": "Simulation wird erstellt",
+      "loadingDescription": "Wir analysieren dein Profil und erstellen personalisierte Rollenvorschläge...",
+      "nextRoleTitle": "Naheliegende Rollen",
+      "nextRoleIntro": "Bewerte diesen Vorschlag, danach erscheint die nächste Rolle automatisch.",
+      "ootbChoiceTitle": "Überraschende Perspektiven",
+      "ootbRoleTitle": "Überraschende Perspektiven",
+      "ootbRoleIntro": "Bewerte diesen Vorschlag, um fortzufahren.",
+      "exitRanking": "Bewertung beenden",
+      "pauseDialog": {
+        "title": "Bewertung beenden?",
+        "description": "Deine bisherigen Bewertungen werden in dieser Browser-Sitzung gespeichert. Du kannst jederzeit dort weitermachen, wo du aufgehört hast, oder jetzt weiter bearbeiten.",
+        "stay": "Weiter bearbeiten",
+        "saveAndExit": "Speichern und später fortsetzen",
+        "savedMessage": "Fortschritt gespeichert. Du kannst die Bewertung jederzeit von deinen Ergebnissen aus fortsetzen."
+      },
+      "pausedPrompt": {
+        "title": "Bewertung läuft",
+        "descriptionNext": "Du hast {{evaluated}} von {{total}} nächsten Karriererollen bewertet. Mach dort weiter, wo du aufgehört hast.",
+        "descriptionOotbChoice": "Du hast alle nächsten Karriererollen bewertet. Fahre fort, wenn du bereit bist, {{count}} Outside-the-Box-Vorschläge zu bewerten.",
+        "descriptionOotb": "Du hast {{evaluated}} von {{total}} Outside-the-Box-Rollen bewertet. Mach dort weiter, wo du aufgehört hast.",
+        "resume": "Bewertung fortsetzen"
+      }
+    },
     "categories": {
       "nextRoles": "Naheliegende Berufsideen",
       "outsideRoles": "Ungewöhnliche Berufsideen"
@@ -257,6 +292,22 @@
   "saved": {
     "simulations": "Gespeicherte Simulationen",
     "careerSteps": "Gespeicherte Berufsschritte"
+  },
+  "savedSearch": {
+    "pageTitle": "Gespeichert & Suche",
+    "subtitle": "Suche nach Rollen, sieh gespeicherte Berufsschritte an oder öffne gespeicherte Simulationen.",
+    "searchRoles": {
+      "title": "Rollen suchen",
+      "description": "Durchsuche und erkunde Berufsrollen, die zu deinen Interessen passen."
+    },
+    "savedCareerSteps": {
+      "title": "Gespeicherte Berufsschritte",
+      "description": "Sieh dir gespeicherte Berufsschritte an und verwalte sie."
+    },
+    "savedSimulations": {
+      "title": "Gespeicherte Simulationen",
+      "description": "Öffne Simulationen, die du für später gespeichert hast."
+    }
   },
   "savedLists": {
     "savedSimulations": {

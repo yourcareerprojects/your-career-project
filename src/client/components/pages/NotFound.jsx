@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import PageHeader from '../common/PageHeader';
 
 const NotFound = () => {
   const navigate = useNavigate();
@@ -19,15 +20,13 @@ const NotFound = () => {
         p: 3
       }}
     >
-      <Typography variant="h1" component="h1" gutterBottom>
+      <Typography variant="h1" component="p" sx={{ mb: 2, fontWeight: 700 }}>
         404
       </Typography>
-      <Typography variant="h4" component="h2" gutterBottom>
-        Page Not Found
-      </Typography>
-      <Typography variant="body1" color="text.secondary" paragraph>
-        The page you are looking for doesn't exist or has been moved.
-      </Typography>
+      <PageHeader
+        title="Page Not Found"
+        description="The page you are looking for doesn't exist or has been moved."
+      />
       <Button
         variant="contained"
         color="primary"

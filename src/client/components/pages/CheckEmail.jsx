@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import { useAuth } from '../../contexts/AuthContext';
+import PageHeader from '../common/PageHeader';
 
 const CheckEmail = () => {
   const { t } = useTranslation(['onboarding', 'common']);
@@ -78,27 +79,16 @@ const CheckEmail = () => {
         >
           <MailOutlineIcon color="primary" sx={{ fontSize: 48, mb: 2 }} />
 
-          <Typography component="h1" variant="h5" gutterBottom sx={{ textAlign: 'center', mb: 3 }}>
-            {t('checkEmail.greeting', { name: displayName })}
-          </Typography>
+          <PageHeader
+            title={t('checkEmail.greeting', { name: displayName })}
+            description={t('checkEmail.message')}
+          />
 
-          <Box sx={{ width: '100%', mb: 2, textAlign: 'center' }}>
-            <Typography
-              variant="body1"
-              sx={{
-                fontWeight: 600,
-                lineHeight: 1.6,
-                color: 'var(--color-header-brand-headline)',
-              }}
-            >
-              {t('checkEmail.message')}
+          {user?.email && (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 2 }}>
+              {t('checkEmail.emailSentTo', { email: user.email })}
             </Typography>
-            {user?.email && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-                {t('checkEmail.emailSentTo', { email: user.email })}
-              </Typography>
-            )}
-          </Box>
+          )}
 
           {resendMessage && (
             <Alert severity="info" sx={{ width: '100%', mb: 2 }}>

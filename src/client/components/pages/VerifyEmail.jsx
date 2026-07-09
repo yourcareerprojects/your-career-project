@@ -5,6 +5,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { Alert, Box, Button, CircularProgress, Container, Paper, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import PageHeader from '../common/PageHeader';
 
 const getVerificationMessageKey = (state, hasToken) => {
   switch (state) {
@@ -96,14 +97,10 @@ const VerifyEmail = () => {
     <Container maxWidth="sm">
       <Box sx={{ mt: 8 }}>
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 2 }}>
-            {t('verifyEmail.title')}
-          </Typography>
-          {status === 'idle' && (
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-              {t('verifyEmail.instructions')}
-            </Typography>
-          )}
+          <PageHeader
+            title={t('verifyEmail.title')}
+            description={status === 'idle' ? t('verifyEmail.instructions') : undefined}
+          />
           {status !== 'idle' && (
             <Alert severity={severity}>
               {verificationMessage}

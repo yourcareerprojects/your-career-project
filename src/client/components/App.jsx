@@ -19,6 +19,8 @@ import SavedCareerSteps from './pages/SavedCareerSteps';
 import SavedCareerStepDetails from './pages/SavedCareerStepDetails';
 import RoleSearch from './pages/RoleSearch';
 import RoleDetails from './pages/RoleDetails';
+import SavedSearchHub from './pages/SavedSearchHub';
+import Settings from './pages/Settings';
 import SimulationResultDetails from './pages/SimulationResultDetails';
 import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
@@ -185,6 +187,7 @@ const App = () => {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/reset-password/:token" element={<ResetPassword />} />
+              <Route path="/settings" element={<Settings />} />
 
               <Route element={<ProtectedOutlet />}>
                 <Route element={<VerifiedEmailOutlet />}>
@@ -201,6 +204,7 @@ const App = () => {
                     path="/saved-simulation/:simulationId/career-step/:stepId"
                     element={<SavedSimulationCareerStepDetails />}
                   />
+                  <Route path="/saved-search" element={<SavedSearchHub />} />
                   <Route path="/explore-roles" element={<RoleSearch />} />
                   <Route path="/role/:escoId" element={<RoleDetails />} />
                   <Route path="/saved-steps" element={<SavedCareerSteps />} />

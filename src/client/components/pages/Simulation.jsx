@@ -46,16 +46,27 @@ import { useTranslation } from 'react-i18next';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import SimulationEvaluationFlow from '../common/SimulationEvaluationFlow';
+import SimulationStartWizard from '../common/SimulationStartWizard';
+import SimulationWizardPausedPrompt from '../common/SimulationWizardPausedPrompt';
+import {
+  deriveSimulationWizardStep,
+  isSimulationWizardActive,
+  canResumeSimulationWizard,
+} from '../../utils/simulationWizardSteps';
 import {
   ensureEvaluationFlow,
-  buildRankedRows,
   buildRankedRowsFromOrderedRoles,
   areBothSimulationRankingsComplete,
   isEvaluationComplete,
   mergeEvaluationFlowFromResults,
   unlockMobileOutsideTheBox,
-  lockMobileOutsideTheBox,
-  markCategoryRankingSeen,
+  promoteCategoryToRanked,
+  skipOutsideTheBoxForNow,
+  resumeOutsideTheBoxEvaluation,
+  applyAutoRankingRevealWhenBothComplete,
+  applyCombinedRankedReorder,
+  pauseSimulationWizard,
+  resumeSimulationWizard,
 } from '../../utils/simulationRoleRanking';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
 import SaveChangesButton from '../common/SaveChangesButton';
@@ -98,8 +109,8 @@ import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext
 import { useAuth } from '../../contexts/AuthContext';
 import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
 import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
-import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
+import PageHeader from '../common/PageHeader';
 
 /** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
 const Simulation = () => {
@@ -122,7 +133,7 @@ const Simulation = () => {
   const [simulationDate, setSimulationDate] = useState(null);
 
   const simulationRunAbortRef = useRef(null);
-  const simulationCelebrationHandledKeyRef = useRef(null);
+  const [simulationWizardIntent, setSimulationWizardIntent] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -218,7 +229,12 @@ const Simulation = () => {
           r.id === stepId ? { ...r, userEvaluation: evaluation } : r
         );
         const hasStarted = { ...flow.hasStarted, [categoryKey]: true };
-        const nextFlow = { ...flow, [categoryKey]: roles, hasStarted };
+        let nextFlow = {
+          ...flow,
+          [categoryKey]: roles,
+          hasStarted,
+        };
+        nextFlow = applyAutoRankingRevealWhenBothComplete(nextFlow);
         const next = { ...prev, evaluationFlow: nextFlow };
         setTimeout(() => persistSimResultsToSession(next), 0);
         return next;
@@ -234,40 +250,8 @@ const Simulation = () => {
       setSimResults((prev) => {
         if (!prev?.evaluationFlow) return prev;
         const flow = prev.evaluationFlow;
-        const roles = flow[categoryKey];
-        if (!isEvaluationComplete(roles)) return prev;
-        const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
-        const ranked = buildRankedRows(roles, rankSlug);
-        const nextFlow = markCategoryRankingSeen(
-          {
-            ...flow,
-            phases: { ...flow.phases, [categoryKey]: 'ranked' },
-            ranked: { ...flow.ranked, [categoryKey]: ranked },
-          },
-          categoryKey
-        );
-        const next = { ...prev, evaluationFlow: nextFlow };
-        setTimeout(() => persistSimResultsToSession(next), 0);
-        return next;
-      });
-      setHasUnsavedChanges(true);
-      setSimulationState('modified');
-    },
-    [persistSimResultsToSession]
-  );
-
-  const handleEditRoleRanking = useCallback(
-    (categoryKey) => {
-      setSimResults((prev) => {
-        if (!prev?.evaluationFlow) return prev;
-        const flow = prev.evaluationFlow;
-        let nextFlow = {
-          ...flow,
-          phases: { ...flow.phases, [categoryKey]: 'eval' },
-        };
-        if (categoryKey === 'nextSteps') {
-          nextFlow = lockMobileOutsideTheBox(nextFlow);
-        }
+        const nextFlow = promoteCategoryToRanked(flow, categoryKey);
+        if (nextFlow === flow) return prev;
         const next = { ...prev, evaluationFlow: nextFlow };
         setTimeout(() => persistSimResultsToSession(next), 0);
         return next;
@@ -289,6 +273,116 @@ const Simulation = () => {
     setHasUnsavedChanges(true);
     setSimulationState('modified');
   }, [persistSimResultsToSession]);
+
+  const handleSkipOutsideTheBox = useCallback(() => {
+    setSimResults((prev) => {
+      if (!prev?.evaluationFlow) return prev;
+      const nextFlow = skipOutsideTheBoxForNow(prev.evaluationFlow);
+      if (nextFlow === prev.evaluationFlow) return prev;
+      const next = { ...prev, evaluationFlow: nextFlow };
+      setTimeout(() => persistSimResultsToSession(next), 0);
+      return next;
+    });
+    setHasUnsavedChanges(true);
+    setSimulationState('modified');
+  }, [persistSimResultsToSession]);
+
+  const handleResumeOutsideTheBox = useCallback(() => {
+    setSimResults((prev) => {
+      if (!prev?.evaluationFlow) return prev;
+      const nextFlow = resumeOutsideTheBoxEvaluation(prev.evaluationFlow);
+      const next = { ...prev, evaluationFlow: nextFlow };
+      setTimeout(() => persistSimResultsToSession(next), 0);
+      return next;
+    });
+    setSimulationWizardIntent(true);
+    setHasUnsavedChanges(true);
+    setSimulationState('modified');
+  }, [persistSimResultsToSession]);
+
+  const simulationWizardStep = useMemo(
+    () =>
+      deriveSimulationWizardStep({
+        simLoading,
+        evaluationFlow: simResults?.evaluationFlow,
+      }),
+    [simLoading, simResults?.evaluationFlow]
+  );
+
+  const simulationWizardActive = useMemo(
+    () =>
+      isSimulationWizardActive({
+        simLoading,
+        evaluationFlow: simResults?.evaluationFlow,
+        simulationWizardIntent,
+        hasSimulationResults: Boolean(simResults),
+      }),
+    [simLoading, simResults, simulationWizardIntent]
+  );
+
+  useEffect(() => {
+    if (!simulationWizardIntent) return;
+    if (
+      !isSimulationWizardActive({
+        simLoading,
+        evaluationFlow: simResults?.evaluationFlow,
+        simulationWizardIntent: true,
+        hasSimulationResults: Boolean(simResults),
+      })
+    ) {
+      setSimulationWizardIntent(false);
+    }
+  }, [simLoading, simResults, simulationWizardIntent]);
+
+  const handleWizardSkipOotb = useCallback(() => {
+    handleSkipOutsideTheBox();
+    setSimulationWizardIntent(false);
+  }, [handleSkipOutsideTheBox]);
+
+  const handleWizardContinueOotb = useCallback(() => {
+    handleUnlockMobileOutsideTheBox();
+  }, [handleUnlockMobileOutsideTheBox]);
+
+  const handleWizardEvaluateNext = useCallback(
+    (stepId, evaluation) => {
+      handleEvaluationCommit('nextSteps', stepId, evaluation);
+    },
+    [handleEvaluationCommit]
+  );
+
+  const handleWizardEvaluateOotb = useCallback(
+    (stepId, evaluation) => {
+      handleEvaluationCommit('outsideTheBox', stepId, evaluation);
+    },
+    [handleEvaluationCommit]
+  );
+
+  const handleWizardResume = useCallback(() => {
+    setSimResults((prev) => {
+      if (!prev?.evaluationFlow) return prev;
+      const nextFlow = resumeSimulationWizard(prev.evaluationFlow);
+      const next = { ...prev, evaluationFlow: nextFlow };
+      setTimeout(() => persistSimResultsToSession(next), 0);
+      return next;
+    });
+    setSimulationWizardIntent(true);
+  }, [persistSimResultsToSession]);
+
+  const handleReorderCombinedRankedRoles = useCallback(
+    (reorderedRows) => {
+      setSimResults((prev) => {
+        if (!prev?.evaluationFlow || !Array.isArray(reorderedRows) || !reorderedRows.length) return prev;
+        const nextFlow = applyCombinedRankedReorder(prev.evaluationFlow, reorderedRows);
+        if (nextFlow === prev.evaluationFlow) return prev;
+        const next = { ...prev, evaluationFlow: nextFlow };
+        setTimeout(() => persistSimResultsToSession(next), 0);
+        return next;
+      });
+      setHasUnsavedChanges(true);
+      setSimulationState('modified');
+    },
+    [persistSimResultsToSession]
+  );
 
   const handleReorderRankedRoles = useCallback(
     (categoryKey, reorderedRows) => {
@@ -881,6 +975,12 @@ const Simulation = () => {
       simResults.evaluationFlow &&
       simResults.evaluationFlow.simulationId === resultsKey
     ) {
+      const revealed = applyAutoRankingRevealWhenBothComplete(simResults.evaluationFlow);
+      if (revealed !== simResults.evaluationFlow) {
+        queueStateUpdate(() => {
+          setSimResults((prev) => (prev ? { ...prev, evaluationFlow: revealed } : prev));
+        });
+      }
       return;
     }
     queueStateUpdate(() => {
@@ -1046,6 +1146,7 @@ const Simulation = () => {
     if (hasUnsavedChanges || hasUnsavedLocalResults) {
       setUnsavedChangesDialogOpen(true);
     } else {
+      setSimulationWizardIntent(true);
       handleSimulate();
     }
   };
@@ -1059,6 +1160,7 @@ const Simulation = () => {
     localizationSyncedRef.current.bundleKey = '';
     clearSimulationFromStorage();
     setUnsavedChangesDialogOpen(false);
+    setSimulationWizardIntent(true);
     handleSimulate();
   };
 
@@ -1069,6 +1171,7 @@ const Simulation = () => {
   const handleSimulate = async () => {
     if (profileSimulationGate.ready && profileSimulationGate.needsVerification) {
       setSimError(t('simulation.messages.emailVerificationRequired', { ns: 'dashboard' }));
+      setSimulationWizardIntent(false);
       return;
     }
     if (profileSimulationGate.ready && profileSimulationGate.belowMin) {
@@ -1078,6 +1181,7 @@ const Simulation = () => {
           min: MIN_PROFILE_COMPLETION_REQUIRED,
         })
       );
+      setSimulationWizardIntent(false);
       return;
     }
 
@@ -1109,6 +1213,7 @@ const Simulation = () => {
           startData?.error ||
           t('simulation.messages.failedTryAgain', { ns: 'dashboard' });
         setSimError(startErrorMsg);
+        setSimulationWizardIntent(false);
         return;
       }
 
@@ -1185,6 +1290,7 @@ const Simulation = () => {
         setSimError(
           outcome.message || t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
         );
+        setSimulationWizardIntent(false);
         return;
       }
 
@@ -1192,6 +1298,7 @@ const Simulation = () => {
         setSimError(
           outcome.error || t('simulation.messages.failedTryAgain', { ns: 'dashboard' })
         );
+        setSimulationWizardIntent(false);
         return;
       }
 
@@ -1234,6 +1341,7 @@ const Simulation = () => {
 
         if (!data) {
           setSimError(t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
+          setSimulationWizardIntent(false);
           return;
         }
       }
@@ -1267,7 +1375,7 @@ const Simulation = () => {
         }
 
         // Show generated results on dedicated results screen.
-        navigate('/simulation/results', { state: { celebrateSimulationCompleted: true } });
+        navigate('/simulation/results');
       } else {
         const errorMsg =
           (data && data.message) ||
@@ -1279,9 +1387,11 @@ const Simulation = () => {
               })
             : t('simulation.messages.failedTryAgain', { ns: 'dashboard' }));
         setSimError(errorMsg);
+        setSimulationWizardIntent(false);
       }
     } catch (err) {
       setSimError(t('simulation.messages.failedCheckConnection', { ns: 'dashboard' }));
+      setSimulationWizardIntent(false);
     } finally {
       setSimulationJobState('idle');
       setSimulationProgress(0);
@@ -1572,21 +1682,19 @@ const Simulation = () => {
     setSnackbar({ open: true, message, severity, linkTo, linkLabel });
   }, []);
 
-  /** Confetti once after a successful simulation run (navigate state from handleSimulate). */
-  useEffect(() => {
-    if (simulationCelebrationHandledKeyRef.current === location.key) return;
-    if (!location.state?.celebrateSimulationCompleted) return;
-
-    simulationCelebrationHandledKeyRef.current = location.key;
-    fireProfileCreatedConfetti();
-
-    const prev = location.state || {};
-    const { celebrateSimulationCompleted: _drop, ...rest } = prev;
-    navigate(
-      { pathname: location.pathname, search: location.search, hash: location.hash },
-      { replace: true, state: Object.keys(rest).length ? rest : undefined }
-    );
-  }, [location.key, location.pathname, location.search, location.hash, navigate]);
+  const handleWizardPauseAndExit = useCallback(() => {
+    setSimResults((prev) => {
+      if (!prev?.evaluationFlow) return prev;
+      const nextFlow = pauseSimulationWizard(prev.evaluationFlow);
+      const next = { ...prev, evaluationFlow: nextFlow };
+      setTimeout(() => persistSimResultsToSession(next), 0);
+      return next;
+    });
+    setSimulationWizardIntent(false);
+    setHasUnsavedChanges(true);
+    setSimulationState('modified');
+    showSnackbar(t('simulation.wizard.pauseDialog.savedMessage', { ns: 'dashboard' }), 'success');
+  }, [persistSimResultsToSession, showSnackbar, t]);
 
   /**
    * Saving clears results and navigates to `/simulation`. That route swap remounts this
@@ -2141,35 +2249,20 @@ const Simulation = () => {
                 </Box>
               )}
 
-              <Typography
-                variant="h4"
-                sx={{
-                  order: resultsHeaderOrder.title,
-                  mb: 3,
-                  fontWeight: 700,
-                  textAlign: 'center',
-                  typography: { xs: 'h5', sm: 'h4' },
-                  px: { xs: 1, sm: 0 },
-                  wordBreak: 'break-word',
-                }}
-              >
-                {location.pathname === '/simulation/results'
-                  ? t('simulation.resultsTitle', { ns: 'dashboard' })
-                  : t('simulation.pageTitle', { ns: 'dashboard' })}
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{
-                  order: resultsHeaderOrder.subtitle,
-                  mb: 4,
-                  textAlign: 'center',
-                  px: { xs: 1, sm: 0 },
-                }}
-              >
-                {simResults
-                  ? t('simulation.subtitle.hasResults', { ns: 'dashboard' })
-                  : t('simulation.subtitle.empty', { ns: 'dashboard' })}
-              </Typography>
+              <PageHeader
+                title={
+                  location.pathname === '/simulation/results'
+                    ? t('simulation.resultsTitle', { ns: 'dashboard' })
+                    : t('simulation.pageTitle', { ns: 'dashboard' })
+                }
+                description={
+                  simResults
+                    ? t('simulation.subtitle.hasResults', { ns: 'dashboard' })
+                    : t('simulation.subtitle.empty', { ns: 'dashboard' })
+                }
+                titleSx={{ order: resultsHeaderOrder.title }}
+                descriptionSx={{ order: resultsHeaderOrder.subtitle }}
+              />
 
               {profileSimulationGate.ready && profileSimulationGate.needsVerification && (
                 <Alert
@@ -2501,7 +2594,7 @@ const Simulation = () => {
               )}
 
               {/* Loading State */}
-              {loadingLast || simLoading ? (
+              {loadingLast || (simLoading && !simulationWizardActive) ? (
                 <Box sx={{ textAlign: 'center', mt: 6 }}>
                   {loadingLast && !simLoading && <CircularProgress size={30} />}
                   {simLoading && (
@@ -2588,17 +2681,24 @@ const Simulation = () => {
                         {t('simulation.preparingRoleEvaluation', { ns: 'dashboard' })}
                       </Typography>
                     </Box>
+                  ) : simulationWizardActive ? null : canResumeSimulationWizard(safeSimResults.evaluationFlow) ? (
+                    <SimulationWizardPausedPrompt
+                      evaluationFlow={safeSimResults.evaluationFlow}
+                      onResume={handleWizardResume}
+                    />
                   ) : (
                     <>
                       <SimulationEvaluationFlow
                         evaluationFlow={safeSimResults.evaluationFlow}
                         onUnlockMobileOutsideTheBox={handleUnlockMobileOutsideTheBox}
+                        onSkipOutsideTheBox={handleSkipOutsideTheBox}
+                        onResumeOutsideTheBox={handleResumeOutsideTheBox}
                         nextStepsTitle={t('simulation.categories.nextRoles', { ns: 'dashboard' })}
                         outsideTheBoxTitle={t('simulation.categories.outsideRoles', { ns: 'dashboard' })}
                         onEvaluate={handleEvaluationCommit}
                         onSeeRanking={handleSeeRoleRanking}
-                        onEditRatings={handleEditRoleRanking}
                         onReorderRankedRoles={handleReorderRankedRoles}
+                        onReorderCombinedRankedRoles={handleReorderCombinedRankedRoles}
                         isStepSaved={(role) => isStepSaved(role)}
                         isStepSaving={(role) => isStepSaving(role)}
                         onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
@@ -2697,6 +2797,34 @@ const Simulation = () => {
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       {renderWithErrorBoundary()}
+
+      {simulationWizardActive && simulationWizardStep ? (
+        <SimulationStartWizard
+          open
+          phase={simulationWizardStep.phase}
+          step={simulationWizardStep.step}
+          simLoading={simLoading}
+          simulationJobState={simulationJobState}
+          simulationProgress={simulationProgress}
+          evaluationFlow={simResults?.evaluationFlow}
+          simError={simError}
+          onDismissError={() => setSimError('')}
+          onEvaluateNext={handleWizardEvaluateNext}
+          onEvaluateOotb={handleWizardEvaluateOotb}
+          onSkipOotb={handleWizardSkipOotb}
+          onContinueOotb={handleWizardContinueOotb}
+          onPauseAndExit={handleWizardPauseAndExit}
+          isStepSaved={(role) => isStepSaved(role)}
+          isStepSaving={(role) => isStepSaving(role)}
+          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
+          guardedNavigate={guardedNavigate}
+          isViewingSavedSimulation={isViewingSavedSimulation}
+          savedSimulationId={selectedSimulation?.id}
+          simulationIdForCards={
+            selectedSimulation?.id || simResults?.simulationId || 'local'
+          }
+        />
+      ) : null}
 
       {/* Save Changes Dialog */}
       <SaveChangesDialog

@@ -20,6 +20,7 @@ import {
   handlePasswordVisibilityMouseDown,
   syncControlledPasswordInput,
 } from '../../utils/passwordVisibility';
+import PageHeader from '../common/PageHeader';
 
 /** Mirrors server `src/server/routes/auth.js` passwordValidation rules */
 function validatePasswordPolicy(password, t) {
@@ -156,12 +157,7 @@ const Register = () => {
             width: '100%',
           }}
         >
-          <Typography component="h1" variant="h5" gutterBottom>
-            {t('register.title')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 1 }}>
-            {t('register.subtitle')}
-          </Typography>
+          <PageHeader title={t('register.title')} description={t('register.subtitle')} />
 
           {submitError && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

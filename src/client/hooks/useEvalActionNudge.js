@@ -3,11 +3,14 @@ import { useMediaQuery } from '@mui/material';
 import { useIdleNudge } from './useIdleNudge';
 import { CTA_NUDGE_DURATION_MS, ctaNudgeKeyframes } from './useCtaNudgeAnimation';
 
-/** Evaluation actions that receive sequential idle nudges (one at a time). */
-export const EVAL_NUDGE_BUTTON_KEYS = ['keep', 'skip', 'dislike', 'more'];
+/** Rating actions that receive sequential idle nudges (one at a time). */
+export const EVAL_RATING_NUDGE_BUTTON_KEYS = ['keep', 'skip', 'dislike'];
 
-const DEFAULT_IDLE_MS = 4500;
-const DEFAULT_REPEAT_MS = 11000;
+/** Includes the More button used in the inline (non-wizard) evaluation grid. */
+export const EVAL_NUDGE_BUTTON_KEYS = [...EVAL_RATING_NUDGE_BUTTON_KEYS, 'more'];
+
+const DEFAULT_IDLE_MS = 2250;
+const DEFAULT_REPEAT_MS = 5500;
 const DEFAULT_MAX_NUDGES = 16;
 
 /**
@@ -15,6 +18,7 @@ const DEFAULT_MAX_NUDGES = 16;
  */
 export function useEvalActionNudge({
   enabled = true,
+  buttonKeys = EVAL_NUDGE_BUTTON_KEYS,
   idleMs = DEFAULT_IDLE_MS,
   repeatMs = DEFAULT_REPEAT_MS,
   maxNudges = DEFAULT_MAX_NUDGES,
@@ -30,8 +34,8 @@ export function useEvalActionNudge({
   const [isNudging, setIsNudging] = useState(false);
 
   const activeButtonKey = useMemo(
-    () => EVAL_NUDGE_BUTTON_KEYS[nudgeCount % EVAL_NUDGE_BUTTON_KEYS.length],
-    [nudgeCount]
+    () => buttonKeys[nudgeCount % buttonKeys.length],
+    [buttonKeys, nudgeCount]
   );
 
   useEffect(() => {

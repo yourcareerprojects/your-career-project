@@ -14,6 +14,7 @@ import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../ut
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
 import { clearManualFillDraft } from '../../utils/manualFillDraftStorage';
 import { markProfileSaveCelebration } from '../../utils/profileSaveCelebration';
+import PageHeader from '../common/PageHeader';
 
 const ProfileCreation = () => {
   const { t } = useTranslation('onboarding');
@@ -128,15 +129,15 @@ const ProfileCreation = () => {
     return (
       <Box sx={{ p: 3 }}>
         <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            {t('profileCreation.alreadyCreated.title')}
-          </Typography>
-          <Typography variant="body1" color="text.secondary" paragraph>
-            {t('profileCreation.alreadyCreated.description')}
-          </Typography>
-          <Button variant="contained" onClick={() => navigate('/profile')}>
-            {t('profileCreation.alreadyCreated.goToProfileCta')}
-          </Button>
+          <PageHeader
+            title={t('profileCreation.alreadyCreated.title')}
+            description={t('profileCreation.alreadyCreated.description')}
+          />
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Button variant="contained" onClick={() => navigate('/profile')}>
+              {t('profileCreation.alreadyCreated.goToProfileCta')}
+            </Button>
+          </Box>
         </Paper>
       </Box>
     );
@@ -154,15 +155,15 @@ const ProfileCreation = () => {
           {t('profileCreation.savingProfile')}
         </Alert>
       )}
-      <Typography variant="h4" component="h1" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
-        {fullUpdateMode ? t('profileCreation.fullUpdate.title') : t('profileCreation.default.title')}
-      </Typography>
-      <Box sx={{ maxWidth: 640, mx: 'auto', width: '100%' }}>
-        <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
-          {fullUpdateMode
+      <PageHeader
+        title={fullUpdateMode ? t('profileCreation.fullUpdate.title') : t('profileCreation.default.title')}
+        description={
+          fullUpdateMode
             ? t('profileCreation.fullUpdate.description')
-            : t('profileCreation.default.description')}
-        </Typography>
+            : t('profileCreation.default.description')
+        }
+      />
+      <Box sx={{ maxWidth: 640, mx: 'auto', width: '100%' }}>
         <DocumentUploadForm
           onExtractedProfileReview={handleExtractedProfileReview}
           documents={documents}

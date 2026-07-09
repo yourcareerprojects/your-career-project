@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import PageHeader from '../common/PageHeader';
 import {
   Alert,
   Box,
@@ -141,12 +142,10 @@ const ResetPassword = () => {
             width: '100%',
           }}
         >
-          <Typography component="h1" variant="h5" gutterBottom>
-            {t('resetPassword.title')}
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-            {t('resetPassword.description')}
-          </Typography>
+          <PageHeader
+            title={t('resetPassword.title')}
+            description={t('resetPassword.description')}
+          />
 
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

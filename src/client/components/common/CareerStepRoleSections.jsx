@@ -9,11 +9,13 @@ import {
   Tooltip,
   CircularProgress,
 } from '@mui/material';
-import { Insights, School } from '@mui/icons-material';
+import { Insights, School, Work } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { getRequiredSkillLabels, getOptionalSkillLabels } from '../../utils/requiredSkillsUtils';
 import { mergeResponsibilityTranslations } from '../../utils/mergeResponsibilityTranslations';
+import localizedContentService from '../../utils/localizedContentService';
+import { useFullProfileQuery } from '../../hooks/useProfileQueries';
 
 export const MAX_VISIBLE_REQUIRED_SKILLS = 5;
 export const MAX_VISIBLE_ALT_TITLES = 5;
@@ -36,9 +38,9 @@ export const getSeniorityColor = (level) => {
  * @param {object} props.stepDetails — career step / result payload (seniority, keyResponsibilities, skillDomains)
  * @param {number|null} [props.maxVisibleSkillDomains] — if set, collapse skill domains with show more (simulation results)
  */
-export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains = null }) {
+export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains = null, unfolded = false }) {
   const { t, i18n } = useTranslation('dashboard');
-  const [showAllSkillDomains, setShowAllSkillDomains] = useState(false);
+  const [showAllSkillDomains, setShowAllSkillDomains] = useState(unfolded);
 
   const activeLang = i18n.resolvedLanguage || i18n.language || 'en';
 
@@ -73,9 +75,9 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
     skillDomainItems.length > 0;
 
   const visibleSkillDomains =
-    maxVisibleSkillDomains != null && !showAllSkillDomains
-      ? skillDomainItems.slice(0, maxVisibleSkillDomains)
-      : skillDomainItems;
+    unfolded || maxVisibleSkillDomains == null || showAllSkillDomains
+      ? skillDomainItems
+      : skillDomainItems.slice(0, maxVisibleSkillDomains);
 
   return (
     <Card sx={{ mb: 3 }}>
@@ -140,7 +142,7 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
                 </Tooltip>
               ))}
             </Box>
-            {maxVisibleSkillDomains != null && skillDomainItems.length > maxVisibleSkillDomains && (
+            {maxVisibleSkillDomains != null && skillDomainItems.length > maxVisibleSkillDomains && !unfolded && (
               <Button
                 size="small"
                 onClick={() => setShowAllSkillDomains((v) => !v)}
@@ -159,12 +161,12 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
 /**
  * Role Details card — same structure as SavedCareerStepDetails / SavedSimulationCareerStepDetails.
  */
-export function CareerStepRoleDetailsCard({ stepDetails }) {
+export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
   const { t, i18n } = useTranslation('dashboard');
-  const [showAllAltTitles, setShowAllAltTitles] = useState(false);
-  const [showAllHiddenTitles, setShowAllHiddenTitles] = useState(false);
-  const [showAllRequiredSkills, setShowAllRequiredSkills] = useState(false);
-  const [showAllOptionalSkills, setShowAllOptionalSkills] = useState(false);
+  const [showAllAltTitles, setShowAllAltTitles] = useState(unfolded);
+  const [showAllHiddenTitles, setShowAllHiddenTitles] = useState(unfolded);
+  const [showAllRequiredSkills, setShowAllRequiredSkills] = useState(unfolded);
+  const [showAllOptionalSkills, setShowAllOptionalSkills] = useState(unfolded);
 
   const activeLang = i18n.resolvedLanguage || i18n.language || 'en';
 
@@ -201,7 +203,10 @@ export function CareerStepRoleDetailsCard({ stepDetails }) {
         </Typography>
         {requiredSkills.length > 0 ? (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {(showAllRequiredSkills ? requiredSkills : requiredSkills.slice(0, MAX_VISIBLE_REQUIRED_SKILLS)).map(
+            {(unfolded || showAllRequiredSkills
+              ? requiredSkills
+              : requiredSkills.slice(0, MAX_VISIBLE_REQUIRED_SKILLS)
+            ).map(
               (skill) => (
                 <Chip key={skill} label={skill} variant="outlined" />
               )
@@ -212,7 +217,7 @@ export function CareerStepRoleDetailsCard({ stepDetails }) {
             {t('details.roleSections.noRequiredSkills')}
           </Typography>
         )}
-        {requiredSkills.length > MAX_VISIBLE_REQUIRED_SKILLS && (
+        {requiredSkills.length > MAX_VISIBLE_REQUIRED_SKILLS && !unfolded && (
           <Button
             size="small"
             onClick={() => setShowAllRequiredSkills((v) => !v)}
@@ -228,13 +233,16 @@ export function CareerStepRoleDetailsCard({ stepDetails }) {
               {t('details.roleSections.optionalSkills')}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {(showAllOptionalSkills ? optionalSkills : optionalSkills.slice(0, MAX_VISIBLE_OPTIONAL_SKILLS)).map(
+              {(unfolded || showAllOptionalSkills
+                ? optionalSkills
+                : optionalSkills.slice(0, MAX_VISIBLE_OPTIONAL_SKILLS)
+              ).map(
                 (skill) => (
                   <Chip key={skill} label={skill} variant="outlined" size="small" />
                 )
               )}
             </Box>
-            {optionalSkills.length > MAX_VISIBLE_OPTIONAL_SKILLS && (
+            {optionalSkills.length > MAX_VISIBLE_OPTIONAL_SKILLS && !unfolded && (
               <Button
                 size="small"
                 onClick={() => setShowAllOptionalSkills((v) => !v)}
@@ -252,11 +260,11 @@ export function CareerStepRoleDetailsCard({ stepDetails }) {
               {t('details.roleSections.alsoKnownAs')}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {(showAllAltTitles ? altTitles : altTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
+              {(unfolded || showAllAltTitles ? altTitles : altTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
                 <Chip key={t} label={t} variant="outlined" size="small" />
               ))}
             </Box>
-            {altTitles.length > MAX_VISIBLE_ALT_TITLES && (
+            {altTitles.length > MAX_VISIBLE_ALT_TITLES && !unfolded && (
               <Button
                 size="small"
                 onClick={() => setShowAllAltTitles((v) => !v)}
@@ -274,11 +282,11 @@ export function CareerStepRoleDetailsCard({ stepDetails }) {
               {t('details.roleSections.alsoKnownAsEscoHidden')}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {(showAllHiddenTitles ? hiddenTitles : hiddenTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
+              {(unfolded || showAllHiddenTitles ? hiddenTitles : hiddenTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
                 <Chip key={t} label={t} variant="outlined" size="small" />
               ))}
             </Box>
-            {hiddenTitles.length > MAX_VISIBLE_ALT_TITLES && (
+            {hiddenTitles.length > MAX_VISIBLE_ALT_TITLES && !unfolded && (
               <Button
                 size="small"
                 onClick={() => setShowAllHiddenTitles((v) => !v)}
@@ -408,5 +416,90 @@ export function CareerStepRoleFitCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const splitDescriptionIntoParagraphs = (text) => {
+  const normalizedText = String(text || '').replace(/\r\n/g, '\n').trim();
+  if (!normalizedText) return [];
+
+  const lineParagraphs = normalizedText
+    .split(/\n\s*\n|\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (lineParagraphs.length > 1) return lineParagraphs;
+
+  const sentences = normalizedText.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
+  if (!sentences || sentences.length <= 2) return [normalizedText];
+
+  const paragraphs = [];
+  const sentenceBatchSize = 3;
+  for (let i = 0; i < sentences.length; i += sentenceBatchSize) {
+    paragraphs.push(sentences.slice(i, i + sentenceBatchSize).join(' ').trim());
+  }
+  return paragraphs.filter(Boolean);
+};
+
+const NESTED_SECTION_CARD_SX = {
+  mb: 2,
+  boxShadow: 'none',
+  border: '1px solid',
+  borderColor: 'divider',
+};
+
+/**
+ * Full role detail sections stacked for inline scroll in the simulation ranking wizard.
+ */
+export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null }) {
+  const { t, i18n } = useTranslation('dashboard');
+  const { isLoading: profileLoading } = useFullProfileQuery();
+  const uiLang = i18n.resolvedLanguage || i18n.language || 'en';
+  const description = localizedContentService.getLocalizedWithFallback(
+    stepDetails?.description,
+    uiLang,
+    ''
+  );
+  const paragraphs = splitDescriptionIntoParagraphs(description);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0, mt: 1 }}>
+      <Box sx={{ '& > .MuiCard-root': NESTED_SECTION_CARD_SX }}>
+        <CareerStepRoleFitCard
+          stepDetails={stepDetails}
+          simulationScopeId={simulationScopeId || stepDetails?.simulationId || 'local'}
+          profileLoading={profileLoading}
+        />
+      </Box>
+
+      <Card sx={NESTED_SECTION_CARD_SX}>
+        <CardContent>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            <Work sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {t('details.labels.roleDescription')}
+          </Typography>
+          {paragraphs.length > 0 ? (
+            paragraphs.map((paragraph, index) => (
+              <Typography
+                key={index}
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 1.5, fontWeight: index === 0 ? 600 : 400 }}
+              >
+                {paragraph}
+              </Typography>
+            ))
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              {t('details.labels.noDetailedDescription')}
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+
+      <Box sx={{ '& .MuiCard-root': NESTED_SECTION_CARD_SX }}>
+        <CareerStepRoleInsightsCard stepDetails={stepDetails} unfolded />
+        <CareerStepRoleDetailsCard stepDetails={stepDetails} unfolded />
+      </Box>
+    </Box>
   );
 }

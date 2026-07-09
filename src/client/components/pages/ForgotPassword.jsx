@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import PageHeader from '../common/PageHeader';
 import {
   Alert,
   Box,
@@ -77,12 +78,10 @@ const ForgotPassword = () => {
             width: '100%',
           }}
         >
-          <Typography component="h1" variant="h5" gutterBottom>
-            {t('forgotPassword.title')}
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-            {t('forgotPassword.description')}
-          </Typography>
+          <PageHeader
+            title={t('forgotPassword.title')}
+            description={t('forgotPassword.description')}
+          />
 
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

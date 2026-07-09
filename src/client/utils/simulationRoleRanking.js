@@ -215,8 +215,12 @@ export function isMobileOutsideTheBoxUnlocked(evaluationFlow) {
   return evaluationFlow.mobilePhaseGate?.outsideTheBox === 'unlocked';
 }
 
+export function isOutsideTheBoxDeferred(evaluationFlow) {
+  return Boolean(evaluationFlow?.outsideTheBoxDeferred);
+}
+
 /**
- * Which evaluation sections to show on narrow viewports (sequential two-phase flow).
+ * Which evaluation sections to show in the sequential two-phase flow.
  * @param {object | null | undefined} evaluationFlow
  * @returns {typeof MOBILE_EVAL_VIEWS[keyof typeof MOBILE_EVAL_VIEWS]}
  */
@@ -242,9 +246,11 @@ export function getMobileEvaluationView(evaluationFlow) {
   const nextRanked = evaluationFlow.phases?.nextSteps === 'ranked';
   const ootbRanked = evaluationFlow.phases?.outsideTheBox === 'ranked';
   const ootbUnlocked = isMobileOutsideTheBoxUnlocked(evaluationFlow);
+  const ootbDeferred = isOutsideTheBoxDeferred(evaluationFlow);
   const seenNextRanking = hasSeenCategoryRanking(evaluationFlow, 'nextSteps');
 
   if (nextRanked && ootbRanked) return MOBILE_EVAL_VIEWS.BOTH;
+  if (nextRanked && ootbDeferred) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
   if (ootbUnlocked && (!ootbComplete || !ootbRanked)) return MOBILE_EVAL_VIEWS.OOTB_ONLY;
   if (!nextComplete) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
   if (!ootbUnlocked && !seenNextRanking) return MOBILE_EVAL_VIEWS.TRANSITION;
@@ -252,20 +258,77 @@ export function getMobileEvaluationView(evaluationFlow) {
   return MOBILE_EVAL_VIEWS.BOTH;
 }
 
+export function promoteCategoryToRanked(flow, categoryKey) {
+  if (!flow || !Array.isArray(flow[categoryKey])) return flow;
+  const roles = flow[categoryKey];
+  if (!isEvaluationComplete(roles)) return flow;
+  if (
+    flow.phases?.[categoryKey] === 'ranked'
+    && Array.isArray(flow.ranked?.[categoryKey])
+    && flow.ranked[categoryKey].length
+  ) {
+    return flow;
+  }
+  const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
+  const ranked = buildRankedRows(roles, rankSlug);
+  const nextFlow = markCategoryRankingSeen(
+    {
+      ...flow,
+      phases: { ...flow.phases, [categoryKey]: 'ranked' },
+      ranked: { ...flow.ranked, [categoryKey]: ranked },
+    },
+    categoryKey
+  );
+  if (categoryKey === 'outsideTheBox' && nextFlow.outsideTheBoxDeferred) {
+    return { ...nextFlow, outsideTheBoxDeferred: false };
+  }
+  return nextFlow;
+}
+
+/**
+ * When both categories are fully rated, open ranked views for each without a manual reveal step.
+ * @param {object | null | undefined} flow
+ */
+export function applyAutoRankingRevealWhenBothComplete(flow) {
+  if (!flow) return flow;
+  if (!isEvaluationComplete(flow.nextSteps) || !isEvaluationComplete(flow.outsideTheBox)) {
+    return flow;
+  }
+  let next = flow;
+  next = promoteCategoryToRanked(next, 'nextSteps');
+  next = promoteCategoryToRanked(next, 'outsideTheBox');
+  return next;
+}
+
 export function unlockMobileOutsideTheBox(flow) {
   if (!flow || typeof flow !== 'object') return flow;
   return {
     ...flow,
+    outsideTheBoxDeferred: false,
     mobilePhaseGate: { ...flow.mobilePhaseGate, outsideTheBox: 'unlocked' },
   };
 }
 
-export function lockMobileOutsideTheBox(flow) {
+/**
+ * Skip outside-the-box evaluation for now and reveal the next-role ranking immediately.
+ * @param {object} flow
+ */
+export function skipOutsideTheBoxForNow(flow) {
   if (!flow || typeof flow !== 'object') return flow;
-  return {
-    ...flow,
-    mobilePhaseGate: { ...flow.mobilePhaseGate, outsideTheBox: 'locked' },
-  };
+  let next = { ...flow, outsideTheBoxDeferred: true };
+  if (isEvaluationComplete(next.nextSteps)) {
+    next = promoteCategoryToRanked(next, 'nextSteps');
+  }
+  return next;
+}
+
+/**
+ * Resume deferred outside-the-box evaluation.
+ * @param {object} flow
+ */
+export function resumeOutsideTheBoxEvaluation(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return unlockMobileOutsideTheBox({ ...flow, outsideTheBoxDeferred: false });
 }
 
 export function createInitialEvaluationFlow(results) {
@@ -279,7 +342,21 @@ export function createInitialEvaluationFlow(results) {
     ranked: { nextSteps: null, outsideTheBox: null },
     mobilePhaseGate: { outsideTheBox: 'locked' },
     hasSeenRanking: { nextSteps: false, outsideTheBox: false },
+    outsideTheBoxDeferred: false,
+    wizardPaused: false,
   };
+}
+
+/** Mark the step wizard as paused so the user can return later (session-persisted). */
+export function pauseSimulationWizard(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return { ...flow, wizardPaused: true };
+}
+
+/** Re-open the step wizard after a paused exit. */
+export function resumeSimulationWizard(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  return { ...flow, wizardPaused: false };
 }
 
 /**
@@ -299,7 +376,7 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
       (flowKey === 'local' && resultsKey && resultsKey !== 'local'));
   if (sameSimulationRun) {
     const ootbAlreadyStarted = Boolean(currentFlow.hasStarted?.outsideTheBox);
-    return {
+    let merged = {
       ...currentFlow,
       simulationId: resultsKey,
       nextSteps: buildEvaluationRolesList(results, 'nextSteps', currentFlow.nextSteps),
@@ -311,7 +388,14 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
         nextSteps: currentFlow.phases?.nextSteps === 'ranked',
         outsideTheBox: currentFlow.phases?.outsideTheBox === 'ranked',
       },
+      outsideTheBoxDeferred: currentFlow.outsideTheBoxDeferred ?? false,
+      wizardPaused: currentFlow.wizardPaused ?? false,
     };
+    if (merged.suppressAutoRankingReveal || merged.reEditPhase) {
+      const { suppressAutoRankingReveal, reEditPhase, ...rest } = merged;
+      merged = applyAutoRankingRevealWhenBothComplete(rest);
+    }
+    return merged;
   }
   return createInitialEvaluationFlow({ ...results, simulationId: resultsKey });
 }
@@ -322,7 +406,8 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
  * @param {object} results
  */
 export function ensureEvaluationFlow(results) {
-  return mergeEvaluationFlowFromResults(results, results?.evaluationFlow);
+  const merged = mergeEvaluationFlowFromResults(results, results?.evaluationFlow);
+  return applyAutoRankingRevealWhenBothComplete(merged);
 }
 
 export function flowItemMatchesStep(step, flowItem) {
@@ -443,4 +528,113 @@ export function areBothSimulationRankingsComplete(evaluationFlow) {
     && Array.isArray(evaluationFlow.ranked?.outsideTheBox)
     && evaluationFlow.ranked.outsideTheBox.length > 0
   );
+}
+
+function hasNextStepsRankedOverview(evaluationFlow) {
+  return (
+    evaluationFlow.phases?.nextSteps === 'ranked'
+    && Array.isArray(evaluationFlow.ranked?.nextSteps)
+    && evaluationFlow.ranked.nextSteps.length > 0
+  );
+}
+
+/**
+ * True when the next-role ranking overview is shown after skipping outside-the-box for now.
+ * @param {object | null | undefined} evaluationFlow
+ */
+export function isNextStepsRankingOverviewWithDeferredOotb(evaluationFlow) {
+  if (!evaluationFlow || !isOutsideTheBoxDeferred(evaluationFlow)) return false;
+  return hasNextStepsRankedOverview(evaluationFlow);
+}
+
+/**
+ * True when the user has reached a ranking overview worth celebrating (full or deferred OOTB skip).
+ * @param {object | null | undefined} evaluationFlow
+ */
+export function isSimulationRankingOverviewCelebrationEligible(evaluationFlow) {
+  if (!evaluationFlow) return false;
+  if (areBothSimulationRankingsComplete(evaluationFlow)) return true;
+  return isNextStepsRankingOverviewWithDeferredOotb(evaluationFlow);
+}
+
+/**
+ * @param {object} row
+ * @returns {'nextSteps' | 'outsideTheBox'}
+ */
+export function resolveRankedRowSourceCategoryKey(row) {
+  if (row?.sourceCategoryKey === 'nextSteps' || row?.sourceCategoryKey === 'outsideTheBox') {
+    return row.sourceCategoryKey;
+  }
+  const step = row?.step || row;
+  if (step?.category === 'outsideTheBox' || step?.listCategory === 'outsideTheBoxRoles') {
+    return 'outsideTheBox';
+  }
+  if (row?.category === 'out_of_the_box') return 'outsideTheBox';
+  return 'nextSteps';
+}
+
+/**
+ * @param {object | null | undefined} flow
+ * @returns {object[]}
+ */
+export function buildCombinedRankedRows(flow) {
+  if (!flow) return [];
+  const next = Array.isArray(flow.ranked?.nextSteps) ? flow.ranked.nextSteps : [];
+  const ootb = Array.isArray(flow.ranked?.outsideTheBox) ? flow.ranked.outsideTheBox : [];
+  const tag = (row, sourceCategoryKey) => ({
+    ...row,
+    sourceCategoryKey,
+    step: {
+      ...row.step,
+      category: sourceCategoryKey === 'outsideTheBox' ? 'outsideTheBox' : 'nextSteps',
+    },
+  });
+  return [
+    ...next.map((row) => tag(row, 'nextSteps')),
+    ...ootb.map((row) => tag(row, 'outsideTheBox')),
+  ];
+}
+
+/**
+ * @param {object} flow
+ * @param {object[]} flattenedRows
+ * @returns {object}
+ */
+export function applyCombinedRankedReorder(flow, flattenedRows) {
+  if (!flow || !Array.isArray(flattenedRows) || !flattenedRows.length) return flow;
+
+  const applyForCategory = (categoryKey, rankSlug) => {
+    const categoryIds = new Set((flow[categoryKey] || []).map((role) => role.id));
+    const relevant = flattenedRows.filter((row) => categoryIds.has(row.id));
+    if (!relevant.length) return null;
+    const byId = new Map((flow[categoryKey] || []).map((role) => [role.id, role]));
+    const nextRoles = relevant
+      .map((row) => {
+        const existing = byId.get(row.id);
+        if (!existing) return null;
+        return { ...existing, userEvaluation: row.userEvaluation };
+      })
+      .filter(Boolean);
+    if (!nextRoles.length) return null;
+    return {
+      roles: nextRoles,
+      ranked: buildRankedRowsFromOrderedRoles(nextRoles, rankSlug),
+    };
+  };
+
+  let nextFlow = { ...flow, ranked: { ...flow.ranked } };
+  let changed = false;
+  const nextUpdate = applyForCategory('nextSteps', 'next');
+  const ootbUpdate = applyForCategory('outsideTheBox', 'out_of_the_box');
+  if (nextUpdate) {
+    nextFlow.nextSteps = nextUpdate.roles;
+    nextFlow.ranked.nextSteps = nextUpdate.ranked;
+    changed = true;
+  }
+  if (ootbUpdate) {
+    nextFlow.outsideTheBox = ootbUpdate.roles;
+    nextFlow.ranked.outsideTheBox = ootbUpdate.ranked;
+    changed = true;
+  }
+  return changed ? nextFlow : flow;
 }

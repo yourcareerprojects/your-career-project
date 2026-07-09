@@ -31,6 +31,7 @@ import {
   useLastSimulationQuery,
 } from '../../hooks/useProfileQueries';
 import { getRoleTitleForLocale } from '../../utils/roleTitleDisplay';
+import PageHeader from '../common/PageHeader';
 
 /** Match saved career step card primary actions (full width in grid cells). */
 const SIMULATION_CARD_ACTION_BTN_SX = { width: '100%' };
@@ -133,12 +134,10 @@ const SavedSimulations = () => {
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
-        {t('saved.simulations', { ns: 'dashboard' })}
-      </Typography>
-      <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
-        {t('savedLists.savedSimulations.subtitle', { ns: 'dashboard' })}
-      </Typography>
+      <PageHeader
+        title={t('saved.simulations', { ns: 'dashboard' })}
+        description={t('savedLists.savedSimulations.subtitle', { ns: 'dashboard' })}
+      />
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />

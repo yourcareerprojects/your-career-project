@@ -17,6 +17,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchAuthenticatedStartPath } from '../../hooks/useAuthenticatedStartPath';
+import PageHeader from '../common/PageHeader';
 
 const Login = () => {
   const { t } = useTranslation('onboarding');
@@ -107,9 +108,7 @@ const Login = () => {
             width: '100%',
           }}
         >
-          <Typography component="h1" variant="h5" gutterBottom>
-            {t('login.title')}
-          </Typography>
+          <PageHeader title={t('login.title')} />
 
           {submitError && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

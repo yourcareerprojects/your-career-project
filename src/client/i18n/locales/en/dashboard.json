@@ -83,8 +83,8 @@
     },
     "evaluationFlow": {
       "allRolesRated": "All {{total}} roles are rated. Adjust any card below, then open your ranking when you are ready.",
-      "continue": "Continue evaluating each role. Choose Keep, Skip, or Dislike for each. Up to three unevaluated roles are shown at a time. After you rate a role, the next suggestion appears in this row. After you complete the evaluation you can see your ranking.",
-      "start": "Start evaluating each role. Choose Keep, Skip, or Dislike for each. The next suggestions appear as you go. After you complete the evaluation you can see your ranking.",
+      "continue": "Continue evaluating each role. Choose Cool, don't know, or Uncool for each. Up to three unevaluated roles are shown at a time. After you rate a role, the next suggestion appears in this row. After you complete the evaluation you can see your ranking.",
+      "start": "Start evaluating each role. Choose Cool, don't know, or Uncool for each. The next suggestions appear as you go. After you complete the evaluation you can see your ranking.",
       "rateThisRole": "Rate this role",
       "seeYourRanking": "See your ranking",
       "changeYourRanking": "Change your ranking",
@@ -92,27 +92,38 @@
       "rolesEvaluated": "{{evaluated}}/{{total}} roles evaluated",
       "noRolesInCategory": "No roles in this category.",
       "dropHere": "Drop here",
-      "finalRankingDescription": "Final ranking for {{category}}. Groups reflect your Keep, Skip, and Dislike choices.",
-      "startMobile": "Rate each role one at a time. Choose Keep, Skip, or Dislike. After you finish all roles you can see your ranking.",
-      "continueMobile": "Rate the next role. Choose Keep, Skip, or Dislike. After you finish all roles you can see your ranking.",
+      "finalRankingDescription": "Final ranking for {{category}}. Groups reflect your Cool, don't know, and Uncool choices.",
+      "startMobile": "Rate each role one at a time. Choose Cool, don't know, or Uncool. After you finish all roles you can see your ranking.",
+      "continueMobile": "Rate the next role. Choose Cool, don't know, or Uncool. After you finish all roles you can see your ranking.",
+      "combinedRankingTitle": "Your ranking",
+      "combinedFinalRankingDescription": "Your rated roles from our suggestions.",
+      "reEditDescription": "Update your ratings below. All roles from both suggestion lists are shown so you can change them in one place.",
+      "reEditCategoryHint": "Change Cool, don't know, or Uncool for any role.",
+      "finishReEdit": "Save ranking",
       "mobileTransition": {
         "title": "Next up: outside-the-box roles",
-        "description": "You have finished rating the next career roles. Now you will rate {{count}} outside-the-box role suggestions, one at a time.",
-        "continue": "Continue"
+        "description": "You have rated the obvious career ideas. Next, we have {{count}} unusual suggestions for you. Would you like to rate them now?",
+        "continue": "Continue",
+        "skipForNow": "Skip for now and see my ranking"
+      },
+      "deferredOotb": {
+        "title": "Outside-the-box roles still waiting",
+        "description": "You skipped rating {{count}} outside-the-box role suggestions. You can rate them anytime to add them to your full ranking.",
+        "resume": "Rate outside-the-box roles"
       },
       "actions": {
-        "keep": "Keep",
-        "skip": "Skip",
-        "dislike": "Dislike",
+        "keep": "Cool",
+        "skip": "don't know",
+        "dislike": "Uncool",
         "more": "More",
         "save": "Save",
         "saved": "Saved",
         "saving": "Saving..."
       },
       "tooltips": {
-        "keepStrongFit": "Keep - strong fit",
-        "skipNotSure": "Skip - not sure",
-        "dislikePoorFit": "Dislike - poor fit",
+        "keepStrongFit": "Cool - strong fit",
+        "skipNotSure": "don't know - not sure",
+        "dislikePoorFit": "Uncool - poor fit",
         "dragToReorder": "Drag to reorder or move group",
         "moreDetails": "View details for this role",
         "savedRemove": "Saved - click to remove from your saved list",
@@ -120,6 +131,30 @@
       }
     },
     "preparingRoleEvaluation": "Preparing role evaluation...",
+    "wizard": {
+      "loadingTitle": "Generating your simulation",
+      "loadingDescription": "We are analysing your profile and building personalised role suggestions...",
+      "nextRoleTitle": "Natural Next Roles",
+      "nextRoleIntro": "Rate this suggestion — the next role will appear automatically.",
+      "ootbChoiceTitle": "Surprising Perspectives",
+      "ootbRoleTitle": "Surprising Perspectives",
+      "ootbRoleIntro": "Rate this suggestion to continue.",
+      "exitRanking": "Exit ranking",
+      "pauseDialog": {
+        "title": "Exit ranking?",
+        "description": "Your ratings so far are saved in this browser session. You can return anytime to continue where you left off, or keep editing now.",
+        "stay": "Keep editing",
+        "saveAndExit": "Save and return later",
+        "savedMessage": "Progress saved. You can continue ranking anytime from your results."
+      },
+      "pausedPrompt": {
+        "title": "Ranking in progress",
+        "descriptionNext": "You rated {{evaluated}} of {{total}} next career roles. Continue where you left off.",
+        "descriptionOotbChoice": "You finished rating next career roles. Continue with {{count}} outside-the-box role suggestions when you are ready.",
+        "descriptionOotb": "You rated {{evaluated}} of {{total}} outside-the-box roles. Continue where you left off.",
+        "resume": "Continue ranking"
+      }
+    },
     "categories": {
       "nextRoles": "Next Career Roles",
       "outsideRoles": "Outside-the-Box Roles"
@@ -200,14 +235,14 @@
     "rating": {
       "title": "Rating",
       "actions": {
-        "keep": "Keep",
-        "skip": "Skip",
-        "dislike": "Dislike"
+        "keep": "Cool",
+        "skip": "don't know",
+        "dislike": "Uncool"
       },
       "tooltips": {
-        "keepStrongFit": "Keep - strong fit",
-        "skipNotSure": "Skip - not sure",
-        "dislikePoorFit": "Dislike - poor fit"
+        "keepStrongFit": "Cool - strong fit",
+        "skipNotSure": "don't know - not sure",
+        "dislikePoorFit": "Uncool - poor fit"
       }
     },
     "roleSections": {
@@ -258,6 +293,22 @@
     "simulations": "Saved Simulations",
     "careerSteps": "Saved Career Steps"
   },
+  "savedSearch": {
+    "pageTitle": "Saved & Search",
+    "subtitle": "Search for roles, revisit saved career steps, or open saved simulations.",
+    "searchRoles": {
+      "title": "Search Roles",
+      "description": "Browse and explore career roles that match your interests."
+    },
+    "savedCareerSteps": {
+      "title": "Saved Career Steps",
+      "description": "View and manage career steps you have saved."
+    },
+    "savedSimulations": {
+      "title": "Saved Simulations",
+      "description": "Open simulations you have saved for later."
+    }
+  },
   "savedLists": {
     "savedSimulations": {
       "subtitle": "Manage and review your saved career simulation",
@@ -295,16 +346,16 @@
       "tooltips": {
         "moreDetails": "View details for this role",
         "savedRemove": "Saved - click to remove from your saved list",
-        "keepStrongFit": "Keep - strong fit",
-        "skipNotSure": "Skip - not sure",
-        "dislikePoorFit": "Dislike - poor fit"
+        "keepStrongFit": "Cool - strong fit",
+        "skipNotSure": "don't know - not sure",
+        "dislikePoorFit": "Uncool - poor fit"
       },
       "actions": {
         "retry": "Retry",
         "removeSelected": "Remove Selected ({{count}})",
-        "keep": "Keep",
-        "skip": "Skip",
-        "dislike": "Dislike",
+        "keep": "Cool",
+        "skip": "don't know",
+        "dislike": "Uncool",
         "more": "More",
         "saved": "Saved"
       },
