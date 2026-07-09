@@ -16,6 +16,7 @@ import { getRequiredSkillLabels, getOptionalSkillLabels } from '../../utils/requ
 import { mergeResponsibilityTranslations } from '../../utils/mergeResponsibilityTranslations';
 import localizedContentService from '../../utils/localizedContentService';
 import { useFullProfileQuery } from '../../hooks/useProfileQueries';
+import { WRAP_CHIP_LABEL_SX } from '../../constants/iconChipStyles';
 
 export const MAX_VISIBLE_REQUIRED_SKILLS = 5;
 export const MAX_VISIBLE_ALT_TITLES = 5;
@@ -101,7 +102,7 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
             <Chip
               label={`${seniorityData.seniority_label}${typeof seniorityData.seniority_level === 'number' ? ` (Level ${seniorityData.seniority_level})` : ''}`}
               color={getSeniorityColor(seniorityData.seniority_level)}
-              sx={{ mb: 1 }}
+              sx={{ mb: 1, ...WRAP_CHIP_LABEL_SX }}
             />
           </Box>
         )}
@@ -138,6 +139,7 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
                     color="primary"
                     variant="outlined"
                     size="small"
+                    sx={WRAP_CHIP_LABEL_SX}
                   />
                 </Tooltip>
               ))}
@@ -208,7 +210,7 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
               : requiredSkills.slice(0, MAX_VISIBLE_REQUIRED_SKILLS)
             ).map(
               (skill) => (
-                <Chip key={skill} label={skill} variant="outlined" />
+                <Chip key={skill} label={skill} variant="outlined" sx={WRAP_CHIP_LABEL_SX} />
               )
             )}
           </Box>
@@ -238,7 +240,7 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
                 : optionalSkills.slice(0, MAX_VISIBLE_OPTIONAL_SKILLS)
               ).map(
                 (skill) => (
-                  <Chip key={skill} label={skill} variant="outlined" size="small" />
+                  <Chip key={skill} label={skill} variant="outlined" size="small" sx={WRAP_CHIP_LABEL_SX} />
                 )
               )}
             </Box>
@@ -261,7 +263,7 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {(unfolded || showAllAltTitles ? altTitles : altTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
-                <Chip key={t} label={t} variant="outlined" size="small" />
+                <Chip key={t} label={t} variant="outlined" size="small" sx={WRAP_CHIP_LABEL_SX} />
               ))}
             </Box>
             {altTitles.length > MAX_VISIBLE_ALT_TITLES && !unfolded && (
@@ -283,7 +285,7 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {(unfolded || showAllHiddenTitles ? hiddenTitles : hiddenTitles.slice(0, MAX_VISIBLE_ALT_TITLES)).map((t) => (
-                <Chip key={t} label={t} variant="outlined" size="small" />
+                <Chip key={t} label={t} variant="outlined" size="small" sx={WRAP_CHIP_LABEL_SX} />
               ))}
             </Box>
             {hiddenTitles.length > MAX_VISIBLE_ALT_TITLES && !unfolded && (

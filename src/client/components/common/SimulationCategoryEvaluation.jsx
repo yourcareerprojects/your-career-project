@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -10,6 +10,7 @@ import {
   Tooltip,
   Divider,
   CircularProgress,
+  Collapse,
   IconButton,
   useMediaQuery,
   useTheme,
@@ -18,7 +19,6 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ThumbUpAltOutlinedIcon from '@mui/icons-material/ThumbUpAltOutlined';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
-import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -51,33 +51,19 @@ import { getCareerStepMatchScorePercent } from '../../utils/careerStepMatchScore
 import { getRoleTitleForLocale, getRoleTitleEnglishForMatch } from '../../utils/roleTitleDisplay';
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
 import CareerStepCardWithReplacement from './CareerStepCardWithReplacement';
+import RoleEvaluationActionButtons from './RoleEvaluationActionButtons';
 import localizedContentService from '../../utils/localizedContentService';
 import { CareerStepRoleInlineBody } from './CareerStepRoleSections';
 import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
 import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
+import {
+  SWIPE_EXIT_MS,
+  useRoleEvaluationSwipe,
+} from '../../hooks/useRoleEvaluationSwipe';
+import { MOBILE_BOTTOM_NAV_HEIGHT } from '../layout/MobileBottomNav';
 
-const ACTION_BUTTON_SX = {
-  width: '100% !important',
-  minWidth: '0px !important',
-  px: '10px !important',
-  py: '8px !important',
-  fontSize: '0.8rem !important',
-  lineHeight: '1.1 !important',
-  borderRadius: '12px !important',
-  whiteSpace: 'nowrap !important',
-  boxShadow: 'none !important',
-};
-
-/** Black outline + bold label colours for Keep / Skip / Dislike (evaluation grid). */
-const EVAL_BUTTON_BORDER_SX = {
-  border: '1px solid #000000',
-  borderColor: '#000000',
-  fontWeight: 700,
-  '&:hover': {
-    border: '1px solid #000000',
-    borderColor: '#000000',
-  },
-};
+/** Matches `Layout` main `mt` so sticky sections sit below the fixed app bar. */
+const LAYOUT_APP_BAR_HEIGHT_PX = 64;
 
 /** Darker blue for Save toggle when role is already saved */
 const ROLE_CARD_SAVE_SAVED_SX = {
@@ -130,9 +116,11 @@ export function RoleEvaluationCard({
   getButtonNudgeSx,
   nudgeInteractionHandlers,
   inlineDetails = false,
+  mobileStickyLayout = false,
   simulationIdForCards = null,
 }) {
   const navigate = useNavigate();
+  const theme = useTheme();
   const { t, i18n } = useTranslation('dashboard');
   const uiLang = i18n.resolvedLanguage || i18n.language || 'en';
   const roleTitle = getRoleTitleForLocale(role.title, uiLang);
@@ -164,261 +152,425 @@ export function RoleEvaluationCard({
     navigateFunction(path);
   };
 
-  return (
-    <Card
-      variant="outlined"
-      elevation={0}
-      sx={(theme) => ({
-        borderStyle: 'solid',
-        borderWidth: '3px 1px 1px 6px',
-        borderColor: `${accentColor} ${theme.palette.divider} ${theme.palette.divider} ${accentColor}`,
-        borderRadius: 2,
-        boxShadow: theme.shadows[1],
-        bgcolor: 'background.paper',
-        minHeight: inlineDetails ? undefined : 300,
+  const useStickyCardLayout = mobileStickyLayout && inlineDetails;
+  const enableSwipe = typeof onEvaluate === 'function';
+  const scrollBodyRef = useRef(null);
+  const evalSentinelRef = useRef(null);
+  const [showCompactEvalBar, setShowCompactEvalBar] = useState(false);
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const compactBarMotion = prefersReducedMotion
+    ? { enter: 0, exit: 0 }
+    : { enter: 340, exit: 260 };
+  const compactBarEasing = prefersReducedMotion
+    ? undefined
+    : {
+        enter: theme.transitions.easing.easeOut,
+        exit: theme.transitions.easing.sharp,
+      };
+
+  useEffect(() => {
+    if (!useStickyCardLayout) {
+      setShowCompactEvalBar(false);
+      return undefined;
+    }
+
+    const scrollRoot = scrollBodyRef.current;
+    const sentinel = evalSentinelRef.current;
+    if (!scrollRoot || !sentinel) return undefined;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const next = !entry.isIntersecting;
+        setShowCompactEvalBar((prev) => (prev === next ? prev : next));
+      },
+      { root: scrollRoot, threshold: 0, rootMargin: '0px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [useStickyCardLayout, role?.id]);
+
+  const evaluationButtonProps = {
+    role,
+    onEvaluate,
+    showEvalNudge,
+    getButtonNudgeSx,
+    nudgeInteractionHandlers: nudgeHandlers,
+  };
+
+  const swipe = useRoleEvaluationSwipe({
+    enabled: enableSwipe,
+    onSwipeLeft: () => onEvaluate(role.id, 'dislike'),
+    onSwipeRight: () => onEvaluate(role.id, 'keep'),
+    onInteractionStart: nudgeHandlers.onMouseEnter,
+    onInteractionEnd: nudgeHandlers.onMouseLeave,
+  });
+
+  const swipeHintOpacity = (direction) => {
+    if (!swipe.swipeDirection || swipe.swipeDirection !== direction) return 0;
+    const progress = Math.min(1, Math.abs(swipe.offsetX) / 96);
+    return 0.18 + progress * 0.72;
+  };
+
+  const inlineDetailsBlock = inlineDetails ? (
+    <CareerStepRoleInlineBody
+      stepDetails={role}
+      simulationScopeId={simulationScopeId}
+    />
+  ) : null;
+
+  const fullEvaluationSection = (
+    <Box ref={evalSentinelRef} sx={{ mb: inlineDetails ? 0 : 1.5 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+        {t('simulation.evaluationFlow.rateThisRole')}
+      </Typography>
+      {enableSwipe ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+          {useStickyCardLayout
+            ? t('simulation.evaluationFlow.swipeHint')
+            : t('simulation.evaluationFlow.swipeHintDesktop')}
+        </Typography>
+      ) : null}
+      <RoleEvaluationActionButtons layout="full" {...evaluationButtonProps} />
+    </Box>
+  );
+
+  const titleRow = (
+    <Box
+      sx={{
         display: 'flex',
-        flexDirection: 'column',
-        height: inlineDetails ? 'auto' : '100%',
-      })}
+        alignItems: 'flex-start',
+        gap: 0.5,
+        mb: useStickyCardLayout ? 0 : 1,
+      }}
     >
-      <CardContent
+      <Typography
+        variant="h6"
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          flexGrow: 1,
-          justifyContent: inlineDetails ? 'flex-start' : 'space-between',
-          gap: inlineDetails ? 2 : 0,
+          fontWeight: 600,
+          flex: 1,
+          minWidth: 0,
+          minHeight: inlineDetails && !useStickyCardLayout ? undefined : useStickyCardLayout ? undefined : '2.5em',
         }}
       >
-        <Box>
-          <Box
+        {roleTitle}
+      </Typography>
+      <Tooltip
+        title={
+          isStepSaved
+            ? t('details.actions.removeFromSavedSteps')
+            : t('details.actions.saveToSavedSteps')
+        }
+        arrow
+      >
+        <span>
+          <IconButton
+            onClick={onSave}
+            disabled={savingStep}
+            size="small"
+            data-testid={`simulation-list-save-toggle-${roleTestId}`}
+            aria-label={
+              isStepSaved
+                ? t('details.actions.removeFromSavedSteps')
+                : t('details.actions.saveToSavedSteps')
+            }
             sx={{
+              flexShrink: 0,
+              mt: -0.25,
+              color:
+                categoryKey === 'outsideTheBox'
+                  ? 'var(--color-ootb-action)'
+                  : 'primary.main',
+              ...(isStepSaved && !savingStep
+                ? {
+                    bgcolor:
+                      categoryKey === 'outsideTheBox'
+                        ? 'rgba(211, 47, 47, 0.12)'
+                        : 'action.selected',
+                  }
+                : {}),
+              '&:hover': {
+                bgcolor:
+                  categoryKey === 'outsideTheBox'
+                    ? 'rgba(211, 47, 47, 0.18)'
+                    : 'action.hover',
+              },
+            }}
+          >
+            {savingStep ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : isStepSaved ? (
+              <StarIcon fontSize="small" />
+            ) : (
+              <StarBorderIcon fontSize="small" />
+            )}
+          </IconButton>
+        </span>
+      </Tooltip>
+    </Box>
+  );
+
+  const matchScoreBlock = (
+    <Box sx={{ mb: 1 }}>
+      <Typography variant="caption" color="text.secondary">
+        {t('details.labels.matchScore')}
+      </Typography>
+      <LinearProgress variant="determinate" value={pct} sx={{ mt: 0.5, height: 8, borderRadius: 1 }} />
+      <Typography variant="caption" color="text.secondary">
+        {pct}%
+      </Typography>
+    </Box>
+  );
+
+  const moreDetailsBlock = !inlineDetails ? (
+    <Box sx={{ mt: 1.5 }}>
+      <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
+        <span>
+          <Button
+            variant="contained"
+            color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
+            size="small"
+            startIcon={<ArrowForwardIcon sx={{ fontSize: '1rem' }} />}
+            onClick={handleMore}
+            {...nudgeHandlers}
+            sx={{
+              width: '100%',
+              ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
+              ...nudgeSx('more'),
+            }}
+            aria-label={t('simulation.evaluationFlow.tooltips.moreDetails')}
+          >
+            {t('simulation.evaluationFlow.actions.more')}
+          </Button>
+        </span>
+      </Tooltip>
+    </Box>
+  ) : null;
+
+  const scrollableEvaluationContent = (
+    <>
+      {fullEvaluationSection}
+      {inlineDetailsBlock}
+      {moreDetailsBlock}
+    </>
+  );
+
+  const cardBodyContent = (
+    <>
+      {!inlineDetails ? (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mb: 1.5,
+            display: '-webkit-box',
+            WebkitLineClamp: 4,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            minHeight: '5.6em',
+          }}
+        >
+          {roleDescription || 'No description available.'}
+        </Typography>
+      ) : null}
+      {matchScoreBlock}
+    </>
+  );
+
+  const swipeSurfaceProps = enableSwipe && !useStickyCardLayout ? swipe.bind : {};
+  const stickyHeaderSwipeProps = enableSwipe && useStickyCardLayout ? swipe.bind : {};
+
+  return (
+    <Box
+      ref={swipe.containerRef}
+      {...swipeSurfaceProps}
+      sx={{
+        position: 'relative',
+        touchAction: swipe.dragging ? 'none' : 'auto',
+        userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
+        height: useStickyCardLayout ? '100%' : 'auto',
+      }}
+    >
+      {enableSwipe ? (
+        <>
+          <Box
+            aria-hidden
+            sx={{
+              position: 'absolute',
+              inset: 0,
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: 0.5,
-              mb: 1,
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              pl: 2,
+              pointerEvents: 'none',
+              opacity: swipeHintOpacity('left'),
+              transition: swipe.dragging ? 'none' : `opacity ${SWIPE_EXIT_MS}ms ease`,
             }}
           >
             <Typography
               variant="h6"
               sx={{
-                fontWeight: 600,
-                flex: 1,
-                minWidth: 0,
-                minHeight: inlineDetails ? undefined : '2.5em',
+                fontWeight: 800,
+                color: 'error.main',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
               }}
             >
-              {roleTitle}
-            </Typography>
-            <Tooltip
-              title={
-                isStepSaved
-                  ? t('details.actions.removeFromSavedSteps')
-                  : t('details.actions.saveToSavedSteps')
-              }
-              arrow
-            >
-              <span>
-                <IconButton
-                  onClick={onSave}
-                  disabled={savingStep}
-                  size="small"
-                  data-testid={`simulation-list-save-toggle-${roleTestId}`}
-                  aria-label={
-                    isStepSaved
-                      ? t('details.actions.removeFromSavedSteps')
-                      : t('details.actions.saveToSavedSteps')
-                  }
-                  sx={{
-                    flexShrink: 0,
-                    mt: -0.25,
-                    color:
-                      categoryKey === 'outsideTheBox'
-                        ? 'var(--color-ootb-action)'
-                        : 'primary.main',
-                    ...(isStepSaved && !savingStep
-                      ? {
-                          bgcolor:
-                            categoryKey === 'outsideTheBox'
-                              ? 'rgba(211, 47, 47, 0.12)'
-                              : 'action.selected',
-                        }
-                      : {}),
-                    '&:hover': {
-                      bgcolor:
-                        categoryKey === 'outsideTheBox'
-                          ? 'rgba(211, 47, 47, 0.18)'
-                          : 'action.hover',
-                    },
-                  }}
-                >
-                  {savingStep ? (
-                    <CircularProgress size={20} color="inherit" />
-                  ) : isStepSaved ? (
-                    <StarIcon fontSize="small" />
-                  ) : (
-                    <StarBorderIcon fontSize="small" />
-                  )}
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Box>
-          {!inlineDetails ? (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{
-                mb: 1.5,
-                display: '-webkit-box',
-                WebkitLineClamp: 4,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                minHeight: '5.6em',
-              }}
-            >
-              {roleDescription || 'No description available.'}
-            </Typography>
-          ) : null}
-          <Box sx={{ mb: 1 }}>
-            <Typography variant="caption" color="text.secondary">
-              {t('details.labels.matchScore')}
-            </Typography>
-            <LinearProgress variant="determinate" value={pct} sx={{ mt: 0.5, height: 8, borderRadius: 1 }} />
-            <Typography variant="caption" color="text.secondary">
-              {pct}%
+              {t('simulation.evaluationFlow.actions.dislike')}
             </Typography>
           </Box>
-        </Box>
-
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-            {t('simulation.evaluationFlow.rateThisRole')}
-          </Typography>
           <Box
+            aria-hidden
             sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
-              gap: 1,
-              mb: inlineDetails ? 0 : 1.5,
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              pr: 2,
+              pointerEvents: 'none',
+              opacity: swipeHintOpacity('right'),
+              transition: swipe.dragging ? 'none' : `opacity ${SWIPE_EXIT_MS}ms ease`,
             }}
           >
-            <Tooltip title={t('simulation.evaluationFlow.tooltips.keepStrongFit')} arrow>
-              <span>
-                <Button
-                  variant="outlined"
-                  color="inherit"
-                  size="small"
-                  onClick={() => onEvaluate(role.id, 'keep')}
-                  {...nudgeHandlers}
-                  sx={{
-                    ...ACTION_BUTTON_SX,
-                    ...EVAL_BUTTON_BORDER_SX,
-                    color: 'success.main',
-                    bgcolor: role.userEvaluation === 'keep' ? 'rgba(76, 175, 80, 0.18)' : 'transparent',
-                    '&:hover': {
-                      ...EVAL_BUTTON_BORDER_SX['&:hover'],
-                      bgcolor:
-                        role.userEvaluation === 'keep' ? 'rgba(76, 175, 80, 0.28)' : 'rgba(0, 0, 0, 0.04)',
-                    },
-                    ...nudgeSx('keep'),
-                  }}
-                  aria-pressed={role.userEvaluation === 'keep'}
-                >
-                  {t('simulation.evaluationFlow.actions.keep')}
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip title={t('simulation.evaluationFlow.tooltips.skipNotSure')} arrow>
-              <span>
-                <Button
-                  variant="outlined"
-                  color="inherit"
-                  size="small"
-                  onClick={() => onEvaluate(role.id, 'skip')}
-                  startIcon={<RemoveCircleOutlineIcon sx={{ fontSize: '1rem !important' }} />}
-                  {...nudgeHandlers}
-                  sx={(theme) => ({
-                    ...ACTION_BUTTON_SX,
-                    ...EVAL_BUTTON_BORDER_SX,
-                    color: theme.palette.mode === 'dark' ? theme.palette.text.primary : '#000000',
-                    '& .MuiButton-startIcon': {
-                      color: theme.palette.mode === 'dark' ? theme.palette.text.primary : '#000000',
-                    },
-                    bgcolor: role.userEvaluation === 'skip' ? theme.palette.action.selected : 'transparent',
-                    '&:hover': {
-                      ...EVAL_BUTTON_BORDER_SX['&:hover'],
-                      bgcolor: theme.palette.action.hover,
-                    },
-                    ...nudgeSx('skip'),
-                  })}
-                  aria-pressed={role.userEvaluation === 'skip'}
-                >
-                  {t('simulation.evaluationFlow.actions.skip')}
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip title={t('simulation.evaluationFlow.tooltips.dislikePoorFit')} arrow>
-              <span>
-                <Button
-                  variant="outlined"
-                  color="inherit"
-                  size="small"
-                  onClick={() => onEvaluate(role.id, 'dislike')}
-                  {...nudgeHandlers}
-                  sx={{
-                    ...ACTION_BUTTON_SX,
-                    ...EVAL_BUTTON_BORDER_SX,
-                    color: 'error.main',
-                    bgcolor: role.userEvaluation === 'dislike' ? 'rgba(211, 47, 47, 0.14)' : 'transparent',
-                    '&:hover': {
-                      ...EVAL_BUTTON_BORDER_SX['&:hover'],
-                      bgcolor:
-                        role.userEvaluation === 'dislike' ? 'rgba(211, 47, 47, 0.22)' : 'rgba(0, 0, 0, 0.04)',
-                    },
-                    ...nudgeSx('dislike'),
-                  }}
-                  aria-pressed={role.userEvaluation === 'dislike'}
-                >
-                  {t('simulation.evaluationFlow.actions.dislike')}
-                </Button>
-              </span>
-            </Tooltip>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                color: 'success.main',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {t('simulation.evaluationFlow.actions.keep')}
+            </Typography>
           </Box>
-
-          {inlineDetails ? (
-            <CareerStepRoleInlineBody
-              stepDetails={role}
-              simulationScopeId={simulationScopeId}
-            />
-          ) : null}
-
-          {!inlineDetails ? (
-            <Box>
-              <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
-                <span>
-                  <Button
-                    variant="contained"
-                    color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-                    size="small"
-                    startIcon={<ArrowForwardIcon sx={{ fontSize: '1rem' }} />}
-                    onClick={handleMore}
-                    {...nudgeHandlers}
-                    sx={{
-                      width: '100%',
-                      ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
-                      ...nudgeSx('more'),
-                    }}
-                    aria-label={t('simulation.evaluationFlow.tooltips.moreDetails')}
-                  >
-                    {t('simulation.evaluationFlow.actions.more')}
-                  </Button>
-                </span>
-              </Tooltip>
+        </>
+      ) : null}
+      <Card
+        variant="outlined"
+        elevation={0}
+        sx={(theme) => ({
+          borderStyle: 'solid',
+          borderWidth: '3px 1px 1px 6px',
+          borderColor: `${accentColor} ${theme.palette.divider} ${theme.palette.divider} ${accentColor}`,
+          borderRadius: 2,
+          boxShadow: theme.shadows[1],
+          bgcolor: 'background.paper',
+          minHeight: useStickyCardLayout ? 0 : inlineDetails ? undefined : 300,
+          display: 'flex',
+          flexDirection: 'column',
+          height: useStickyCardLayout ? '100%' : inlineDetails ? 'auto' : '100%',
+          maxHeight: useStickyCardLayout ? '100%' : 'none',
+          overflow: useStickyCardLayout ? 'hidden' : 'visible',
+          transform: enableSwipe
+            ? `translateX(${swipe.offsetX}px) rotate(${swipe.offsetX * 0.03}deg)`
+            : 'none',
+          transition: swipe.dragging || swipe.exiting
+            ? swipe.exiting
+              ? `transform ${SWIPE_EXIT_MS}ms ease-in`
+              : 'none'
+            : `transform ${SWIPE_EXIT_MS}ms ease-out`,
+          willChange: enableSwipe && (swipe.dragging || swipe.exiting) ? 'transform' : 'auto',
+          cursor: enableSwipe && !useStickyCardLayout ? (swipe.dragging ? 'grabbing' : 'grab') : 'auto',
+        })}
+      >
+      <CardContent
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          flexGrow: 1,
+          justifyContent: useStickyCardLayout ? 'flex-start' : inlineDetails ? 'flex-start' : 'space-between',
+          gap: useStickyCardLayout ? 0 : inlineDetails ? 2 : 0,
+          flex: useStickyCardLayout ? 1 : undefined,
+          minHeight: useStickyCardLayout ? 0 : undefined,
+          overflow: useStickyCardLayout ? 'hidden' : 'visible',
+          p: 2,
+          '&:last-child': { pb: 2 },
+        }}
+      >
+        {useStickyCardLayout ? (
+          <>
+            <Box
+              {...stickyHeaderSwipeProps}
+              sx={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 2,
+                flexShrink: 0,
+                bgcolor: 'background.paper',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                mx: -2,
+                px: 2,
+                pt: 0.5,
+                pb: 1,
+                boxShadow: showCompactEvalBar ? theme.shadows[1] : 'none',
+                transition: theme.transitions.create(['box-shadow'], {
+                  duration: prefersReducedMotion ? 0 : theme.transitions.duration.standard,
+                  easing: theme.transitions.easing.easeInOut,
+                }),
+                cursor: enableSwipe && useStickyCardLayout
+                  ? (swipe.dragging ? 'grabbing' : 'grab')
+                  : 'auto',
+                touchAction: swipe.dragging ? 'none' : 'auto',
+              }}
+            >
+              {titleRow}
+              <Collapse
+                in={showCompactEvalBar}
+                timeout={compactBarMotion}
+                easing={compactBarEasing}
+                collapsedSize={0}
+              >
+                <Box
+                  sx={{
+                    mt: 1,
+                    opacity: showCompactEvalBar ? 1 : 0,
+                    transform: showCompactEvalBar ? 'translateY(0)' : 'translateY(-6px)',
+                    transition: prefersReducedMotion
+                      ? 'none'
+                      : theme.transitions.create(['opacity', 'transform'], {
+                          duration: showCompactEvalBar ? 320 : 220,
+                          easing: showCompactEvalBar
+                            ? theme.transitions.easing.easeOut
+                            : theme.transitions.easing.easeIn,
+                        }),
+                  }}
+                >
+                  <RoleEvaluationActionButtons layout="compact" {...evaluationButtonProps} />
+                </Box>
+              </Collapse>
             </Box>
-          ) : null}
-        </Box>
+            <Box
+              ref={scrollBodyRef}
+              data-role-eval-scroll
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
+                pt: 1.5,
+                touchAction: 'pan-y',
+              }}
+            >
+              {cardBodyContent}
+              {scrollableEvaluationContent}
+            </Box>
+          </>
+        ) : (
+          <>
+            <Box>
+              {titleRow}
+              {cardBodyContent}
+            </Box>
+            {scrollableEvaluationContent}
+          </>
+        )}
       </CardContent>
-    </Card>
+      </Card>
+    </Box>
   );
 }
 
@@ -1180,6 +1332,32 @@ export default function SimulationCategoryEvaluation({
 
   const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) });
   const rankingRevealNudge = useCtaNudgeAnimation({ enabled: awaitingRankingReveal });
+  const stickySectionHeaderRef = useRef(null);
+  const [stickySectionHeaderHeight, setStickySectionHeaderHeight] = useState(0);
+  const useMobileEvalStickyLayout = isMobileViewport && phase === 'eval' && !awaitingRankingReveal && total > 0;
+
+  useLayoutEffect(() => {
+    if (!useMobileEvalStickyLayout) {
+      setStickySectionHeaderHeight(0);
+      return undefined;
+    }
+    const node = stickySectionHeaderRef.current;
+    if (!node) return undefined;
+
+    const measure = () => {
+      setStickySectionHeaderHeight(node.getBoundingClientRect().height);
+    };
+    measure();
+
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(node);
+    return () => resizeObserver.disconnect();
+  }, [useMobileEvalStickyLayout, title, evaluated, total, complete, awaitingRankingReveal]);
+
+  const mobileStickyCardTop = `calc(${LAYOUT_APP_BAR_HEIGHT_PX}px + ${stickySectionHeaderHeight}px)`;
+  const mobileStickyCardMaxHeight = stickySectionHeaderHeight
+    ? `calc(100dvh - ${LAYOUT_APP_BAR_HEIGHT_PX}px - ${stickySectionHeaderHeight}px - ${MOBILE_BOTTOM_NAV_HEIGHT}px - env(safe-area-inset-bottom, 0px))`
+    : undefined;
 
   if (phase === 'ranked' && Array.isArray(rankedRows) && rankedRows.length) {
     return (
@@ -1239,47 +1417,58 @@ export default function SimulationCategoryEvaluation({
   return (
     <Box sx={{ mb: 4 }}>
       <Box
+        ref={stickySectionHeaderRef}
         sx={{
-          display: 'flex',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          justifyContent: 'space-between',
-          mb: 2,
-          gap: 1.5,
-          flexDirection: { xs: 'column', sm: 'row' },
+          position: useMobileEvalStickyLayout ? 'sticky' : 'static',
+          top: useMobileEvalStickyLayout ? `${LAYOUT_APP_BAR_HEIGHT_PX}px` : 'auto',
+          zIndex: useMobileEvalStickyLayout ? 3 : 'auto',
+          bgcolor: useMobileEvalStickyLayout ? 'background.default' : 'transparent',
+          pb: useMobileEvalStickyLayout ? 1 : 0,
         }}
       >
-        <Typography
-          variant="h4"
-          component="h2"
+        <Box
           sx={{
-            fontWeight: 'bold',
-            flex: 1,
-            minWidth: 0,
-            typography: { xs: 'h5', sm: 'h4' },
-            wordBreak: 'break-word',
-            overflowWrap: 'anywhere',
-            pr: { sm: 1 },
+            display: 'flex',
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            justifyContent: 'space-between',
+            mb: 2,
+            gap: 1.5,
+            flexDirection: { xs: 'column', sm: 'row' },
           }}
         >
-          {title}
-        </Typography>
-        {!awaitingRankingReveal && (
           <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'auto' } }}
+            variant="h4"
+            component="h2"
+            sx={{
+              fontWeight: 'bold',
+              flex: 1,
+              minWidth: 0,
+              typography: { xs: 'h5', sm: 'h4' },
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+              pr: { sm: 1 },
+            }}
           >
-            {t('simulation.evaluationFlow.rolesEvaluated', { evaluated, total })}
+            {title}
           </Typography>
+          {!awaitingRankingReveal && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'auto' } }}
+            >
+              {t('simulation.evaluationFlow.rolesEvaluated', { evaluated, total })}
+            </Typography>
+          )}
+        </Box>
+        {!awaitingRankingReveal && (
+          <LinearProgress
+            variant="determinate"
+            value={total ? (evaluated / total) * 100 : 0}
+            sx={{ height: 6, borderRadius: 3, mb: useMobileEvalStickyLayout ? 0 : 2 }}
+          />
         )}
       </Box>
-      {!awaitingRankingReveal && (
-        <LinearProgress
-          variant="determinate"
-          value={total ? (evaluated / total) * 100 : 0}
-          sx={{ height: 6, borderRadius: 3, mb: 2 }}
-        />
-      )}
 
       {!total ? (
         <Typography variant="body2" color="text.secondary">
@@ -1326,20 +1515,35 @@ export default function SimulationCategoryEvaluation({
           <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>
             {cardsToShow.map((role) => (
               <Grid item xs={12} sm={6} md={6} lg={4} key={role.id}>
-                <RoleEvaluationCard
-                  role={role}
-                  categoryKey={categoryKey}
-                  isViewingSavedSimulation={isViewingSavedSimulation}
-                  savedSimulationId={savedSimulationId}
-                  onEvaluate={onEvaluate}
-                  onSave={() => onToggleSave(role)}
-                  isStepSaved={isStepSaved(role)}
-                  savingStep={isStepSaving(role)}
-                  guardedNavigate={guardedNavigate}
-                  showEvalNudge={role.id === focusRoleId}
-                  getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-                  nudgeInteractionHandlers={evalNudge.interactionHandlers}
-                />
+                <Box
+                  sx={{
+                    position: useMobileEvalStickyLayout ? 'sticky' : 'static',
+                    top: useMobileEvalStickyLayout ? mobileStickyCardTop : 'auto',
+                    zIndex: useMobileEvalStickyLayout ? 2 : 'auto',
+                    maxHeight: useMobileEvalStickyLayout ? mobileStickyCardMaxHeight : 'none',
+                    display: useMobileEvalStickyLayout ? 'flex' : 'block',
+                    flexDirection: useMobileEvalStickyLayout ? 'column' : 'row',
+                    minHeight: useMobileEvalStickyLayout ? 0 : 'auto',
+                  }}
+                >
+                  <RoleEvaluationCard
+                    role={role}
+                    categoryKey={categoryKey}
+                    isViewingSavedSimulation={isViewingSavedSimulation}
+                    savedSimulationId={savedSimulationId}
+                    onEvaluate={onEvaluate}
+                    onSave={() => onToggleSave(role)}
+                    isStepSaved={isStepSaved(role)}
+                    savingStep={isStepSaving(role)}
+                    guardedNavigate={guardedNavigate}
+                    showEvalNudge={role.id === focusRoleId}
+                    getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+                    nudgeInteractionHandlers={evalNudge.interactionHandlers}
+                    inlineDetails={useMobileEvalStickyLayout}
+                    mobileStickyLayout={useMobileEvalStickyLayout}
+                    simulationIdForCards={simulationIdForCards}
+                  />
+                </Box>
               </Grid>
             ))}
           </Grid>

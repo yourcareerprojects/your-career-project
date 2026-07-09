@@ -38,3 +38,26 @@ export const ICON_CHIP_SELECTED_SX = {
   boxShadow: '0 0 0 1px #111',
   transform: 'translateY(-1px)',
 };
+
+/** Outlined role-detail chips (skills, domains, alt titles) — label wraps instead of ellipsis. */
+export const WRAP_CHIP_LABEL_SX = {
+  height: 'auto',
+  maxWidth: { xs: '100%', sm: 'none' },
+  alignSelf: 'flex-start',
+  overflow: 'visible',
+  '&.MuiChip-sizeSmall': {
+    height: 'auto',
+  },
+  '& .MuiChip-label': {
+    display: 'block',
+    px: 1.25,
+    py: 0.5,
+    whiteSpace: 'normal',
+    overflow: 'visible',
+    textOverflow: 'clip',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.35,
+    textAlign: 'left',
+  },
+};

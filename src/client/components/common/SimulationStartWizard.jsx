@@ -5,6 +5,8 @@ import {
   LinearProgress,
   Typography,
   CircularProgress,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import ExploreOutlinedIcon from '@mui/icons-material/ExploreOutlined';
@@ -27,6 +29,61 @@ import {
 } from '../../utils/simulationWizardSteps';
 import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
 import { useEvalActionNudge, EVAL_RATING_NUDGE_BUTTON_KEYS } from '../../hooks/useEvalActionNudge';
+
+function WizardRoleEvaluationSection({
+  intro,
+  role,
+  categoryKey,
+  simulationIdForCards,
+  isViewingSavedSimulation,
+  savedSimulationId,
+  onEvaluate,
+  onToggleSave,
+  isStepSaved,
+  isStepSaving,
+  guardedNavigate,
+  evalNudge,
+}) {
+  const theme = useTheme();
+  const isMobileViewport = useMediaQuery(theme.breakpoints.down('sm'));
+
+  return (
+    <>
+      <Typography variant="body2" color="text.secondary">
+        {intro}
+      </Typography>
+      <Box
+        sx={{
+          position: isMobileViewport ? 'sticky' : 'static',
+          top: isMobileViewport ? 0 : 'auto',
+          zIndex: isMobileViewport ? 1 : 'auto',
+          maxHeight: isMobileViewport ? 'min(72dvh, calc(100dvh - 220px))' : 'none',
+          display: isMobileViewport ? 'flex' : 'block',
+          flexDirection: isMobileViewport ? 'column' : 'row',
+          minHeight: isMobileViewport ? 0 : 'auto',
+        }}
+      >
+        <RoleEvaluationCard
+          role={role}
+          categoryKey={categoryKey}
+          inlineDetails
+          mobileStickyLayout={isMobileViewport}
+          simulationIdForCards={simulationIdForCards}
+          isViewingSavedSimulation={isViewingSavedSimulation}
+          savedSimulationId={savedSimulationId}
+          onEvaluate={onEvaluate}
+          onSave={() => onToggleSave(role)}
+          isStepSaved={isStepSaved(role)}
+          savingStep={isStepSaving(role)}
+          guardedNavigate={guardedNavigate}
+          showEvalNudge
+          getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+          nudgeInteractionHandlers={evalNudge.interactionHandlers}
+        />
+      </Box>
+    </>
+  );
+}
 
 function SimulationWizardStepTitle({ children }) {
   return (
@@ -144,27 +201,20 @@ export default function SimulationStartWizard({
         );
       }
       return (
-        <>
-          <Typography variant="body2" color="text.secondary">
-            {t('simulation.wizard.ootbRoleIntro')}
-          </Typography>
-          <RoleEvaluationCard
-            role={role}
-            categoryKey="outsideTheBox"
-            inlineDetails
-            simulationIdForCards={simulationIdForCards}
-            isViewingSavedSimulation={isViewingSavedSimulation}
-            savedSimulationId={savedSimulationId}
-            onEvaluate={(stepId, evaluation) => onEvaluateOotb(stepId, evaluation)}
-            onSave={() => onToggleSave(role)}
-            isStepSaved={isStepSaved(role)}
-            savingStep={isStepSaving(role)}
-            guardedNavigate={guardedNavigate}
-            showEvalNudge
-            getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-            nudgeInteractionHandlers={evalNudge.interactionHandlers}
-          />
-        </>
+        <WizardRoleEvaluationSection
+          intro={t('simulation.wizard.ootbRoleIntro')}
+          role={role}
+          categoryKey="outsideTheBox"
+          simulationIdForCards={simulationIdForCards}
+          isViewingSavedSimulation={isViewingSavedSimulation}
+          savedSimulationId={savedSimulationId}
+          onEvaluate={(stepId, evaluation) => onEvaluateOotb(stepId, evaluation)}
+          onToggleSave={onToggleSave}
+          isStepSaved={isStepSaved}
+          isStepSaving={isStepSaving}
+          guardedNavigate={guardedNavigate}
+          evalNudge={evalNudge}
+        />
       );
     }
 
@@ -248,27 +298,20 @@ export default function SimulationStartWizard({
     }
 
     return (
-      <>
-        <Typography variant="body2" color="text.secondary">
-          {t('simulation.wizard.nextRoleIntro')}
-        </Typography>
-        <RoleEvaluationCard
-          role={role}
-          categoryKey="nextSteps"
-          inlineDetails
-          simulationIdForCards={simulationIdForCards}
-          isViewingSavedSimulation={isViewingSavedSimulation}
-          savedSimulationId={savedSimulationId}
-          onEvaluate={(stepId, evaluation) => onEvaluateNext(stepId, evaluation)}
-          onSave={() => onToggleSave(role)}
-          isStepSaved={isStepSaved(role)}
-          savingStep={isStepSaving(role)}
-          guardedNavigate={guardedNavigate}
-          showEvalNudge
-          getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-          nudgeInteractionHandlers={evalNudge.interactionHandlers}
-        />
-      </>
+      <WizardRoleEvaluationSection
+        intro={t('simulation.wizard.nextRoleIntro')}
+        role={role}
+        categoryKey="nextSteps"
+        simulationIdForCards={simulationIdForCards}
+        isViewingSavedSimulation={isViewingSavedSimulation}
+        savedSimulationId={savedSimulationId}
+        onEvaluate={(stepId, evaluation) => onEvaluateNext(stepId, evaluation)}
+        onToggleSave={onToggleSave}
+        isStepSaved={isStepSaved}
+        isStepSaving={isStepSaving}
+        guardedNavigate={guardedNavigate}
+        evalNudge={evalNudge}
+      />
     );
   };
 
