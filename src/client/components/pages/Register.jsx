@@ -12,13 +12,17 @@ import {
   CircularProgress,
   IconButton,
   InputAdornment,
+  GlobalStyles,
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  handlePasswordVisibilityMouseDown,
-  syncControlledPasswordInput,
+  handlePasswordAutofillAnimation,
+  handlePasswordVisibilityPointerDown,
+  PASSWORD_AUTOFILL_ANIMATION,
+  readPasswordInputValue,
+  toggleControlledPasswordVisibility,
 } from '../../utils/passwordVisibility';
 import PageHeader from '../common/PageHeader';
 
@@ -55,37 +59,54 @@ const Register = () => {
   const passwordRef = useRef(null);
   const confirmPasswordRef = useRef(null);
 
+  const readPasswordFieldsFromDom = useCallback(() => ({
+    password: readPasswordInputValue(passwordRef),
+    confirmPassword: readPasswordInputValue(confirmPasswordRef),
+  }), []);
+
+  const syncPasswordFieldsFromDom = useCallback(() => {
+    const { password, confirmPassword } = readPasswordFieldsFromDom();
+    setFormData((prev) => {
+      if (prev.password === password && prev.confirmPassword === confirmPassword) {
+        return prev;
+      }
+      return { ...prev, password, confirmPassword };
+    });
+    return { password, confirmPassword };
+  }, [readPasswordFieldsFromDom]);
+
   const togglePasswordVisibility = useCallback((field, inputRef) => {
-    const el = inputRef.current;
-    if (el) {
-      syncControlledPasswordInput(field, el.value, setFormData);
-    }
-    setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }));
+    toggleControlledPasswordVisibility({
+      field,
+      inputRef,
+      setFormData,
+      setShowPasswords,
+    });
   }, []);
 
-  const validateForm = () => {
+  const validateForm = (data = formData) => {
     const newErrors = {};
 
-    if (!formData.name?.trim()) {
+    if (!data.name?.trim()) {
       newErrors.name = t('register.errors.nameRequired');
-    } else if (formData.name.trim().length < 2) {
+    } else if (data.name.trim().length < 2) {
       newErrors.name = t('register.errors.nameMinLength');
     }
 
-    if (!formData.email) {
+    if (!data.email) {
       newErrors.email = t('register.errors.emailRequired');
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    } else if (!/\S+@\S+\.\S+/.test(data.email)) {
       newErrors.email = t('register.errors.emailInvalid');
     }
 
-    const passwordError = validatePasswordPolicy(formData.password, t);
+    const passwordError = validatePasswordPolicy(data.password, t);
     if (passwordError) {
       newErrors.password = passwordError;
     }
 
-    if (!formData.confirmPassword) {
+    if (!data.confirmPassword) {
       newErrors.confirmPassword = t('register.errors.confirmPasswordRequired');
-    } else if (formData.password !== formData.confirmPassword) {
+    } else if (data.password !== data.confirmPassword) {
       newErrors.confirmPassword = t('register.errors.passwordMismatch');
     }
 
@@ -116,13 +137,16 @@ const Register = () => {
     e.preventDefault();
     setSubmitError('');
 
-    if (!validateForm()) {
+    const domPasswords = syncPasswordFieldsFromDom();
+    const submissionData = { ...formData, ...domPasswords };
+
+    if (!validateForm(submissionData)) {
       return;
     }
 
     setLoading(true);
     try {
-      const { name, email, password } = formData;
+      const { name, email, password } = submissionData;
       const result = await register({ name: name.trim(), email, password });
 
       if (result.success) {
@@ -137,8 +161,25 @@ const Register = () => {
     }
   };
 
+  const passwordInputProps = {
+    className: 'password-input-autofill-detect',
+    onAnimationStart: (event) => handlePasswordAutofillAnimation(event, handleChange),
+  };
+
   return (
     <Container component="main" maxWidth="xs">
+      <GlobalStyles
+        styles={{
+          '@keyframes password-autofill-start': {
+            from: { opacity: 1 },
+            to: { opacity: 1 },
+          },
+          'input.password-input-autofill-detect:-webkit-autofill': {
+            animationName: PASSWORD_AUTOFILL_ANIMATION,
+            animationDuration: '0.01s',
+          },
+        }}
+      />
       <Box
         sx={{
           marginTop: 8,
@@ -205,10 +246,11 @@ const Register = () => {
               id="password"
               autoComplete="new-password"
               inputRef={passwordRef}
-              value={formData.password}
+              defaultValue=""
               onChange={handleChange}
               onInput={handleChange}
               onBlur={handleBlur}
+              inputProps={passwordInputProps}
               error={!!errors.password}
               helperText={errors.password || t('register.passwordPolicyHint')}
               disabled={loading}
@@ -220,7 +262,8 @@ const Register = () => {
                       aria-label={showPasswords.password ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                       aria-pressed={showPasswords.password}
                       onClick={() => togglePasswordVisibility('password', passwordRef)}
-                      onMouseDown={handlePasswordVisibilityMouseDown}
+                      onMouseDown={handlePasswordVisibilityPointerDown}
+                      onTouchStart={handlePasswordVisibilityPointerDown}
                       edge="end"
                       disabled={loading}
                     >
@@ -240,10 +283,11 @@ const Register = () => {
               id="confirmPassword"
               autoComplete="new-password"
               inputRef={confirmPasswordRef}
-              value={formData.confirmPassword}
+              defaultValue=""
               onChange={handleChange}
               onInput={handleChange}
               onBlur={handleBlur}
+              inputProps={passwordInputProps}
               error={!!errors.confirmPassword}
               helperText={errors.confirmPassword}
               disabled={loading}
@@ -255,7 +299,8 @@ const Register = () => {
                       aria-label={showPasswords.confirmPassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                       aria-pressed={showPasswords.confirmPassword}
                       onClick={() => togglePasswordVisibility('confirmPassword', confirmPasswordRef)}
-                      onMouseDown={handlePasswordVisibilityMouseDown}
+                      onMouseDown={handlePasswordVisibilityPointerDown}
+                      onTouchStart={handlePasswordVisibilityPointerDown}
                       edge="end"
                       disabled={loading}
                     >

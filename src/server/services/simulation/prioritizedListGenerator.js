@@ -9,6 +9,7 @@ const {
 } = require('../embedding/roleMatchingScorer');
 const { logMemory } = require('./simulationMemoryProfiler');
 const { hydrateScoredPathsWithMeta } = require('./phase2ScoredPath');
+const { resolveForkExplorationVectorCap } = require('./simulationForkMemoryProfile');
 
 /** Top-N roles by HybridFinalNEXT before NEXT_ROLE MMR (diversity pass). */
 const DEFAULT_NEXT_MMR_CANDIDATE_POOL_SIZE = 150;
@@ -583,10 +584,10 @@ async function generatePrioritizedListsPhase2(scoredPaths, userProfile, options 
     );
   }
 
-  const explorationVectorCapRaw = Number(process.env.SIMULATION_EXPLORATION_VECTOR_CAP || '500');
-  const explorationVectorCap = Number.isFinite(explorationVectorCapRaw)
-    ? Math.max(outsidePoolSize * 4, Math.min(2000, explorationVectorCapRaw))
-    : Math.max(outsidePoolSize * 4, 500);
+  const explorationVectorCap = Math.max(
+    outsidePoolSize * 4,
+    Math.min(2000, resolveForkExplorationVectorCap())
+  );
 
   const explorationSorted = [...explorationPassing].sort(
     (a, b) =>

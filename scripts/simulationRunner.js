@@ -6,6 +6,10 @@ const mongoose = require('mongoose');
 const connectDB = require('../config/database');
 const { getSimulationJobReadOnly } = require('../src/server/services/simulationJobService');
 const { executeCareerSimulation } = require('../src/server/services/simulation/simulationEngine');
+const {
+  resolveHeapLimitMb,
+  resolveHeapCheckIntervalMs,
+} = require('../src/server/services/simulation/simulationForkMemoryProfile');
 
 function childLog(event, payload) {
   console.log(
@@ -23,8 +27,8 @@ function childLog(event, payload) {
  * Aborts the in-flight run before V8 SIGABRT on small instances.
  */
 function startSimulationHeapWatchdog(abortController) {
-  const limitMb = Number(process.env.SIMULATION_HEAP_LIMIT_MB || '450');
-  const intervalMs = Number(process.env.SIMULATION_HEAP_CHECK_INTERVAL_MS || '10000');
+  const limitMb = resolveHeapLimitMb();
+  const intervalMs = resolveHeapCheckIntervalMs();
   if (!Number.isFinite(limitMb) || limitMb <= 0) {
     return () => {};
   }
@@ -150,14 +154,17 @@ async function main() {
       return;
     }
 
+    const payloadObj = job.payload && typeof job.payload === 'object' ? { ...job.payload } : {};
+
     childLog('simulation_start', {
       jobId: String(jobId),
       jobType,
       userId: String(job.userId),
       pid: process.pid,
+      heapLimitMb: resolveHeapLimitMb(),
+      heapCheckIntervalMs: resolveHeapCheckIntervalMs(),
+      hasPoolPrefetch: Boolean(payloadObj._poolPrefetch),
     });
-
-    const payloadObj = job.payload && typeof job.payload === 'object' ? { ...job.payload } : {};
 
     const reqLike = {
       user: { id: String(job.userId), userId: String(job.userId) },

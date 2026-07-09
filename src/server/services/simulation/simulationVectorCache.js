@@ -1,7 +1,4 @@
-/**
- * Process-wide LRU + TTL cache for CareerPath.roleVectors blobs only.
- * Deduplicates Mongo reads across simulation chunks and sequential job runs on the same process.
- */
+const { resolveForkVectorCacheSize } = require('./simulationForkMemoryProfile');
 
 function parsePositiveIntEnv(name, defaultValue) {
   const raw = process.env[name];
@@ -77,12 +74,7 @@ function parseCacheTtlMs(defaultTtlMs) {
 
 /** Child process peaks heap fast; bounded cache avoids holding hundreds of MB of embeddings */
 function defaultMaxCacheEntries() {
-  const fromEnv = process.env.SIMULATION_VECTOR_CACHE_SIZE;
-  if (fromEnv != null && fromEnv !== '') {
-    const n = Number(fromEnv);
-    return Number.isFinite(n) ? n : 128;
-  }
-  return process.env.SIMULATION_RUNNER_SUBPROCESS === '1' ? 96 : 256;
+  return resolveForkVectorCacheSize();
 }
 
 function getSimulationRoleVectorCache() {

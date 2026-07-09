@@ -17,6 +17,7 @@ const {
 } = require('../services/simulationJobService');
 const { runSimulationInChildProcess } = require('../services/simulation/simulationForkRunner');
 const { getSimulationJobExecutionLimitMs } = require('../services/simulation/simulationJobExecutionLimits');
+const { attachSimulationPoolPrefetch } = require('../services/simulation/simulationPoolPrefetch');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
@@ -1369,6 +1370,21 @@ async function buildSimulationForkJobResultPayload(jobDoc, { attempts = 3, delay
   return null;
 }
 
+function humanizeSimulationWorkerError(errText) {
+  const text = String(errText || '');
+  if (
+    text.includes('SIGABRT') ||
+    text.includes('memory_limit_exceeded') ||
+    text.includes('MEMORY_LIMIT_EXCEEDED')
+  ) {
+    return 'Simulation ran out of memory on the server. Please try again in a moment.';
+  }
+  if (text.includes('Simulation timeout')) {
+    return 'Simulation took too long to complete. Please try again.';
+  }
+  return text;
+}
+
 async function processOneSimulationJob({ onlyJobId = null } = {}) {
   const jobExecutionLimitMs = getSimulationJobExecutionLimitMs();
   const reclaimed = await reclaimStaleRunningSimulationJobs();
@@ -1465,6 +1481,15 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
         refreshedAt: new Date().toISOString(),
       });
     } else {
+      try {
+        await attachSimulationPoolPrefetch(jobId);
+      } catch (prefetchErr) {
+        console.warn(
+          '[simulation-job] pool prefetch failed (non-fatal):',
+          prefetchErr?.message || prefetchErr
+        );
+      }
+
       const result = await runSimulationInChildProcess(jobId, {
         wallClockLimitMs: jobExecutionLimitMs,
       });
@@ -1485,8 +1510,9 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
         simulationOrchestrationLog('job_finished', { jobId: String(jobId), jobType, outcome: 'simulation_ok' });
         await markJobCompleted(completedPayload);
       } else {
-        const errMsg =
-          result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`;
+        const errMsg = humanizeSimulationWorkerError(
+          result.payload?.error || result.payload?.message || `Simulation failed with status ${result.statusCode}`
+        );
         simulationOrchestrationLog('job_failed', { jobId: String(jobId), jobType, outcome: 'simulation_soft_fail', error: errMsg });
         await SimulationJob.updateOne(
           { _id: jobId, status: 'running' },
@@ -1503,7 +1529,7 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
       }
     }
   } catch (error) {
-    const errText = error?.message || String(error);
+    const errText = humanizeSimulationWorkerError(error?.message || String(error));
     let ipcMissRecovered = false;
 
     if (
@@ -1536,7 +1562,7 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
       });
       console.error('[simulation-job] error', error);
       try {
-        await markJobFailed(error);
+        await markJobFailed(new Error(errText));
       } catch (persistErr) {
         console.error(`[simulation-job] failed to persist job failure job=${String(jobId)}`, persistErr);
       }

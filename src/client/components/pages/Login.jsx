@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Container,
   Box,
-  Typography,
   TextField,
   Button,
   Paper,
@@ -12,11 +11,19 @@ import {
   CircularProgress,
   IconButton,
   InputAdornment,
+  GlobalStyles,
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchAuthenticatedStartPath } from '../../hooks/useAuthenticatedStartPath';
+import {
+  handlePasswordAutofillAnimation,
+  handlePasswordVisibilityPointerDown,
+  PASSWORD_AUTOFILL_ANIMATION,
+  readPasswordInputValue,
+  toggleControlledPasswordVisibility,
+} from '../../utils/passwordVisibility';
 import PageHeader from '../common/PageHeader';
 
 const Login = () => {
@@ -31,15 +38,36 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const passwordRef = useRef(null);
 
-  const validateForm = () => {
+  const syncPasswordFromDom = useCallback(() => {
+    const password = readPasswordInputValue(passwordRef);
+    setFormData((prev) => (prev.password === password ? prev : { ...prev, password }));
+    return password;
+  }, []);
+
+  const togglePasswordVisibility = useCallback(() => {
+    toggleControlledPasswordVisibility({
+      field: 'password',
+      inputRef: passwordRef,
+      setFormData,
+      setShowPasswords: (updater) => {
+        setShowPassword((prev) => {
+          const next = updater({ password: prev });
+          return next.password;
+        });
+      },
+    });
+  }, []);
+
+  const validateForm = (data = formData) => {
     const newErrors = {};
-    if (!formData.email) {
+    if (!data.email) {
       newErrors.email = t('login.errors.emailRequired');
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    } else if (!/\S+@\S+\.\S+/.test(data.email)) {
       newErrors.email = t('login.errors.emailInvalid');
     }
-    if (!formData.password) {
+    if (!data.password) {
       newErrors.password = t('login.errors.passwordRequired');
     }
     setErrors(newErrors);
@@ -52,7 +80,6 @@ const Login = () => {
       ...prev,
       [name]: value,
     }));
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors((prev) => ({
         ...prev,
@@ -61,17 +88,25 @@ const Login = () => {
     }
   };
 
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => (prev[name] === value ? prev : { ...prev, [name]: value }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
 
-    if (!validateForm()) {
+    const password = syncPasswordFromDom();
+    const submissionData = { ...formData, password };
+
+    if (!validateForm(submissionData)) {
       return;
     }
 
     setLoading(true);
     try {
-      const result = await login(formData.email, formData.password);
+      const result = await login(submissionData.email, submissionData.password);
       if (result.success) {
         const user = result.user;
         const target = !user?.isVerified && !user?.emailVerified
@@ -88,8 +123,25 @@ const Login = () => {
     }
   };
 
+  const passwordInputProps = {
+    className: 'password-input-autofill-detect',
+    onAnimationStart: (event) => handlePasswordAutofillAnimation(event, handleChange),
+  };
+
   return (
     <Container component="main" maxWidth="xs">
+      <GlobalStyles
+        styles={{
+          '@keyframes password-autofill-start': {
+            from: { opacity: 1 },
+            to: { opacity: 1 },
+          },
+          'input.password-input-autofill-detect:-webkit-autofill': {
+            animationName: PASSWORD_AUTOFILL_ANIMATION,
+            animationDuration: '0.01s',
+          },
+        }}
+      />
       <Box
         sx={{
           marginTop: 8,
@@ -141,8 +193,12 @@ const Login = () => {
               type={showPassword ? 'text' : 'password'}
               id="password"
               autoComplete="current-password"
-              value={formData.password}
+              inputRef={passwordRef}
+              defaultValue=""
               onChange={handleChange}
+              onInput={handleChange}
+              onBlur={handleBlur}
+              inputProps={passwordInputProps}
               error={!!errors.password}
               helperText={errors.password}
               disabled={loading}
@@ -153,7 +209,9 @@ const Login = () => {
                       type="button"
                       aria-label={showPassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                       aria-pressed={showPassword}
-                      onClick={() => setShowPassword((v) => !v)}
+                      onClick={togglePasswordVisibility}
+                      onMouseDown={handlePasswordVisibilityPointerDown}
+                      onTouchStart={handlePasswordVisibilityPointerDown}
                       edge="end"
                       disabled={loading}
                     >
@@ -224,4 +282,4 @@ const Login = () => {
   );
 };
 
-export default Login; 
+export default Login;

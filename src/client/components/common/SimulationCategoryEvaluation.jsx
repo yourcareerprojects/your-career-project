@@ -288,7 +288,9 @@ export function RoleEvaluationCard({
               {pct}%
             </Typography>
           </Box>
+        </Box>
 
+        <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
             {t('simulation.evaluationFlow.rateThisRole')}
           </Typography>
@@ -382,39 +384,39 @@ export function RoleEvaluationCard({
               </span>
             </Tooltip>
           </Box>
+
+          {inlineDetails ? (
+            <CareerStepRoleInlineBody
+              stepDetails={role}
+              simulationScopeId={simulationScopeId}
+            />
+          ) : null}
+
+          {!inlineDetails ? (
+            <Box>
+              <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
+                <span>
+                  <Button
+                    variant="contained"
+                    color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
+                    size="small"
+                    startIcon={<ArrowForwardIcon sx={{ fontSize: '1rem' }} />}
+                    onClick={handleMore}
+                    {...nudgeHandlers}
+                    sx={{
+                      width: '100%',
+                      ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
+                      ...nudgeSx('more'),
+                    }}
+                    aria-label={t('simulation.evaluationFlow.tooltips.moreDetails')}
+                  >
+                    {t('simulation.evaluationFlow.actions.more')}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+          ) : null}
         </Box>
-
-        {inlineDetails ? (
-          <CareerStepRoleInlineBody
-            stepDetails={role}
-            simulationScopeId={simulationScopeId}
-          />
-        ) : null}
-
-        {!inlineDetails ? (
-          <Box>
-            <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
-              <span>
-                <Button
-                  variant="contained"
-                  color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-                  size="small"
-                  startIcon={<ArrowForwardIcon sx={{ fontSize: '1rem' }} />}
-                  onClick={handleMore}
-                  {...nudgeHandlers}
-                  sx={{
-                    width: '100%',
-                    ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
-                    ...nudgeSx('more'),
-                  }}
-                  aria-label={t('simulation.evaluationFlow.tooltips.moreDetails')}
-                >
-                  {t('simulation.evaluationFlow.actions.more')}
-                </Button>
-              </span>
-            </Tooltip>
-          </Box>
-        ) : null}
       </CardContent>
     </Card>
   );

@@ -1,6 +1,7 @@
 const { fork } = require('child_process');
 const path = require('path');
 const { getSimulationJobExecutionLimitMs } = require('./simulationJobExecutionLimits');
+const { resolveForkMaxOldSpaceMb } = require('./simulationForkMemoryProfile');
 
 function getRunnerScriptPath() {
   return path.join(__dirname, '..', '..', '..', '..', 'scripts', 'simulationRunner.js');
@@ -18,15 +19,14 @@ function forkParentLog(payload) {
 
 function buildChildEnv() {
   const env = { ...process.env, SIMULATION_RUNNER_SUBPROCESS: '1' };
-  const mbRaw = env.SIMULATION_FORK_MAX_OLD_SPACE_MB;
-  if (mbRaw != null && String(mbRaw).trim() !== '') {
-    const megabytes = Number(mbRaw);
-    if (Number.isFinite(megabytes) && megabytes > 0) {
-      const chunk = `--max-old-space-size=${Math.floor(megabytes)}`;
-      const prev = String(env.NODE_OPTIONS || '').trim();
-      env.NODE_OPTIONS = prev ? `${prev} ${chunk}` : chunk;
-    }
-  }
+  const megabytes = resolveForkMaxOldSpaceMb();
+  const chunk = `--max-old-space-size=${megabytes}`;
+  const prev = String(env.NODE_OPTIONS || '').trim();
+  env.NODE_OPTIONS = prev.includes('--max-old-space-size=')
+    ? prev.replace(/--max-old-space-size=\d+/g, chunk)
+    : prev
+      ? `${prev} ${chunk}`
+      : chunk;
   return env;
 }
 

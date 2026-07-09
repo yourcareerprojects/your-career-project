@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,7 +15,8 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  InputAdornment
+  InputAdornment,
+  GlobalStyles,
 } from '@mui/material';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
@@ -25,6 +26,13 @@ import axios from 'axios';
 import ChangeEmailDialog from './ChangeEmailDialog';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  handlePasswordAutofillAnimation,
+  handlePasswordVisibilityPointerDown,
+  PASSWORD_AUTOFILL_ANIMATION,
+  readPasswordInputValue,
+  toggleControlledPasswordVisibility,
+} from '../../utils/passwordVisibility';
 
 const InfoRow = ({ icon, label, value, helper, fallbackValue }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -58,9 +66,11 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  const [deletePasswordFieldKey, setDeletePasswordFieldKey] = useState(0);
   const [showDeletePassword, setShowDeletePassword] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const deletePasswordRef = useRef(null);
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [pendingAction, setPendingAction] = useState(false);
@@ -97,6 +107,46 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
     setShowDeletePassword(false);
     setDeleteError('');
     setDeleteLoading(false);
+    setDeletePasswordFieldKey((key) => key + 1);
+  };
+
+  const syncDeletePasswordFromDom = useCallback(() => {
+    const password = readPasswordInputValue(deletePasswordRef);
+    setDeletePassword((prev) => (prev === password ? prev : password));
+    return password;
+  }, []);
+
+  const toggleDeletePasswordVisibility = useCallback(() => {
+    toggleControlledPasswordVisibility({
+      field: 'password',
+      inputRef: deletePasswordRef,
+      setFormData: (updater) => {
+        setDeletePassword((prev) => {
+          const next = updater({ password: prev });
+          return next.password;
+        });
+      },
+      setShowPasswords: (updater) => {
+        setShowDeletePassword((prev) => {
+          const next = updater({ password: prev });
+          return next.password;
+        });
+      },
+    });
+  }, []);
+
+  const handleDeletePasswordChange = (event) => {
+    setDeletePassword(event.target.value);
+  };
+
+  const handleDeletePasswordBlur = (event) => {
+    const { value } = event.target;
+    setDeletePassword((prev) => (prev === value ? prev : value));
+  };
+
+  const deletePasswordInputProps = {
+    className: 'password-input-autofill-detect',
+    onAnimationStart: (event) => handlePasswordAutofillAnimation(event, handleDeletePasswordChange),
   };
 
   const openDeleteDialog = () => {
@@ -113,9 +163,10 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
   const handleDeleteAccount = async () => {
     setDeleteError('');
     setDeleteLoading(true);
+    const currentPassword = syncDeletePasswordFromDom();
     try {
       await axios.delete('/api/auth/account', {
-        data: { currentPassword: deletePassword }
+        data: { currentPassword }
       });
       logout();
       navigate('/login', {
@@ -131,6 +182,18 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
   const isPage = layout === 'page';
   const body = (
     <>
+      <GlobalStyles
+        styles={{
+          '@keyframes password-autofill-start': {
+            from: { opacity: 1 },
+            to: { opacity: 1 },
+          },
+          'input.password-input-autofill-detect:-webkit-autofill': {
+            animationName: PASSWORD_AUTOFILL_ANIMATION,
+            animationDuration: '0.01s',
+          },
+        }}
+      />
       {isPage && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <LockIcon color="primary" sx={{ mr: 1 }} />
@@ -264,12 +327,18 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
             {t('loginSecurity.deleteAccount.reauthDescription')}
           </Typography>
           <TextField
+            key={deletePasswordFieldKey}
             type={showDeletePassword ? 'text' : 'password'}
             fullWidth
+            name="currentPassword"
             autoComplete="current-password"
             label={t('loginSecurity.deleteAccount.fields.currentPassword')}
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
+            inputRef={deletePasswordRef}
+            defaultValue=""
+            onChange={handleDeletePasswordChange}
+            onInput={handleDeletePasswordChange}
+            onBlur={handleDeletePasswordBlur}
+            inputProps={deletePasswordInputProps}
             margin="dense"
             disabled={deleteLoading}
             InputProps={{
@@ -279,7 +348,9 @@ const LoginSecuritySection = ({ loginSecurity, loading, error, onRefresh, layout
                     type="button"
                     aria-label={showDeletePassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
                     aria-pressed={showDeletePassword}
-                    onClick={() => setShowDeletePassword((v) => !v)}
+                    onClick={toggleDeletePasswordVisibility}
+                    onMouseDown={handlePasswordVisibilityPointerDown}
+                    onTouchStart={handlePasswordVisibilityPointerDown}
                     edge="end"
                     disabled={deleteLoading}
                   >

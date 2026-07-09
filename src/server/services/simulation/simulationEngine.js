@@ -36,6 +36,10 @@ const {
 } = require('./seniorityAwareCandidatePool');
 const { mergeSimulationPoolFilter } = require('./simulationCareerPathPoolFilter');
 const { reportSimulationJobProgress } = require('./simulationJobProgressReporter');
+const {
+  resolveForkPathLimits,
+  resolveForkScoringLimits,
+} = require('./simulationForkMemoryProfile');
 
 const CACHE_SCOPE_FULL = 'full';
 const CACHE_SCOPE_FINAL_NEXT = 'finalNext';
@@ -351,14 +355,15 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     // Fetch cached career paths.
     // Targeted pull: resolved requiredSkillKeys (DE/EN via Skill catalog) + CareerPathSkill links.
     const escoService = require('../escoService');
-    const targetedDefault = runtimeOpts.isForkChild ? 350 : 900;
-    const fallbackDefault = runtimeOpts.isForkChild ? 500 : 1200;
-    const minPoolDefault = runtimeOpts.isForkChild ? 240 : 350;
-    const TARGETED_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_TARGETED_PATH_LIMIT, targetedDefault);
-    const FALLBACK_PATH_LIMIT = toPositiveIntEnv(process.env.SIMULATION_FALLBACK_PATH_LIMIT, fallbackDefault);
-    const MIN_CANDIDATE_POOL = toPositiveIntEnv(process.env.SIMULATION_MIN_CANDIDATE_POOL, minPoolDefault);
+    const pathLimits = resolveForkPathLimits();
+    const TARGETED_PATH_LIMIT = pathLimits.targetedPathLimit;
+    const FALLBACK_PATH_LIMIT = pathLimits.fallbackPathLimit;
+    const MIN_CANDIDATE_POOL = pathLimits.minCandidatePool;
 
-    const poolResolution = await resolveUserSkillsForPoolFetch(userSkills);
+    const poolResolution =
+      reqLike.body?._poolPrefetch && typeof reqLike.body._poolPrefetch === 'object'
+        ? reqLike.body._poolPrefetch
+        : await resolveUserSkillsForPoolFetch(userSkills);
     const userSkillKeys = poolResolution.requiredSkillKeys;
     const linkedCareerPathIds = poolResolution.careerPathIds;
     const picked = [];
@@ -627,13 +632,9 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
       candidatePoolSize: picked.length,
       isForkChild: Boolean(runtimeOpts.isForkChild),
     });
-    const scoreChunkDefault = runtimeOpts.isForkChild ? 24 : 200;
-    const SCORE_CHUNK_SIZE = toPositiveIntEnv(process.env.SIMULATION_SCORE_CHUNK_SIZE, scoreChunkDefault);
-    const scoreConcDefault = runtimeOpts.isForkChild ? 1 : 12;
-    const SCORE_CONCURRENCY = Math.max(
-      1,
-      toPositiveIntEnv(process.env.SIMULATION_SCORE_CONCURRENCY, scoreConcDefault)
-    );
+    const scoringLimits = resolveForkScoringLimits();
+    const SCORE_CHUNK_SIZE = scoringLimits.scoreChunkSize;
+    const SCORE_CONCURRENCY = scoringLimits.scoreConcurrency;
 
     const abortSignal = runtimeOpts.abortSignal || null;
     const assertNotAborted = () => {

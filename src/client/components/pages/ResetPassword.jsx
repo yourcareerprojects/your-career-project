@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,7 @@ import {
   Button,
   CircularProgress,
   Container,
+  GlobalStyles,
   IconButton,
   InputAdornment,
   List,
@@ -23,6 +24,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import {
+  handlePasswordAutofillAnimation,
+  handlePasswordVisibilityPointerDown,
+  PASSWORD_AUTOFILL_ANIMATION,
+  readPasswordInputValue,
+  toggleControlledPasswordVisibility,
+} from '../../utils/passwordVisibility';
 
 const ResetPassword = () => {
   const { t } = useTranslation('onboarding');
@@ -30,13 +38,17 @@ const ResetPassword = () => {
   const [searchParams] = useSearchParams();
   const { token: routeToken } = useParams();
   const token = String(searchParams.get('token') || routeToken || '').trim();
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [formData, setFormData] = useState({
+    password: '',
+    confirmPassword: '',
+  });
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const hasSubmittedRef = useRef(false);
   const activeRequestIdRef = useRef(0);
+  const passwordRef = useRef(null);
+  const confirmPasswordRef = useRef(null);
   const [showPasswords, setShowPasswords] = useState({
     password: false,
     confirmPassword: false,
@@ -50,11 +62,49 @@ const ResetPassword = () => {
     { id: 'symbol', label: t('loginSecurity.changePassword.requirements.symbol'), test: (value) => /[!@#$%^&*]/.test(value) },
   ]), [t]);
 
+  const readPasswordFieldsFromDom = useCallback(() => ({
+    password: readPasswordInputValue(passwordRef),
+    confirmPassword: readPasswordInputValue(confirmPasswordRef),
+  }), []);
+
+  const syncPasswordFieldsFromDom = useCallback(() => {
+    const { password, confirmPassword } = readPasswordFieldsFromDom();
+    setFormData((prev) => {
+      if (prev.password === password && prev.confirmPassword === confirmPassword) {
+        return prev;
+      }
+      return { ...prev, password, confirmPassword };
+    });
+    return { password, confirmPassword };
+  }, [readPasswordFieldsFromDom]);
+
+  const togglePasswordVisibility = useCallback((field, inputRef) => {
+    toggleControlledPasswordVisibility({
+      field,
+      inputRef,
+      setFormData,
+      setShowPasswords,
+    });
+  }, []);
+
   const checklist = passwordRules.map((rule) => ({
     ...rule,
-    satisfied: rule.test(password),
+    satisfied: rule.test(formData.password),
   }));
   const checklistPassed = checklist.every((rule) => rule.satisfied);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleBlur = (event) => {
+    const { name, value } = event.target;
+    setFormData((prev) => (prev[name] === value ? prev : { ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -69,7 +119,10 @@ const ResetPassword = () => {
       setError(t('resetPassword.errors.missingToken'));
       return;
     }
-    if (!checklistPassed) {
+
+    const { password, confirmPassword } = syncPasswordFieldsFromDom();
+
+    if (!passwordRules.every((rule) => rule.test(password))) {
       setError(t('resetPassword.errors.requirementsNotMet'));
       return;
     }
@@ -105,6 +158,11 @@ const ResetPassword = () => {
     }
   };
 
+  const passwordInputProps = {
+    className: 'password-input-autofill-detect',
+    onAnimationStart: (event) => handlePasswordAutofillAnimation(event, handleChange),
+  };
+
   if (!token) {
     return (
       <Container component="main" maxWidth="xs">
@@ -124,6 +182,18 @@ const ResetPassword = () => {
 
   return (
     <Container component="main" maxWidth="xs">
+      <GlobalStyles
+        styles={{
+          '@keyframes password-autofill-start': {
+            from: { opacity: 1 },
+            to: { opacity: 1 },
+          },
+          'input.password-input-autofill-detect:-webkit-autofill': {
+            animationName: PASSWORD_AUTOFILL_ANIMATION,
+            animationDuration: '0.01s',
+          },
+        }}
+      />
       <Box
         sx={{
           marginTop: 8,
@@ -178,10 +248,15 @@ const ResetPassword = () => {
                 name="password"
                 label={t('resetPassword.passwordLabel')}
                 type={showPasswords.password ? 'text' : 'password'}
+                id="password"
                 autoComplete="new-password"
                 autoFocus
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                inputRef={passwordRef}
+                defaultValue=""
+                onChange={handleChange}
+                onInput={handleChange}
+                onBlur={handleBlur}
+                inputProps={passwordInputProps}
                 disabled={loading}
                 InputProps={{
                   endAdornment: (
@@ -189,7 +264,10 @@ const ResetPassword = () => {
                       <IconButton
                         type="button"
                         aria-label={showPasswords.password ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
-                        onClick={() => setShowPasswords((prev) => ({ ...prev, password: !prev.password }))}
+                        aria-pressed={showPasswords.password}
+                        onClick={() => togglePasswordVisibility('password', passwordRef)}
+                        onMouseDown={handlePasswordVisibilityPointerDown}
+                        onTouchStart={handlePasswordVisibilityPointerDown}
                         edge="end"
                         disabled={loading}
                       >
@@ -206,9 +284,14 @@ const ResetPassword = () => {
                 name="confirmPassword"
                 label={t('resetPassword.confirmPasswordLabel')}
                 type={showPasswords.confirmPassword ? 'text' : 'password'}
+                id="confirmPassword"
                 autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
+                inputRef={confirmPasswordRef}
+                defaultValue=""
+                onChange={handleChange}
+                onInput={handleChange}
+                onBlur={handleBlur}
+                inputProps={passwordInputProps}
                 disabled={loading}
                 InputProps={{
                   endAdornment: (
@@ -216,7 +299,10 @@ const ResetPassword = () => {
                       <IconButton
                         type="button"
                         aria-label={showPasswords.confirmPassword ? t('passwordVisibility.hide') : t('passwordVisibility.show')}
-                        onClick={() => setShowPasswords((prev) => ({ ...prev, confirmPassword: !prev.confirmPassword }))}
+                        aria-pressed={showPasswords.confirmPassword}
+                        onClick={() => togglePasswordVisibility('confirmPassword', confirmPasswordRef)}
+                        onMouseDown={handlePasswordVisibilityPointerDown}
+                        onTouchStart={handlePasswordVisibilityPointerDown}
                         edge="end"
                         disabled={loading}
                       >
