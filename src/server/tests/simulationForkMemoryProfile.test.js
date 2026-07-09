@@ -53,11 +53,11 @@ describe('simulationForkMemoryProfile', () => {
     expect(forkLimits.fallbackPathLimit).toBeLessThan(workerLimits.fallbackPathLimit);
   });
 
-  test('subprocess scoring uses smaller chunks and concurrency 1', () => {
+  test('subprocess scoring uses restored throughput defaults with modest parallelism', () => {
     delete process.env.SIMULATION_SCORE_CHUNK_SIZE;
     delete process.env.SIMULATION_SCORE_CONCURRENCY;
     process.env.SIMULATION_RUNNER_SUBPROCESS = '1';
-    expect(resolveForkScoringLimits()).toEqual({ scoreChunkSize: 16, scoreConcurrency: 1 });
+    expect(resolveForkScoringLimits()).toEqual({ scoreChunkSize: 24, scoreConcurrency: 2 });
   });
 
   test('parseMaxOldSpaceMbFromNodeOptions reads NODE_OPTIONS', () => {
@@ -65,18 +65,18 @@ describe('simulationForkMemoryProfile', () => {
     expect(parseMaxOldSpaceMbFromNodeOptions('--inspect')).toBeNull();
   });
 
-  test('subprocess exploration cap defaults lower than worker', () => {
+  test('exploration cap defaults to 500', () => {
     delete process.env.SIMULATION_EXPLORATION_VECTOR_CAP;
     process.env.SIMULATION_RUNNER_SUBPROCESS = '1';
-    expect(resolveForkExplorationVectorCap()).toBe(250);
+    expect(resolveForkExplorationVectorCap()).toBe(500);
     delete process.env.SIMULATION_RUNNER_SUBPROCESS;
     expect(resolveForkExplorationVectorCap()).toBe(500);
   });
 
-  test('subprocess vector cache is smaller', () => {
+  test('subprocess vector cache stays bounded but larger than ultra-conservative mode', () => {
     delete process.env.SIMULATION_VECTOR_CACHE_SIZE;
     process.env.SIMULATION_RUNNER_SUBPROCESS = '1';
-    expect(resolveForkVectorCacheSize()).toBe(64);
+    expect(resolveForkVectorCacheSize()).toBe(96);
     delete process.env.SIMULATION_RUNNER_SUBPROCESS;
     expect(resolveForkVectorCacheSize()).toBe(256);
   });

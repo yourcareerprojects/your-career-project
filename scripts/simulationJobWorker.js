@@ -9,7 +9,7 @@ const SimulationJob = require('../src/server/models/SimulationJob');
 const { createConcurrencyGate } = require('../src/server/services/simulation/simulationWorkerConcurrency');
 
 /** Bumps when worker logging/diagnostics change — confirm Render shows this after deploy. */
-const WORKER_BUILD_TAG = 'simulation-worker 2026-05-06c';
+const WORKER_BUILD_TAG = 'simulation-worker 2026-07-09a';
 
 const POLL_INTERVAL_MS = Number(process.env.SIMULATION_JOB_POLL_INTERVAL_MS || 2000);
 
@@ -31,6 +31,14 @@ async function runLoop() {
   console.log(`[simulation-worker] mongo uri: ${mongoHost}`);
   const dbName = mongoose.connection?.db?.databaseName;
   console.log(`[simulation-worker] MongoDB database name: ${dbName || '(not available yet)'}`);
+
+  try {
+    const { ensureIndex } = require('../src/server/services/simulation/userSkillKeysForPoolFetch');
+    await ensureIndex();
+    console.log('[simulation-worker] skill pool index warmed');
+  } catch (warmErr) {
+    console.warn('[simulation-worker] skill pool index warm failed (non-fatal):', warmErr?.message || warmErr);
+  }
 
   let idleTicks = 0;
   // eslint-disable-next-line no-constant-condition

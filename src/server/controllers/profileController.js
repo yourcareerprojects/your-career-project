@@ -17,7 +17,7 @@ const {
 } = require('../services/simulationJobService');
 const { runSimulationInChildProcess } = require('../services/simulation/simulationForkRunner');
 const { getSimulationJobExecutionLimitMs } = require('../services/simulation/simulationJobExecutionLimits');
-const { attachSimulationPoolPrefetch } = require('../services/simulation/simulationPoolPrefetch');
+const { attachSimulationPoolPrefetch, buildSimulationPoolPrefetchForUserId } = require('../services/simulation/simulationPoolPrefetch');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
 const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
@@ -1348,7 +1348,7 @@ function simulationOrchestrationLog(event, extra = {}) {
  * Fork subprocess IPC cannot reliably carry multi‑MB bodies. Successful runs persist on `User.lastSimulationResult`;
  * the worker rebuilds the same shape `executeCareerSimulation` returns over HTTP.
  */
-async function buildSimulationForkJobResultPayload(jobDoc, { attempts = 3, delayMs = 200 } = {}) {
+async function buildSimulationForkJobResultPayload(jobDoc, { attempts = 2, delayMs = 75 } = {}) {
   const userId = jobDoc?.userId;
   if (!userId) return null;
   const lang = jobDoc.language || 'en';
@@ -1481,13 +1481,15 @@ async function processOneSimulationJob({ onlyJobId = null } = {}) {
         refreshedAt: new Date().toISOString(),
       });
     } else {
-      try {
-        await attachSimulationPoolPrefetch(jobId);
-      } catch (prefetchErr) {
-        console.warn(
-          '[simulation-job] pool prefetch failed (non-fatal):',
-          prefetchErr?.message || prefetchErr
-        );
+      if (!job.payload?._poolPrefetch) {
+        try {
+          await attachSimulationPoolPrefetch(jobId, { job });
+        } catch (prefetchErr) {
+          console.warn(
+            '[simulation-job] pool prefetch failed (non-fatal):',
+            prefetchErr?.message || prefetchErr
+          );
+        }
       }
 
       const result = await runSimulationInChildProcess(jobId, {
@@ -1615,27 +1617,33 @@ exports.startSimulation = async (req, res) => {
 
     const language = req.language || 'en';
 
-    // Orphaned `running` rows (crashed worker, closed tab) block worker diagnostics; fail them when a new run starts.
-    await SimulationJob.updateMany(
-      {
-        userId,
-        status: 'running',
-        'payload.jobType': 'simulation_run',
-      },
-      {
-        $set: {
-          status: 'failed',
-          completedAt: new Date(),
-          progress: 100,
-          error: 'Superseded by a new simulation run.',
+    const [_, poolPrefetch] = await Promise.all([
+      SimulationJob.updateMany(
+        {
+          userId,
+          status: 'running',
+          'payload.jobType': 'simulation_run',
         },
-      }
-    );
+        {
+          $set: {
+            status: 'failed',
+            completedAt: new Date(),
+            progress: 100,
+            error: 'Superseded by a new simulation run.',
+          },
+        }
+      ),
+      buildSimulationPoolPrefetchForUserId(userId),
+    ]);
 
     const job = await createSimulationJob({
       userId,
       language,
-      payload: { ...(req.body || {}), jobType: 'simulation_run' },
+      payload: {
+        ...(req.body || {}),
+        jobType: 'simulation_run',
+        ...(poolPrefetch ? { _poolPrefetch: poolPrefetch } : {}),
+      },
     });
 
     return res.json({

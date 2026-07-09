@@ -60,9 +60,9 @@ function resolveForkPathLimits() {
     };
   }
   return {
-    targetedPathLimit: parsePositiveInt(process.env.SIMULATION_TARGETED_PATH_LIMIT, 280),
-    fallbackPathLimit: parsePositiveInt(process.env.SIMULATION_FALLBACK_PATH_LIMIT, 380),
-    minCandidatePool: parsePositiveInt(process.env.SIMULATION_MIN_CANDIDATE_POOL, 200),
+    targetedPathLimit: parsePositiveInt(process.env.SIMULATION_TARGETED_PATH_LIMIT, 350),
+    fallbackPathLimit: parsePositiveInt(process.env.SIMULATION_FALLBACK_PATH_LIMIT, 500),
+    minCandidatePool: parsePositiveInt(process.env.SIMULATION_MIN_CANDIDATE_POOL, 240),
   };
 }
 
@@ -74,15 +74,13 @@ function resolveForkScoringLimits() {
     };
   }
   return {
-    scoreChunkSize: parsePositiveInt(process.env.SIMULATION_SCORE_CHUNK_SIZE, 16),
-    scoreConcurrency: Math.max(1, parsePositiveInt(process.env.SIMULATION_SCORE_CONCURRENCY, 1)),
+    scoreChunkSize: parsePositiveInt(process.env.SIMULATION_SCORE_CHUNK_SIZE, 24),
+    scoreConcurrency: Math.max(1, parsePositiveInt(process.env.SIMULATION_SCORE_CONCURRENCY, 2)),
   };
 }
 
 function resolveForkExplorationVectorCap() {
-  const raw = process.env.SIMULATION_EXPLORATION_VECTOR_CAP;
-  const fallback = isSimulationSubprocess() ? 250 : 500;
-  return parsePositiveInt(raw, fallback);
+  return parsePositiveInt(process.env.SIMULATION_EXPLORATION_VECTOR_CAP, 500);
 }
 
 function resolveForkVectorCacheSize() {
@@ -90,7 +88,7 @@ function resolveForkVectorCacheSize() {
   if (raw != null && raw !== '') {
     return parsePositiveInt(raw, 64);
   }
-  return isSimulationSubprocess() ? 64 : 256;
+  return isSimulationSubprocess() ? 96 : 256;
 }
 
 module.exports = {
