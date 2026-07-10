@@ -20,8 +20,9 @@ export {
   shouldPreferVerticalScroll,
 } from '../utils/roleEvaluationSwipeGestures';
 
-const TOUCH_SWIPE_ACTIVATION_PX = 10;
-const TOUCH_SWIPE_COMMIT_MIN_PX = 56;
+const TOUCH_SWIPE_ACTIVATION_PX = 8;
+const TOUCH_SWIPE_COMMIT_MIN_PX = 48;
+const TOUCH_SWIPE_COMMIT_RATIO = 0.22;
 
 function isCoarsePointer() {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -34,6 +35,10 @@ function getSwipeActivationPx() {
 
 function getSwipeCommitMinPx() {
   return isCoarsePointer() ? TOUCH_SWIPE_COMMIT_MIN_PX : SWIPE_COMMIT_MIN_PX;
+}
+
+function getSwipeCommitRatio() {
+  return isCoarsePointer() ? TOUCH_SWIPE_COMMIT_RATIO : undefined;
 }
 
 function setContainerTouchAction(container, value) {
@@ -66,6 +71,7 @@ export function useRoleEvaluationSwipe({
     activeMove: null,
     up: null,
     cancel: null,
+    touchMove: null,
   });
   const callbacksRef = useRef({
     onSwipeLeft,
@@ -108,12 +114,15 @@ export function useRoleEvaluationSwipe({
 
   const stopTracking = useCallback(() => {
     const container = containerRef.current;
-    const { passiveMove, activeMove, up, cancel } = listenersRef.current;
+    const { passiveMove, activeMove, up, cancel, touchMove } = listenersRef.current;
     if (container && passiveMove) {
       container.removeEventListener('pointermove', passiveMove);
     }
     if (container && activeMove) {
       container.removeEventListener('pointermove', activeMove);
+    }
+    if (container && touchMove) {
+      container.removeEventListener('touchmove', touchMove);
     }
     if (up) {
       window.removeEventListener('pointerup', up);
@@ -129,7 +138,6 @@ export function useRoleEvaluationSwipe({
   }, [releasePointerCapture]);
 
   const resetGesture = useCallback(() => {
-    trackingRef.current = null;
     setDragging(false);
   }, []);
 
@@ -152,7 +160,6 @@ export function useRoleEvaluationSwipe({
         else swipeLeft?.();
         updateOffsetX(0);
         setExiting(null);
-        resetGesture();
         end?.();
         return;
       }
@@ -167,18 +174,24 @@ export function useRoleEvaluationSwipe({
         else swipeLeft?.();
         setExiting(null);
         updateOffsetX(0);
-        resetGesture();
         end?.();
       }, SWIPE_EXIT_MS);
     },
-    [resetGesture, stopTracking, updateOffsetX]
+    [stopTracking, updateOffsetX]
   );
 
   useEffect(() => {
+    const resolveIntent = (tracking, deltaX, deltaY) =>
+      resolvePassiveGestureIntent(deltaX, deltaY, {
+        scrollEl: tracking.scrollEl,
+        activationPx: tracking.activationPx,
+        preferTouch: tracking.preferTouch,
+      });
+
     const upgradeToActiveSwipe = (event, tracking) => {
       const container = containerRef.current;
       const { passiveMove, activeMove } = listenersRef.current;
-      if (!container || !passiveMove || !activeMove) return;
+      if (!container || !passiveMove || !activeMove || tracking.committed) return;
 
       tracking.committed = true;
       setDragging(true);
@@ -192,31 +205,33 @@ export function useRoleEvaluationSwipe({
       }
     };
 
+    const processGestureSample = (event, tracking, clientX, clientY) => {
+      const deltaX = clientX - tracking.startX;
+      const deltaY = clientY - tracking.startY;
+      const intent = resolveIntent(tracking, deltaX, deltaY);
+
+      if (intent === 'pending') return;
+
+      if (intent === 'vertical') {
+        if (!tracking.preferTouch) {
+          stopTracking();
+          resetGesture();
+          callbacksRef.current.onInteractionEnd?.();
+        }
+        return;
+      }
+
+      upgradeToActiveSwipe(event, tracking);
+      updateOffsetX(deltaX);
+    };
+
     const onPassivePointerMove = (event) => {
       const tracking = trackingRef.current;
       if (!enabledRef.current || exitingRef.current || !tracking || tracking.pointerId !== event.pointerId) {
         return;
       }
 
-      const deltaX = event.clientX - tracking.startX;
-      const deltaY = event.clientY - tracking.startY;
-      const intent = resolvePassiveGestureIntent(deltaX, deltaY, {
-        scrollEl: tracking.scrollEl,
-        activationPx: tracking.activationPx,
-        preferTouch: tracking.preferTouch,
-      });
-
-      if (intent === 'pending') return;
-
-      if (intent === 'vertical') {
-        stopTracking();
-        resetGesture();
-        callbacksRef.current.onInteractionEnd?.();
-        return;
-      }
-
-      upgradeToActiveSwipe(event, tracking);
-      updateOffsetX(deltaX);
+      processGestureSample(event, tracking, event.clientX, event.clientY);
     };
 
     const onActivePointerMove = (event) => {
@@ -230,14 +245,39 @@ export function useRoleEvaluationSwipe({
       updateOffsetX(deltaX);
     };
 
-    const onPointerUp = (event) => {
+    const onTouchMove = (event) => {
       const tracking = trackingRef.current;
-      if (!enabledRef.current || !tracking || tracking.pointerId !== event.pointerId) return;
+      if (!enabledRef.current || exitingRef.current || !tracking) return;
 
-      const deltaX = tracking.committed ? event.clientX - tracking.startX : 0;
+      const touch = Array.from(event.touches).find((t) => t.identifier === tracking.pointerId);
+      if (!touch) return;
+
+      if (tracking.committed) {
+        event.preventDefault();
+        updateOffsetX(touch.clientX - tracking.startX);
+        return;
+      }
+
+      const intent = resolveIntent(
+        tracking,
+        touch.clientX - tracking.startX,
+        touch.clientY - tracking.startY
+      );
+      if (intent === 'horizontal') {
+        event.preventDefault();
+        processGestureSample(event, tracking, touch.clientX, touch.clientY);
+      }
+    };
+
+    const finishFromRelease = (event, clientX) => {
+      const tracking = trackingRef.current;
+      if (!enabledRef.current || !tracking) return;
+
+      const deltaX = tracking.committed ? clientX - tracking.startX : 0;
       const width = containerRef.current?.getBoundingClientRect?.().width || 320;
+      const commitRatio = tracking.commitRatio;
       const direction = tracking.committed
-        ? resolveSwipeCommitDirection(deltaX, width, tracking.commitMinPx)
+        ? resolveSwipeCommitDirection(deltaX, width, tracking.commitMinPx, commitRatio)
         : null;
 
       stopTracking();
@@ -250,6 +290,12 @@ export function useRoleEvaluationSwipe({
       updateOffsetX(0);
       resetGesture();
       callbacksRef.current.onInteractionEnd?.();
+    };
+
+    const onPointerUp = (event) => {
+      const tracking = trackingRef.current;
+      if (!tracking || tracking.pointerId !== event.pointerId) return;
+      finishFromRelease(event, event.clientX);
     };
 
     const onPointerCancel = (event) => {
@@ -266,6 +312,7 @@ export function useRoleEvaluationSwipe({
       activeMove: onActivePointerMove,
       up: onPointerUp,
       cancel: onPointerCancel,
+      touchMove: onTouchMove,
     };
 
     return () => stopTracking();
@@ -278,10 +325,11 @@ export function useRoleEvaluationSwipe({
       if (event.target?.closest?.(INTERACTIVE_SELECTOR)) return;
 
       const container = containerRef.current;
-      const { passiveMove, up, cancel } = listenersRef.current;
-      if (!container || !passiveMove || !up || !cancel) return;
+      const { passiveMove, up, cancel, touchMove } = listenersRef.current;
+      if (!container || !passiveMove || !up || !cancel || !touchMove) return;
 
       const scrollEl = event.target?.closest?.(ROLE_EVAL_SCROLL_SELECTOR) || null;
+      const preferTouch = isCoarsePointer();
 
       trackingRef.current = {
         pointerId: event.pointerId,
@@ -290,14 +338,16 @@ export function useRoleEvaluationSwipe({
         committed: false,
         scrollEl,
         activationPx: getSwipeActivationPx(),
-        preferTouch: isCoarsePointer(),
+        preferTouch,
         commitMinPx: getSwipeCommitMinPx(),
+        commitRatio: getSwipeCommitRatio(),
       };
       callbacksRef.current.onInteractionStart?.();
 
       container.addEventListener('pointermove', passiveMove, { passive: true });
       container.addEventListener('pointerup', up);
       container.addEventListener('pointercancel', cancel);
+      container.addEventListener('touchmove', touchMove, { passive: false });
       window.addEventListener('pointerup', up);
       window.addEventListener('pointercancel', cancel);
     },

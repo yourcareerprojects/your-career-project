@@ -47,12 +47,12 @@ describe('useRoleEvaluationSwipe helpers', () => {
     it('locks to horizontal when horizontal movement dominates on touch arcs', () => {
       expect(resolvePassiveGestureIntent(24, 18, { preferTouch: true })).toBe('horizontal');
       expect(resolvePassiveGestureIntent(-30, 22, { preferTouch: true })).toBe('horizontal');
-      expect(resolvePassiveGestureIntent(18, 16, { preferTouch: true })).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(18, 13, { preferTouch: true })).toBe('horizontal');
     });
 
     it('defers to vertical scroll when vertical movement clearly dominates', () => {
       expect(resolvePassiveGestureIntent(8, 24, { preferTouch: true })).toBe('vertical');
-      expect(resolvePassiveGestureIntent(12, 24, { preferTouch: true })).toBe('vertical');
+      expect(resolvePassiveGestureIntent(10, 24, { preferTouch: true })).toBe('vertical');
     });
 
     it('defers inside marked scroll regions only for clear vertical movement', () => {

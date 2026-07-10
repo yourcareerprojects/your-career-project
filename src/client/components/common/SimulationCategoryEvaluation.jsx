@@ -512,6 +512,10 @@ export function RoleEvaluationCard({
     </>
   );
 
+  const swipeCueVisibility = (direction) => (
+    getSwipeCueProgress(direction) > 0 || swipe.exiting === direction ? 'visible' : 'hidden'
+  );
+
   const swipeSurfaceProps = enableSwipe ? swipe.bind : {};
 
   const swipeCueLayer = enableSwipe ? (
@@ -528,8 +532,9 @@ export function RoleEvaluationCard({
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
-          overflow: 'visible',
+          overflow: 'hidden',
           opacity: swipeHintOpacity('left'),
+          visibility: swipeCueVisibility('left'),
           transform: `translateY(-68%) scale(${swipeCueScale('left')})`,
           transformOrigin: 'left center',
           transition: swipe.dragging || swipe.exiting
@@ -563,8 +568,9 @@ export function RoleEvaluationCard({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
-          overflow: 'visible',
+          overflow: 'hidden',
           opacity: swipeHintOpacity('right'),
+          visibility: swipeCueVisibility('right'),
           transform: `translateY(-68%) scale(${swipeCueScale('right')})`,
           transformOrigin: 'right center',
           transition: swipe.dragging || swipe.exiting
@@ -595,11 +601,24 @@ export function RoleEvaluationCard({
       sx={{
         position: 'relative',
         height: '100%',
-        touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'pan-y') : 'auto',
+        overflowX: 'clip',
+        overflowY: 'visible',
+        touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'manipulation') : 'auto',
         userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
         WebkitUserSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
       }}
     >
+      <Box
+        sx={{
+          height: '100%',
+          overflowX: 'clip',
+          overflowY: 'visible',
+          transform: isSwipeMotionActive ? cardTransform : 'none',
+          opacity: useStickyCardLayout ? 1 : cardOpacity,
+          transition: isSwipeMotionActive ? cardTransition : 'none',
+          willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
+        }}
+      >
       <Card
         ref={cardRef}
         variant="outlined"
@@ -620,10 +639,6 @@ export function RoleEvaluationCard({
           height: inlineDetails ? 'auto' : '100%',
           overflow: 'visible',
           cursor: enableSwipe ? (swipe.dragging ? 'grabbing' : 'grab') : 'auto',
-          transform: useStickyCardLayout && isSwipeMotionActive ? cardTransform : undefined,
-          opacity: useStickyCardLayout ? undefined : cardOpacity,
-          transition: useStickyCardLayout && isSwipeMotionActive ? cardTransition : undefined,
-          willChange: useStickyCardLayout && isSwipeMotionActive ? 'transform, opacity' : 'auto',
         })}
       >
         {swipeCueLayer}
@@ -677,14 +692,7 @@ export function RoleEvaluationCard({
               </Box>
             </>
           ) : (
-            <Box
-              sx={{
-                transform: cardTransform,
-                opacity: cardOpacity,
-                transition: cardTransition,
-                willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
-              }}
-            >
+            <Box>
               <Box ref={swipeCueAnchorRef}>
                 {titleRow}
                 {cardBodyContent}
@@ -694,6 +702,7 @@ export function RoleEvaluationCard({
           )}
         </CardContent>
       </Card>
+      </Box>
     </Box>
   );
 }

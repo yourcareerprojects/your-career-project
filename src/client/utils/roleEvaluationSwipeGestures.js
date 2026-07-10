@@ -25,7 +25,7 @@ function shouldAbortForVerticalSwipe(deltaX, deltaY, activationPx = SWIPE_ACTIVA
 /** Lower threshold for nested scroll regions so vertical scroll wins sooner. */
 const SCROLL_REGION_ACTIVATION_PX = 6;
 const SCROLL_REGION_VERTICAL_RATIO = 1.25;
-const TOUCH_VERTICAL_DOMINANCE_RATIO = 1.22;
+const TOUCH_VERTICAL_DOMINANCE_RATIO = 1.4;
 const DESKTOP_VERTICAL_DOMINANCE_RATIO = 1.12;
 
 /**
@@ -41,8 +41,13 @@ function shouldPreferVerticalScroll(deltaX, deltaY, scrollEl) {
 /**
  * Resolve swipe direction after release, or null when below threshold.
  */
-function resolveSwipeCommitDirection(offsetX, containerWidth, minPx = SWIPE_COMMIT_MIN_PX) {
-  const threshold = Math.max(minPx, containerWidth * SWIPE_COMMIT_RATIO);
+function resolveSwipeCommitDirection(
+  offsetX,
+  containerWidth,
+  minPx = SWIPE_COMMIT_MIN_PX,
+  commitRatio = SWIPE_COMMIT_RATIO
+) {
+  const threshold = Math.max(minPx, containerWidth * commitRatio);
   if (offsetX >= threshold) return 'right';
   if (offsetX <= -threshold) return 'left';
   return null;
