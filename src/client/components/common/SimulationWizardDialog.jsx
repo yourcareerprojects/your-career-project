@@ -52,7 +52,6 @@ export default function SimulationWizardDialog({
         {title}
       </DialogTitle>
       <DialogContent
-        data-role-eval-scroll
         sx={{
           flex: '1 1 auto',
           minHeight: 0,

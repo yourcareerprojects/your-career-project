@@ -24,6 +24,9 @@ function shouldAbortForVerticalSwipe(deltaX, deltaY, activationPx = SWIPE_ACTIVA
 
 /** Lower threshold for nested scroll regions so vertical scroll wins sooner. */
 const SCROLL_REGION_ACTIVATION_PX = 6;
+const SCROLL_REGION_VERTICAL_RATIO = 1.25;
+const TOUCH_VERTICAL_DOMINANCE_RATIO = 1.22;
+const DESKTOP_VERTICAL_DOMINANCE_RATIO = 1.12;
 
 /**
  * Whether a gesture inside a scrollable region should defer to native vertical scroll.
@@ -32,14 +35,14 @@ function shouldPreferVerticalScroll(deltaX, deltaY, scrollEl) {
   if (!scrollEl || scrollEl.scrollHeight <= scrollEl.clientHeight + 1) return false;
   const absX = Math.abs(deltaX);
   const absY = Math.abs(deltaY);
-  return absY >= SCROLL_REGION_ACTIVATION_PX && absY >= absX;
+  return absY >= SCROLL_REGION_ACTIVATION_PX + 4 && absY > absX * SCROLL_REGION_VERTICAL_RATIO;
 }
 
 /**
  * Resolve swipe direction after release, or null when below threshold.
  */
-function resolveSwipeCommitDirection(offsetX, containerWidth) {
-  const threshold = Math.max(SWIPE_COMMIT_MIN_PX, containerWidth * SWIPE_COMMIT_RATIO);
+function resolveSwipeCommitDirection(offsetX, containerWidth, minPx = SWIPE_COMMIT_MIN_PX) {
+  const threshold = Math.max(minPx, containerWidth * SWIPE_COMMIT_RATIO);
   if (offsetX >= threshold) return 'right';
   if (offsetX <= -threshold) return 'left';
   return null;
@@ -54,10 +57,13 @@ function resolveSwipeCommitDirection(offsetX, containerWidth) {
 function resolvePassiveGestureIntent(
   deltaX,
   deltaY,
-  { scrollEl = null, activationPx = SWIPE_ACTIVATION_PX } = {}
+  { scrollEl = null, activationPx = SWIPE_ACTIVATION_PX, preferTouch = false } = {}
 ) {
   const absX = Math.abs(deltaX);
   const absY = Math.abs(deltaY);
+  const verticalDominanceRatio = preferTouch
+    ? TOUCH_VERTICAL_DOMINANCE_RATIO
+    : DESKTOP_VERTICAL_DOMINANCE_RATIO;
 
   if (scrollEl && shouldPreferVerticalScroll(deltaX, deltaY, scrollEl)) {
     return 'vertical';
@@ -67,12 +73,15 @@ function resolvePassiveGestureIntent(
     return 'pending';
   }
 
-  return absY > absX ? 'vertical' : 'horizontal';
+  return absY > absX * verticalDominanceRatio ? 'vertical' : 'horizontal';
 }
 
 module.exports = {
   SWIPE_ACTIVATION_PX,
   SCROLL_REGION_ACTIVATION_PX,
+  SCROLL_REGION_VERTICAL_RATIO,
+  TOUCH_VERTICAL_DOMINANCE_RATIO,
+  DESKTOP_VERTICAL_DOMINANCE_RATIO,
   SWIPE_COMMIT_RATIO,
   SWIPE_COMMIT_MIN_PX,
   SWIPE_EXIT_MS,

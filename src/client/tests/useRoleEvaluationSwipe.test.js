@@ -26,12 +26,13 @@ describe('useRoleEvaluationSwipe helpers', () => {
   });
 
   describe('shouldPreferVerticalScroll', () => {
-    it('defers to native scroll sooner inside scrollable regions', () => {
+    it('defers to native scroll only with clear vertical dominance in scroll regions', () => {
       const {
         shouldPreferVerticalScroll,
       } = require('../utils/roleEvaluationSwipeGestures');
       const scrollEl = { scrollHeight: 400, clientHeight: 200 };
-      expect(shouldPreferVerticalScroll(2, 8, scrollEl)).toBe(true);
+      expect(shouldPreferVerticalScroll(2, 8, scrollEl)).toBe(false);
+      expect(shouldPreferVerticalScroll(4, 14, scrollEl)).toBe(true);
       expect(shouldPreferVerticalScroll(12, 8, scrollEl)).toBe(false);
       expect(shouldPreferVerticalScroll(2, 8, { scrollHeight: 200, clientHeight: 200 })).toBe(false);
     });
@@ -44,19 +45,20 @@ describe('useRoleEvaluationSwipe helpers', () => {
     });
 
     it('locks to horizontal when horizontal movement dominates on touch arcs', () => {
-      expect(resolvePassiveGestureIntent(24, 18)).toBe('horizontal');
-      expect(resolvePassiveGestureIntent(-30, 22)).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(24, 18, { preferTouch: true })).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(-30, 22, { preferTouch: true })).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(18, 16, { preferTouch: true })).toBe('horizontal');
     });
 
-    it('defers to vertical scroll when vertical movement dominates', () => {
-      expect(resolvePassiveGestureIntent(8, 24)).toBe('vertical');
-      expect(resolvePassiveGestureIntent(12, 20)).toBe('vertical');
+    it('defers to vertical scroll when vertical movement clearly dominates', () => {
+      expect(resolvePassiveGestureIntent(8, 24, { preferTouch: true })).toBe('vertical');
+      expect(resolvePassiveGestureIntent(12, 24, { preferTouch: true })).toBe('vertical');
     });
 
-    it('defers sooner inside marked scroll regions', () => {
+    it('defers inside marked scroll regions only for clear vertical movement', () => {
       const scrollEl = { scrollHeight: 400, clientHeight: 200 };
-      expect(resolvePassiveGestureIntent(2, 8, { scrollEl })).toBe('vertical');
-      expect(resolvePassiveGestureIntent(20, 8, { scrollEl })).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(4, 14, { scrollEl })).toBe('vertical');
+      expect(resolvePassiveGestureIntent(20, 8, { scrollEl, preferTouch: true })).toBe('horizontal');
     });
   });
 

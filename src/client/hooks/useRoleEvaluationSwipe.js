@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ROLE_EVAL_SCROLL_SELECTOR,
   SWIPE_ACTIVATION_PX,
+  SWIPE_COMMIT_MIN_PX,
   SWIPE_EXIT_MS,
   resolvePassiveGestureIntent,
   resolveSwipeCommitDirection,
@@ -20,12 +21,24 @@ export {
 } from '../utils/roleEvaluationSwipeGestures';
 
 const TOUCH_SWIPE_ACTIVATION_PX = 10;
+const TOUCH_SWIPE_COMMIT_MIN_PX = 56;
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(pointer: coarse)').matches;
+}
 
 function getSwipeActivationPx() {
-  if (typeof window === 'undefined' || !window.matchMedia) return SWIPE_ACTIVATION_PX;
-  return window.matchMedia('(pointer: coarse)').matches
-    ? TOUCH_SWIPE_ACTIVATION_PX
-    : SWIPE_ACTIVATION_PX;
+  return isCoarsePointer() ? TOUCH_SWIPE_ACTIVATION_PX : SWIPE_ACTIVATION_PX;
+}
+
+function getSwipeCommitMinPx() {
+  return isCoarsePointer() ? TOUCH_SWIPE_COMMIT_MIN_PX : SWIPE_COMMIT_MIN_PX;
+}
+
+function setContainerTouchAction(container, value) {
+  if (!container) return;
+  container.style.touchAction = value;
 }
 
 const INTERACTIVE_SELECTOR = 'button, a, [role="button"], input, textarea, select, label';
@@ -111,6 +124,7 @@ export function useRoleEvaluationSwipe({
       container?.removeEventListener('pointercancel', cancel);
     }
     releasePointerCapture(trackingRef.current);
+    setContainerTouchAction(container, '');
     trackingRef.current = null;
   }, [releasePointerCapture]);
 
@@ -168,6 +182,7 @@ export function useRoleEvaluationSwipe({
 
       tracking.committed = true;
       setDragging(true);
+      setContainerTouchAction(container, 'none');
       container.removeEventListener('pointermove', passiveMove);
       container.addEventListener('pointermove', activeMove, { passive: false });
       try {
@@ -188,6 +203,7 @@ export function useRoleEvaluationSwipe({
       const intent = resolvePassiveGestureIntent(deltaX, deltaY, {
         scrollEl: tracking.scrollEl,
         activationPx: tracking.activationPx,
+        preferTouch: tracking.preferTouch,
       });
 
       if (intent === 'pending') return;
@@ -221,7 +237,7 @@ export function useRoleEvaluationSwipe({
       const deltaX = tracking.committed ? event.clientX - tracking.startX : 0;
       const width = containerRef.current?.getBoundingClientRect?.().width || 320;
       const direction = tracking.committed
-        ? resolveSwipeCommitDirection(deltaX, width)
+        ? resolveSwipeCommitDirection(deltaX, width, tracking.commitMinPx)
         : null;
 
       stopTracking();
@@ -274,6 +290,8 @@ export function useRoleEvaluationSwipe({
         committed: false,
         scrollEl,
         activationPx: getSwipeActivationPx(),
+        preferTouch: isCoarsePointer(),
+        commitMinPx: getSwipeCommitMinPx(),
       };
       callbacksRef.current.onInteractionStart?.();
 
