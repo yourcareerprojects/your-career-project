@@ -1,18 +1,21 @@
 import React from 'react';
-import { Box, Button, Tooltip, useTheme } from '@mui/material';
+import { Box, Button, Tooltip, useMediaQuery, useTheme } from '@mui/material';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useTranslation } from 'react-i18next';
 
 export const ROLE_EVAL_ACTION_BUTTON_SX = {
   width: '100% !important',
   minWidth: '0px !important',
-  px: '10px !important',
-  py: '8px !important',
-  fontSize: '0.8rem !important',
+  px: { xs: '4px !important', sm: '8px !important', md: '10px !important' },
+  py: { xs: '6px !important', sm: '8px !important' },
+  fontSize: { xs: '0.7rem !important', sm: '0.75rem !important', md: '0.8rem !important' },
   lineHeight: '1.1 !important',
   borderRadius: '12px !important',
   whiteSpace: 'nowrap !important',
   boxShadow: 'none !important',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  textAlign: 'center',
 };
 
 /** Black outline + bold label colours for Keep / Skip / Dislike. */
@@ -26,7 +29,7 @@ export const ROLE_EVAL_BUTTON_BORDER_SX = {
   },
 };
 
-const EVALUATION_KEYS = ['keep', 'skip', 'dislike'];
+const EVALUATION_KEYS = ['dislike', 'skip', 'keep'];
 
 /**
  * Cool / Don't know / Uncool rating buttons for simulation role evaluation.
@@ -43,6 +46,7 @@ export default function RoleEvaluationActionButtons({
   const { t } = useTranslation('dashboard');
   const theme = useTheme();
   const isCompact = layout === 'compact';
+  const showSkipIconOnButtons = useMediaQuery(theme.breakpoints.up('sm'));
 
   const nudgeSx = (buttonKey) => (
     showEvalNudge && typeof getButtonNudgeSx === 'function' ? getButtonNudgeSx(buttonKey) : {}
@@ -81,29 +85,14 @@ export default function RoleEvaluationActionButtons({
 
   const renderButton = (evaluationKey) => {
     const isSelected = role.userEvaluation === evaluationKey;
-    const showSkipIcon = !isCompact && evaluationKey === 'skip';
-
-    const compactSx = isCompact
-      ? {
-          width: '100% !important',
-          minWidth: '0 !important',
-          px: '6px !important',
-          py: '8px !important',
-          minHeight: 'unset',
-          height: 'auto',
-          fontSize: '0.8rem !important',
-          lineHeight: '1.1 !important',
-          whiteSpace: 'nowrap !important',
-          textAlign: 'center',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }
-      : {};
+    const showSkipIcon = !isCompact && evaluationKey === 'skip' && showSkipIconOnButtons;
 
     const skipIconSx = showSkipIcon
       ? {
           '& .MuiButton-startIcon': {
             color: textColor.skip,
+            marginLeft: { sm: '-2px !important' },
+            marginRight: { sm: '4px !important' },
           },
         }
       : {};
@@ -127,7 +116,6 @@ export default function RoleEvaluationActionButtons({
             sx={{
               ...ROLE_EVAL_ACTION_BUTTON_SX,
               ...ROLE_EVAL_BUTTON_BORDER_SX,
-              ...compactSx,
               ...skipIconSx,
               color: textColor[evaluationKey],
               bgcolor: isSelected ? selectedBg[evaluationKey] : 'transparent',
@@ -151,9 +139,9 @@ export default function RoleEvaluationActionButtons({
       aria-label={t('simulation.evaluationFlow.rateThisRole')}
       sx={{
         display: 'grid',
-        gridTemplateColumns: isCompact ? 'repeat(3, minmax(0, 1fr))' : { xs: '1fr', sm: 'repeat(3, 1fr)' },
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
         alignItems: 'stretch',
-        gap: isCompact ? 1 : 1,
+        gap: { xs: 0.5, sm: 1 },
         width: '100%',
       }}
     >

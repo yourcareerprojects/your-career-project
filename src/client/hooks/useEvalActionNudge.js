@@ -4,7 +4,7 @@ import { useIdleNudge } from './useIdleNudge';
 import { CTA_NUDGE_DURATION_MS, ctaNudgeKeyframes } from './useCtaNudgeAnimation';
 
 /** Rating actions that receive sequential idle nudges (one at a time). */
-export const EVAL_RATING_NUDGE_BUTTON_KEYS = ['keep', 'skip', 'dislike'];
+export const EVAL_RATING_NUDGE_BUTTON_KEYS = ['dislike', 'skip', 'keep'];
 
 /** Includes the More button used in the inline (non-wizard) evaluation grid. */
 export const EVAL_NUDGE_BUTTON_KEYS = [...EVAL_RATING_NUDGE_BUTTON_KEYS, 'more'];

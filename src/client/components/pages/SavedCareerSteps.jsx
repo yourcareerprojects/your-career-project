@@ -658,18 +658,18 @@ const SavedCareerSteps = () => {
                       {t('savedLists.savedCareerSteps.rateThisRole', { ns: 'dashboard' })}
                     </Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 1.5 }}>
-                      <Tooltip title={t('savedLists.savedCareerSteps.tooltips.keepStrongFit', { ns: 'dashboard' })} arrow>
+                      <Tooltip title={t('savedLists.savedCareerSteps.tooltips.dislikePoorFit', { ns: 'dashboard' })} arrow>
                         <span>
                           <Button
-                            variant={storedEval === 'keep' ? 'contained' : 'outlined'}
-                            color="success"
+                            variant={storedEval === 'dislike' ? 'contained' : 'outlined'}
+                            color="error"
                             size="small"
                             disabled={!id || evaluationSavingStepId === id}
-                            onClick={() => handleEvaluationClick(step, 'keep')}
+                            onClick={() => handleEvaluationClick(step, 'dislike')}
                             sx={EVAL_BUTTON_SX}
-                            aria-pressed={storedEval === 'keep'}
+                            aria-pressed={storedEval === 'dislike'}
                           >
-                            {t('savedLists.savedCareerSteps.actions.keep', { ns: 'dashboard' })}
+                            {t('savedLists.savedCareerSteps.actions.dislike', { ns: 'dashboard' })}
                           </Button>
                         </span>
                       </Tooltip>
@@ -689,18 +689,18 @@ const SavedCareerSteps = () => {
                           </Button>
                         </span>
                       </Tooltip>
-                      <Tooltip title={t('savedLists.savedCareerSteps.tooltips.dislikePoorFit', { ns: 'dashboard' })} arrow>
+                      <Tooltip title={t('savedLists.savedCareerSteps.tooltips.keepStrongFit', { ns: 'dashboard' })} arrow>
                         <span>
                           <Button
-                            variant={storedEval === 'dislike' ? 'contained' : 'outlined'}
-                            color="error"
+                            variant={storedEval === 'keep' ? 'contained' : 'outlined'}
+                            color="success"
                             size="small"
                             disabled={!id || evaluationSavingStepId === id}
-                            onClick={() => handleEvaluationClick(step, 'dislike')}
+                            onClick={() => handleEvaluationClick(step, 'keep')}
                             sx={EVAL_BUTTON_SX}
-                            aria-pressed={storedEval === 'dislike'}
+                            aria-pressed={storedEval === 'keep'}
                           >
-                            {t('savedLists.savedCareerSteps.actions.dislike', { ns: 'dashboard' })}
+                            {t('savedLists.savedCareerSteps.actions.keep', { ns: 'dashboard' })}
                           </Button>
                         </span>
                       </Tooltip>

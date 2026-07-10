@@ -22,6 +22,19 @@ function shouldAbortForVerticalSwipe(deltaX, deltaY, activationPx = SWIPE_ACTIVA
   return absY >= activationPx && absY > absX * 1.25;
 }
 
+/** Lower threshold for nested scroll regions so vertical scroll wins sooner. */
+const SCROLL_REGION_ACTIVATION_PX = 6;
+
+/**
+ * Whether a gesture inside a scrollable region should defer to native vertical scroll.
+ */
+function shouldPreferVerticalScroll(deltaX, deltaY, scrollEl) {
+  if (!scrollEl || scrollEl.scrollHeight <= scrollEl.clientHeight + 1) return false;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  return absY >= SCROLL_REGION_ACTIVATION_PX && absY >= absX;
+}
+
 /**
  * Resolve swipe direction after release, or null when below threshold.
  */
@@ -34,11 +47,13 @@ function resolveSwipeCommitDirection(offsetX, containerWidth) {
 
 module.exports = {
   SWIPE_ACTIVATION_PX,
+  SCROLL_REGION_ACTIVATION_PX,
   SWIPE_COMMIT_RATIO,
   SWIPE_COMMIT_MIN_PX,
   SWIPE_EXIT_MS,
   ROLE_EVAL_SCROLL_SELECTOR,
   shouldCommitToHorizontalSwipe,
   shouldAbortForVerticalSwipe,
+  shouldPreferVerticalScroll,
   resolveSwipeCommitDirection,
 };

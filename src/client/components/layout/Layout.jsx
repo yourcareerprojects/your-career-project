@@ -132,7 +132,7 @@ const Layout = ({ children }) => {
 
   return (
     <Box
-      sx={{ display: 'flex', width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}
+      sx={{ display: 'flex', width: '100%', maxWidth: '100vw', overflowX: 'clip' }}
       className="app-layout print-layout"
     >
       <CssBaseline />
@@ -262,7 +262,7 @@ const Layout = ({ children }) => {
           flexGrow: 1,
           minWidth: 0,
           maxWidth: '100%',
-          overflowX: 'hidden',
+          overflowX: 'clip',
           boxSizing: 'border-box',
           p: { xs: 2, sm: 3 },
           width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },

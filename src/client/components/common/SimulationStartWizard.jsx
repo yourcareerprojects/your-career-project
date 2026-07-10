@@ -5,8 +5,6 @@ import {
   LinearProgress,
   Typography,
   CircularProgress,
-  useMediaQuery,
-  useTheme,
 } from '@mui/material';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import ExploreOutlinedIcon from '@mui/icons-material/ExploreOutlined';
@@ -44,43 +42,28 @@ function WizardRoleEvaluationSection({
   guardedNavigate,
   evalNudge,
 }) {
-  const theme = useTheme();
-  const isMobileViewport = useMediaQuery(theme.breakpoints.down('sm'));
-
   return (
     <>
       <Typography variant="body2" color="text.secondary">
         {intro}
       </Typography>
-      <Box
-        sx={{
-          position: isMobileViewport ? 'sticky' : 'static',
-          top: isMobileViewport ? 0 : 'auto',
-          zIndex: isMobileViewport ? 1 : 'auto',
-          maxHeight: isMobileViewport ? 'min(72dvh, calc(100dvh - 220px))' : 'none',
-          display: isMobileViewport ? 'flex' : 'block',
-          flexDirection: isMobileViewport ? 'column' : 'row',
-          minHeight: isMobileViewport ? 0 : 'auto',
-        }}
-      >
-        <RoleEvaluationCard
-          role={role}
-          categoryKey={categoryKey}
-          inlineDetails
-          mobileStickyLayout={isMobileViewport}
-          simulationIdForCards={simulationIdForCards}
-          isViewingSavedSimulation={isViewingSavedSimulation}
-          savedSimulationId={savedSimulationId}
-          onEvaluate={onEvaluate}
-          onSave={() => onToggleSave(role)}
-          isStepSaved={isStepSaved(role)}
-          savingStep={isStepSaving(role)}
-          guardedNavigate={guardedNavigate}
-          showEvalNudge
-          getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-          nudgeInteractionHandlers={evalNudge.interactionHandlers}
-        />
-      </Box>
+      <RoleEvaluationCard
+        role={role}
+        categoryKey={categoryKey}
+        inlineDetails
+        stickyTop={0}
+        simulationIdForCards={simulationIdForCards}
+        isViewingSavedSimulation={isViewingSavedSimulation}
+        savedSimulationId={savedSimulationId}
+        onEvaluate={onEvaluate}
+        onSave={() => onToggleSave(role)}
+        isStepSaved={isStepSaved(role)}
+        savingStep={isStepSaving(role)}
+        guardedNavigate={guardedNavigate}
+        showEvalNudge
+        getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+        nudgeInteractionHandlers={evalNudge.interactionHandlers}
+      />
     </>
   );
 }

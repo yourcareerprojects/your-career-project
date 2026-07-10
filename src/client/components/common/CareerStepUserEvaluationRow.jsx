@@ -43,18 +43,18 @@ export default function CareerStepUserEvaluationRow({
         {t('details.rating.title')}
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
-        <Tooltip title={t('details.rating.tooltips.keepStrongFit')} arrow>
+        <Tooltip title={t('details.rating.tooltips.dislikePoorFit')} arrow>
           <span>
             <Button
-              variant={stored === 'keep' ? 'contained' : 'outlined'}
-              color="success"
+              variant={stored === 'dislike' ? 'contained' : 'outlined'}
+              color="error"
               size="small"
               disabled={disabled}
-              onClick={() => handle('keep')}
+              onClick={() => handle('dislike')}
               sx={EVAL_BUTTON_SX}
-              aria-pressed={stored === 'keep'}
+              aria-pressed={stored === 'dislike'}
             >
-              {t('details.rating.actions.keep')}
+              {t('details.rating.actions.dislike')}
             </Button>
           </span>
         </Tooltip>
@@ -74,18 +74,18 @@ export default function CareerStepUserEvaluationRow({
             </Button>
           </span>
         </Tooltip>
-        <Tooltip title={t('details.rating.tooltips.dislikePoorFit')} arrow>
+        <Tooltip title={t('details.rating.tooltips.keepStrongFit')} arrow>
           <span>
             <Button
-              variant={stored === 'dislike' ? 'contained' : 'outlined'}
-              color="error"
+              variant={stored === 'keep' ? 'contained' : 'outlined'}
+              color="success"
               size="small"
               disabled={disabled}
-              onClick={() => handle('dislike')}
+              onClick={() => handle('keep')}
               sx={EVAL_BUTTON_SX}
-              aria-pressed={stored === 'dislike'}
+              aria-pressed={stored === 'keep'}
             >
-              {t('details.rating.actions.dislike')}
+              {t('details.rating.actions.keep')}
             </Button>
           </span>
         </Tooltip>

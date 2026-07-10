@@ -24,6 +24,18 @@ describe('useRoleEvaluationSwipe helpers', () => {
     });
   });
 
+  describe('shouldPreferVerticalScroll', () => {
+    it('defers to native scroll sooner inside scrollable regions', () => {
+      const {
+        shouldPreferVerticalScroll,
+      } = require('../utils/roleEvaluationSwipeGestures');
+      const scrollEl = { scrollHeight: 400, clientHeight: 200 };
+      expect(shouldPreferVerticalScroll(2, 8, scrollEl)).toBe(true);
+      expect(shouldPreferVerticalScroll(12, 8, scrollEl)).toBe(false);
+      expect(shouldPreferVerticalScroll(2, 8, { scrollHeight: 200, clientHeight: 200 })).toBe(false);
+    });
+  });
+
   describe('resolveSwipeCommitDirection', () => {
     it('commits right swipe past threshold', () => {
       expect(resolveSwipeCommitDirection(90, 300)).toBe('right');

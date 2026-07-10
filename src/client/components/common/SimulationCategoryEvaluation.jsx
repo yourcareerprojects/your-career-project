@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -10,7 +10,6 @@ import {
   Tooltip,
   Divider,
   CircularProgress,
-  Collapse,
   IconButton,
   useMediaQuery,
   useTheme,
@@ -60,10 +59,29 @@ import {
   SWIPE_EXIT_MS,
   useRoleEvaluationSwipe,
 } from '../../hooks/useRoleEvaluationSwipe';
-import { MOBILE_BOTTOM_NAV_HEIGHT } from '../layout/MobileBottomNav';
 
-/** Matches `Layout` main `mt` so sticky sections sit below the fixed app bar. */
+/** Matches `Layout` main `mt` so the card sticky header sits below the fixed app bar. */
 const LAYOUT_APP_BAR_HEIGHT_PX = 64;
+
+/** Top accent border on role evaluation cards (category color). */
+const CARD_ACCENT_TOP_BORDER_PX = 3;
+
+/** Swipe direction labels overlap the card just below the sticky header. */
+const SWIPE_CUE_OVERLAP_BELOW_HEADER_PX = 10;
+const SWIPE_CUE_FALLBACK_TOP_PX = 118;
+
+const SWIPE_CUE_TYPOGRAPHY_SX = {
+  fontWeight: 900,
+  fontSize: { xs: '1.85rem', sm: '2.35rem', md: '2.85rem' },
+  lineHeight: 1,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+};
+
+const swipeCueTextShadowSx = (theme) =>
+  theme.palette.mode === 'dark'
+    ? '0 2px 18px rgba(0, 0, 0, 0.9)'
+    : '0 2px 18px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.85)';
 
 /** Darker blue for Save toggle when role is already saved */
 const ROLE_CARD_SAVE_SAVED_SX = {
@@ -102,6 +120,41 @@ const OOTB_SAVE_SAVED_BUTTON_SX = {
   '&:hover': { bgcolor: 'var(--color-ootb-action-saved-hover)' },
 };
 
+const CARD_ENTER_MS = 280;
+
+/** Animates a swiped-away card off-screen while the next card appears underneath. */
+function RoleEvaluationExitShell({ direction, startOffsetX, children }) {
+  const shellRef = useRef(null);
+  const [offsetX, setOffsetX] = useState(startOffsetX);
+
+  useLayoutEffect(() => {
+    const width = shellRef.current?.getBoundingClientRect?.().width || 320;
+    const exitDistance = Math.max(width * 1.15, 280);
+    const finalOffset = direction === 'right' ? exitDistance : -exitDistance;
+    const frame = requestAnimationFrame(() => setOffsetX(finalOffset));
+    return () => cancelAnimationFrame(frame);
+  }, [direction, startOffsetX]);
+
+  return (
+    <Box
+      ref={shellRef}
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 3,
+        pointerEvents: 'none',
+        transform: `translateX(${offsetX}px)`,
+        transition: `transform ${SWIPE_EXIT_MS}ms ease-in`,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
 export function RoleEvaluationCard({
   role,
   categoryKey,
@@ -116,8 +169,11 @@ export function RoleEvaluationCard({
   getButtonNudgeSx,
   nudgeInteractionHandlers,
   inlineDetails = false,
-  mobileStickyLayout = false,
+  stickyTop = LAYOUT_APP_BAR_HEIGHT_PX,
   simulationIdForCards = null,
+  onSwipeExitStart,
+  swipeHandoffToParent = false,
+  skipEnterAnimation = false,
 }) {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -152,43 +208,13 @@ export function RoleEvaluationCard({
     navigateFunction(path);
   };
 
-  const useStickyCardLayout = mobileStickyLayout && inlineDetails;
+  const useStickyCardLayout = inlineDetails;
   const enableSwipe = typeof onEvaluate === 'function';
-  const scrollBodyRef = useRef(null);
-  const evalSentinelRef = useRef(null);
-  const [showCompactEvalBar, setShowCompactEvalBar] = useState(false);
+  const [hasEntered, setHasEntered] = useState(skipEnterAnimation || !enableSwipe);
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const compactBarMotion = prefersReducedMotion
-    ? { enter: 0, exit: 0 }
-    : { enter: 340, exit: 260 };
-  const compactBarEasing = prefersReducedMotion
-    ? undefined
-    : {
-        enter: theme.transitions.easing.easeOut,
-        exit: theme.transitions.easing.sharp,
-      };
-
-  useEffect(() => {
-    if (!useStickyCardLayout) {
-      setShowCompactEvalBar(false);
-      return undefined;
-    }
-
-    const scrollRoot = scrollBodyRef.current;
-    const sentinel = evalSentinelRef.current;
-    if (!scrollRoot || !sentinel) return undefined;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const next = !entry.isIntersecting;
-        setShowCompactEvalBar((prev) => (prev === next ? prev : next));
-      },
-      { root: scrollRoot, threshold: 0, rootMargin: '0px' }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [useStickyCardLayout, role?.id]);
+  const cardRef = useRef(null);
+  const swipeCueAnchorRef = useRef(null);
+  const [swipeCueTopPx, setSwipeCueTopPx] = useState(SWIPE_CUE_FALLBACK_TOP_PX);
 
   const evaluationButtonProps = {
     role,
@@ -200,17 +226,92 @@ export function RoleEvaluationCard({
 
   const swipe = useRoleEvaluationSwipe({
     enabled: enableSwipe,
+    handoffExitToParent: swipeHandoffToParent,
+    onExitStart: onSwipeExitStart,
     onSwipeLeft: () => onEvaluate(role.id, 'dislike'),
     onSwipeRight: () => onEvaluate(role.id, 'keep'),
     onInteractionStart: nudgeHandlers.onMouseEnter,
     onInteractionEnd: nudgeHandlers.onMouseLeave,
   });
 
+  useLayoutEffect(() => {
+    if (skipEnterAnimation || !enableSwipe || prefersReducedMotion) {
+      setHasEntered(true);
+      return undefined;
+    }
+    setHasEntered(false);
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setHasEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [role.id, enableSwipe, skipEnterAnimation, prefersReducedMotion]);
+
+  useLayoutEffect(() => {
+    if (!enableSwipe) return undefined;
+
+    const updateSwipeCueTop = () => {
+      const cardEl = cardRef.current;
+      const anchorEl = swipeCueAnchorRef.current;
+      if (!cardEl || !anchorEl) return;
+
+      const cardTop = cardEl.getBoundingClientRect().top;
+      const anchorBottom = anchorEl.getBoundingClientRect().bottom;
+      setSwipeCueTopPx(anchorBottom - cardTop - SWIPE_CUE_OVERLAP_BELOW_HEADER_PX);
+    };
+
+    updateSwipeCueTop();
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateSwipeCueTop)
+      : null;
+
+    if (observer) {
+      if (cardRef.current) observer.observe(cardRef.current);
+      if (swipeCueAnchorRef.current) observer.observe(swipeCueAnchorRef.current);
+    }
+
+    window.addEventListener('resize', updateSwipeCueTop);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateSwipeCueTop);
+    };
+  }, [enableSwipe, role.id, useStickyCardLayout, roleTitle]);
+
+  const isSwipeMotionActive = enableSwipe && (!hasEntered || swipe.dragging || swipe.exiting);
+
+  const cardTransform = (() => {
+    if (!isSwipeMotionActive) return 'none';
+    if (!hasEntered) return 'translateX(0) scale(0.94)';
+    return `translateX(${swipe.offsetX}px)`;
+  })();
+
+  const cardOpacity = enableSwipe && !hasEntered && !useStickyCardLayout ? 0 : 1;
+
+  const cardTransition = (() => {
+    if (!enableSwipe || !hasEntered) return 'none';
+    if (swipe.dragging) return 'none';
+    if (swipe.exiting) return `transform ${SWIPE_EXIT_MS}ms ease-in`;
+    return `transform ${CARD_ENTER_MS}ms ease-out, opacity ${CARD_ENTER_MS}ms ease-out`;
+  })();
+
   const swipeHintOpacity = (direction) => {
     if (!swipe.swipeDirection || swipe.swipeDirection !== direction) return 0;
     const progress = Math.min(1, Math.abs(swipe.offsetX) / 96);
-    return 0.18 + progress * 0.72;
+    return 0.28 + progress * 0.72;
   };
+
+  const swipeCueScale = (direction) => {
+    if (!swipe.swipeDirection || swipe.swipeDirection !== direction) return 0.9;
+    const progress = Math.min(1, Math.abs(swipe.offsetX) / 96);
+    return 0.9 + progress * 0.2;
+  };
+
+  const activeSwipeLabelDirection = swipe.exiting || swipe.swipeDirection;
 
   const inlineDetailsBlock = inlineDetails ? (
     <CareerStepRoleInlineBody
@@ -219,19 +320,13 @@ export function RoleEvaluationCard({
     />
   ) : null;
 
+  const evaluationActionBlock = (
+    <RoleEvaluationActionButtons layout="full" {...evaluationButtonProps} />
+  );
+
   const fullEvaluationSection = (
-    <Box ref={evalSentinelRef} sx={{ mb: inlineDetails ? 0 : 1.5 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-        {t('simulation.evaluationFlow.rateThisRole')}
-      </Typography>
-      {enableSwipe ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-          {useStickyCardLayout
-            ? t('simulation.evaluationFlow.swipeHint')
-            : t('simulation.evaluationFlow.swipeHintDesktop')}
-        </Typography>
-      ) : null}
-      <RoleEvaluationActionButtons layout="full" {...evaluationButtonProps} />
+    <Box sx={{ mb: inlineDetails ? 0 : 1.5 }}>
+      {evaluationActionBlock}
     </Box>
   );
 
@@ -347,7 +442,12 @@ export function RoleEvaluationCard({
     </Box>
   ) : null;
 
-  const scrollableEvaluationContent = (
+  const scrollableEvaluationContent = useStickyCardLayout ? (
+    <>
+      {inlineDetailsBlock}
+      {moreDetailsBlock}
+    </>
+  ) : (
     <>
       {fullEvaluationSection}
       {inlineDetailsBlock}
@@ -377,8 +477,77 @@ export function RoleEvaluationCard({
     </>
   );
 
-  const swipeSurfaceProps = enableSwipe && !useStickyCardLayout ? swipe.bind : {};
-  const stickyHeaderSwipeProps = enableSwipe && useStickyCardLayout ? swipe.bind : {};
+  const swipeSurfaceProps = enableSwipe ? swipe.bind : {};
+
+  const swipeCueLayer = enableSwipe ? (
+    <>
+      <Box
+        aria-hidden={activeSwipeLabelDirection !== 'left'}
+        aria-live="polite"
+        aria-atomic="true"
+        sx={{
+          position: 'absolute',
+          top: swipeCueTopPx,
+          left: { xs: 8, sm: 16 },
+          zIndex: 4,
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          opacity: swipeHintOpacity('left'),
+          transform: `translateY(-68%) scale(${swipeCueScale('left')})`,
+          transformOrigin: 'left center',
+          transition: swipe.dragging || swipe.exiting
+            ? 'none'
+            : `opacity ${SWIPE_EXIT_MS}ms ease, transform ${SWIPE_EXIT_MS}ms ease`,
+        }}
+      >
+        <Typography
+          variant="h4"
+          component="span"
+          sx={(theme) => ({
+            ...SWIPE_CUE_TYPOGRAPHY_SX,
+            color: 'error.main',
+            textShadow: swipeCueTextShadowSx(theme),
+          })}
+        >
+          {t('simulation.evaluationFlow.actions.dislike')}
+        </Typography>
+      </Box>
+      <Box
+        aria-hidden={activeSwipeLabelDirection !== 'right'}
+        aria-live="polite"
+        aria-atomic="true"
+        sx={{
+          position: 'absolute',
+          top: swipeCueTopPx,
+          right: { xs: 8, sm: 16 },
+          zIndex: 4,
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          opacity: swipeHintOpacity('right'),
+          transform: `translateY(-68%) scale(${swipeCueScale('right')})`,
+          transformOrigin: 'right center',
+          transition: swipe.dragging || swipe.exiting
+            ? 'none'
+            : `opacity ${SWIPE_EXIT_MS}ms ease, transform ${SWIPE_EXIT_MS}ms ease`,
+        }}
+      >
+        <Typography
+          variant="h4"
+          component="span"
+          sx={(theme) => ({
+            ...SWIPE_CUE_TYPOGRAPHY_SX,
+            color: 'success.main',
+            textShadow: swipeCueTextShadowSx(theme),
+          })}
+        >
+          {t('simulation.evaluationFlow.actions.keep')}
+        </Typography>
+      </Box>
+    </>
+  ) : null;
 
   return (
     <Box
@@ -386,189 +555,104 @@ export function RoleEvaluationCard({
       {...swipeSurfaceProps}
       sx={{
         position: 'relative',
-        touchAction: swipe.dragging ? 'none' : 'auto',
+        height: '100%',
+        touchAction: enableSwipe && swipe.dragging ? 'none' : 'auto',
         userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
-        height: useStickyCardLayout ? '100%' : 'auto',
       }}
     >
-      {enableSwipe ? (
-        <>
-          <Box
-            aria-hidden
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              pl: 2,
-              pointerEvents: 'none',
-              opacity: swipeHintOpacity('left'),
-              transition: swipe.dragging ? 'none' : `opacity ${SWIPE_EXIT_MS}ms ease`,
-            }}
-          >
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 800,
-                color: 'error.main',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {t('simulation.evaluationFlow.actions.dislike')}
-            </Typography>
-          </Box>
-          <Box
-            aria-hidden
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              pr: 2,
-              pointerEvents: 'none',
-              opacity: swipeHintOpacity('right'),
-              transition: swipe.dragging ? 'none' : `opacity ${SWIPE_EXIT_MS}ms ease`,
-            }}
-          >
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 800,
-                color: 'success.main',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {t('simulation.evaluationFlow.actions.keep')}
-            </Typography>
-          </Box>
-        </>
-      ) : null}
       <Card
+        ref={cardRef}
         variant="outlined"
         elevation={0}
         sx={(theme) => ({
+          position: 'relative',
           borderStyle: 'solid',
-          borderWidth: '3px 1px 1px 6px',
+          borderWidth: useStickyCardLayout
+            ? `0 1px 1px 6px`
+            : `${CARD_ACCENT_TOP_BORDER_PX}px 1px 1px 6px`,
           borderColor: `${accentColor} ${theme.palette.divider} ${theme.palette.divider} ${accentColor}`,
           borderRadius: 2,
           boxShadow: theme.shadows[1],
           bgcolor: 'background.paper',
-          minHeight: useStickyCardLayout ? 0 : inlineDetails ? undefined : 300,
+          minHeight: inlineDetails ? undefined : 300,
           display: 'flex',
           flexDirection: 'column',
-          height: useStickyCardLayout ? '100%' : inlineDetails ? 'auto' : '100%',
-          maxHeight: useStickyCardLayout ? '100%' : 'none',
-          overflow: useStickyCardLayout ? 'hidden' : 'visible',
-          transform: enableSwipe
-            ? `translateX(${swipe.offsetX}px) rotate(${swipe.offsetX * 0.03}deg)`
-            : 'none',
-          transition: swipe.dragging || swipe.exiting
-            ? swipe.exiting
-              ? `transform ${SWIPE_EXIT_MS}ms ease-in`
-              : 'none'
-            : `transform ${SWIPE_EXIT_MS}ms ease-out`,
-          willChange: enableSwipe && (swipe.dragging || swipe.exiting) ? 'transform' : 'auto',
-          cursor: enableSwipe && !useStickyCardLayout ? (swipe.dragging ? 'grabbing' : 'grab') : 'auto',
+          height: inlineDetails ? 'auto' : '100%',
+          overflow: 'visible',
+          cursor: enableSwipe ? (swipe.dragging ? 'grabbing' : 'grab') : 'auto',
+          transform: useStickyCardLayout && isSwipeMotionActive ? cardTransform : undefined,
+          opacity: useStickyCardLayout ? undefined : cardOpacity,
+          transition: useStickyCardLayout && isSwipeMotionActive ? cardTransition : undefined,
+          willChange: useStickyCardLayout && isSwipeMotionActive ? 'transform, opacity' : 'auto',
         })}
       >
-      <CardContent
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          flexGrow: 1,
-          justifyContent: useStickyCardLayout ? 'flex-start' : inlineDetails ? 'flex-start' : 'space-between',
-          gap: useStickyCardLayout ? 0 : inlineDetails ? 2 : 0,
-          flex: useStickyCardLayout ? 1 : undefined,
-          minHeight: useStickyCardLayout ? 0 : undefined,
-          overflow: useStickyCardLayout ? 'hidden' : 'visible',
-          p: 2,
-          '&:last-child': { pb: 2 },
-        }}
-      >
-        {useStickyCardLayout ? (
-          <>
-            <Box
-              {...stickyHeaderSwipeProps}
-              sx={{
-                position: 'sticky',
-                top: 0,
-                zIndex: 2,
-                flexShrink: 0,
-                bgcolor: 'background.paper',
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                mx: -2,
-                px: 2,
-                pt: 0.5,
-                pb: 1,
-                boxShadow: showCompactEvalBar ? theme.shadows[1] : 'none',
-                transition: theme.transitions.create(['box-shadow'], {
-                  duration: prefersReducedMotion ? 0 : theme.transitions.duration.standard,
-                  easing: theme.transitions.easing.easeInOut,
-                }),
-                cursor: enableSwipe && useStickyCardLayout
-                  ? (swipe.dragging ? 'grabbing' : 'grab')
-                  : 'auto',
-                touchAction: swipe.dragging ? 'none' : 'auto',
-              }}
-            >
-              {titleRow}
-              <Collapse
-                in={showCompactEvalBar}
-                timeout={compactBarMotion}
-                easing={compactBarEasing}
-                collapsedSize={0}
+        {swipeCueLayer}
+        <CardContent
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            flexGrow: 1,
+            justifyContent: inlineDetails ? 'flex-start' : 'space-between',
+            gap: inlineDetails && !useStickyCardLayout ? 2 : 0,
+            overflow: 'visible',
+            p: 2,
+            pt: useStickyCardLayout ? 0 : 2,
+            '&:last-child': { pb: 2 },
+          }}
+        >
+          {useStickyCardLayout ? (
+            <>
+              <Box
+                ref={swipeCueAnchorRef}
+                sx={{
+                  position: 'sticky',
+                  top: `${stickyTop}px`,
+                  zIndex: 2,
+                  bgcolor: 'background.paper',
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  mx: -2,
+                  px: 2,
+                  pt: 0,
+                  pb: 1.5,
+                }}
               >
                 <Box
+                  aria-hidden
                   sx={{
-                    mt: 1,
-                    opacity: showCompactEvalBar ? 1 : 0,
-                    transform: showCompactEvalBar ? 'translateY(0)' : 'translateY(-6px)',
-                    transition: prefersReducedMotion
-                      ? 'none'
-                      : theme.transitions.create(['opacity', 'transform'], {
-                          duration: showCompactEvalBar ? 320 : 220,
-                          easing: showCompactEvalBar
-                            ? theme.transitions.easing.easeOut
-                            : theme.transitions.easing.easeIn,
-                        }),
+                    height: CARD_ACCENT_TOP_BORDER_PX,
+                    bgcolor: accentColor,
+                    mx: -2,
+                    mb: 0.5,
+                    borderTopLeftRadius: 2,
+                    borderTopRightRadius: 2,
                   }}
-                >
-                  <RoleEvaluationActionButtons layout="compact" {...evaluationButtonProps} />
-                </Box>
-              </Collapse>
-            </Box>
+                />
+                {titleRow}
+                <Box sx={{ mt: 1 }}>{evaluationActionBlock}</Box>
+              </Box>
+              <Box sx={{ pt: 1.5 }}>
+                {cardBodyContent}
+                {scrollableEvaluationContent}
+              </Box>
+            </>
+          ) : (
             <Box
-              ref={scrollBodyRef}
-              data-role-eval-scroll
               sx={{
-                flex: 1,
-                minHeight: 0,
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                overscrollBehavior: 'contain',
-                pt: 1.5,
-                touchAction: 'pan-y',
+                transform: cardTransform,
+                opacity: cardOpacity,
+                transition: cardTransition,
+                willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
               }}
             >
-              {cardBodyContent}
+              <Box ref={swipeCueAnchorRef}>
+                {titleRow}
+                {cardBodyContent}
+              </Box>
               {scrollableEvaluationContent}
             </Box>
-          </>
-        ) : (
-          <>
-            <Box>
-              {titleRow}
-              {cardBodyContent}
-            </Box>
-            {scrollableEvaluationContent}
-          </>
-        )}
-      </CardContent>
+          )}
+        </CardContent>
       </Card>
     </Box>
   );
@@ -1332,32 +1416,71 @@ export default function SimulationCategoryEvaluation({
 
   const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) });
   const rankingRevealNudge = useCtaNudgeAnimation({ enabled: awaitingRankingReveal });
-  const stickySectionHeaderRef = useRef(null);
-  const [stickySectionHeaderHeight, setStickySectionHeaderHeight] = useState(0);
-  const useMobileEvalStickyLayout = isMobileViewport && phase === 'eval' && !awaitingRankingReveal && total > 0;
+  const useEvalStickyLayout = phase === 'eval' && !awaitingRankingReveal && total > 0;
+  const [swipeExitOverlay, setSwipeExitOverlay] = useState(null);
 
-  useLayoutEffect(() => {
-    if (!useMobileEvalStickyLayout) {
-      setStickySectionHeaderHeight(0);
-      return undefined;
-    }
-    const node = stickySectionHeaderRef.current;
-    if (!node) return undefined;
+  const handleSwipeExitStart = useCallback((role, { direction, offsetX }) => {
+    setSwipeExitOverlay({ role, direction, offsetX });
+  }, []);
 
-    const measure = () => {
-      setStickySectionHeaderHeight(node.getBoundingClientRect().height);
-    };
-    measure();
+  useEffect(() => {
+    if (!swipeExitOverlay) return undefined;
+    const timer = window.setTimeout(() => setSwipeExitOverlay(null), SWIPE_EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [swipeExitOverlay]);
 
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(node);
-    return () => resizeObserver.disconnect();
-  }, [useMobileEvalStickyLayout, title, evaluated, total, complete, awaitingRankingReveal]);
+  const renderRoleEvaluationCard = useCallback(
+    (role, { showEvalNudge = false, swipeHandoff = false, skipEnterAnimation = false, interactive = true } = {}) => (
+      <RoleEvaluationCard
+        role={role}
+        categoryKey={categoryKey}
+        isViewingSavedSimulation={isViewingSavedSimulation}
+        savedSimulationId={savedSimulationId}
+        onEvaluate={interactive ? onEvaluate : undefined}
+        onSave={() => onToggleSave(role)}
+        isStepSaved={isStepSaved(role)}
+        savingStep={isStepSaving(role)}
+        guardedNavigate={guardedNavigate}
+        showEvalNudge={showEvalNudge && interactive}
+        getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+        nudgeInteractionHandlers={evalNudge.interactionHandlers}
+        inlineDetails={useEvalStickyLayout}
+        simulationIdForCards={simulationIdForCards}
+        swipeHandoffToParent={swipeHandoff && interactive}
+        onSwipeExitStart={(payload) => handleSwipeExitStart(role, payload)}
+        skipEnterAnimation={skipEnterAnimation}
+      />
+    ),
+    [
+      categoryKey,
+      evalNudge.getButtonNudgeSx,
+      evalNudge.interactionHandlers,
+      guardedNavigate,
+      handleSwipeExitStart,
+      isStepSaved,
+      isStepSaving,
+      isViewingSavedSimulation,
+      onEvaluate,
+      onToggleSave,
+      savedSimulationId,
+      simulationIdForCards,
+      useEvalStickyLayout,
+    ]
+  );
 
-  const mobileStickyCardTop = `calc(${LAYOUT_APP_BAR_HEIGHT_PX}px + ${stickySectionHeaderHeight}px)`;
-  const mobileStickyCardMaxHeight = stickySectionHeaderHeight
-    ? `calc(100dvh - ${LAYOUT_APP_BAR_HEIGHT_PX}px - ${stickySectionHeaderHeight}px - ${MOBILE_BOTTOM_NAV_HEIGHT}px - env(safe-area-inset-bottom, 0px))`
-    : undefined;
+  const evaluationInstructionText = complete
+    ? t('simulation.evaluationFlow.allRolesRated', { total })
+    : hasStarted
+        ? t(
+            isMobileViewport
+              ? 'simulation.evaluationFlow.continueMobile'
+              : 'simulation.evaluationFlow.continue'
+          )
+        : t(
+            isMobileViewport
+              ? 'simulation.evaluationFlow.startMobile'
+              : 'simulation.evaluationFlow.start'
+          );
 
   if (phase === 'ranked' && Array.isArray(rankedRows) && rankedRows.length) {
     return (
@@ -1416,16 +1539,7 @@ export default function SimulationCategoryEvaluation({
 
   return (
     <Box sx={{ mb: 4 }}>
-      <Box
-        ref={stickySectionHeaderRef}
-        sx={{
-          position: useMobileEvalStickyLayout ? 'sticky' : 'static',
-          top: useMobileEvalStickyLayout ? `${LAYOUT_APP_BAR_HEIGHT_PX}px` : 'auto',
-          zIndex: useMobileEvalStickyLayout ? 3 : 'auto',
-          bgcolor: useMobileEvalStickyLayout ? 'background.default' : 'transparent',
-          pb: useMobileEvalStickyLayout ? 1 : 0,
-        }}
-      >
+      <Box sx={{ pb: useEvalStickyLayout ? 1 : 0 }}>
         <Box
           sx={{
             display: 'flex',
@@ -1465,9 +1579,14 @@ export default function SimulationCategoryEvaluation({
           <LinearProgress
             variant="determinate"
             value={total ? (evaluated / total) * 100 : 0}
-            sx={{ height: 6, borderRadius: 3, mb: useMobileEvalStickyLayout ? 0 : 2 }}
+            sx={{ height: 6, borderRadius: 3, mb: useEvalStickyLayout ? 1 : 2 }}
           />
         )}
+        {useEvalStickyLayout && !awaitingRankingReveal && total > 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {evaluationInstructionText}
+          </Typography>
+        ) : null}
       </Box>
 
       {!total ? (
@@ -1496,53 +1615,31 @@ export default function SimulationCategoryEvaluation({
         </Box>
       ) : (
         <>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {complete
-              ? t('simulation.evaluationFlow.allRolesRated', { total })
-              : hasStarted
-                  ? t(
-                      isMobileViewport
-                        ? 'simulation.evaluationFlow.continueMobile'
-                        : 'simulation.evaluationFlow.continue'
-                    )
-                  : t(
-                      isMobileViewport
-                        ? 'simulation.evaluationFlow.startMobile'
-                        : 'simulation.evaluationFlow.start'
-                    )}
-          </Typography>
+          {!useEvalStickyLayout ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {evaluationInstructionText}
+            </Typography>
+          ) : null}
 
           <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>
             {cardsToShow.map((role) => (
               <Grid item xs={12} sm={6} md={6} lg={4} key={role.id}>
-                <Box
-                  sx={{
-                    position: useMobileEvalStickyLayout ? 'sticky' : 'static',
-                    top: useMobileEvalStickyLayout ? mobileStickyCardTop : 'auto',
-                    zIndex: useMobileEvalStickyLayout ? 2 : 'auto',
-                    maxHeight: useMobileEvalStickyLayout ? mobileStickyCardMaxHeight : 'none',
-                    display: useMobileEvalStickyLayout ? 'flex' : 'block',
-                    flexDirection: useMobileEvalStickyLayout ? 'column' : 'row',
-                    minHeight: useMobileEvalStickyLayout ? 0 : 'auto',
-                  }}
-                >
-                  <RoleEvaluationCard
-                    role={role}
-                    categoryKey={categoryKey}
-                    isViewingSavedSimulation={isViewingSavedSimulation}
-                    savedSimulationId={savedSimulationId}
-                    onEvaluate={onEvaluate}
-                    onSave={() => onToggleSave(role)}
-                    isStepSaved={isStepSaved(role)}
-                    savingStep={isStepSaving(role)}
-                    guardedNavigate={guardedNavigate}
-                    showEvalNudge={role.id === focusRoleId}
-                    getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-                    nudgeInteractionHandlers={evalNudge.interactionHandlers}
-                    inlineDetails={useMobileEvalStickyLayout}
-                    mobileStickyLayout={useMobileEvalStickyLayout}
-                    simulationIdForCards={simulationIdForCards}
-                  />
+                <Box sx={{ position: 'relative', height: '100%' }}>
+                  {renderRoleEvaluationCard(role, {
+                    showEvalNudge: role.id === focusRoleId,
+                    swipeHandoff: useEvalStickyLayout,
+                  })}
+                  {useEvalStickyLayout && swipeExitOverlay ? (
+                    <RoleEvaluationExitShell
+                      direction={swipeExitOverlay.direction}
+                      startOffsetX={swipeExitOverlay.offsetX}
+                    >
+                      {renderRoleEvaluationCard(swipeExitOverlay.role, {
+                        skipEnterAnimation: true,
+                        interactive: false,
+                      })}
+                    </RoleEvaluationExitShell>
+                  ) : null}
                 </Box>
               </Grid>
             ))}
