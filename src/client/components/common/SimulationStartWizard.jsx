@@ -42,28 +42,34 @@ function WizardRoleEvaluationSection({
   guardedNavigate,
   evalNudge,
 }) {
+  const swipeStageRef = useRef(null);
+
   return (
     <>
       <Typography variant="body2" color="text.secondary">
         {intro}
       </Typography>
-      <RoleEvaluationCard
-        role={role}
-        categoryKey={categoryKey}
-        inlineDetails
-        stickyTop={0}
-        simulationIdForCards={simulationIdForCards}
-        isViewingSavedSimulation={isViewingSavedSimulation}
-        savedSimulationId={savedSimulationId}
-        onEvaluate={onEvaluate}
-        onSave={() => onToggleSave(role)}
-        isStepSaved={isStepSaved(role)}
-        savingStep={isStepSaving(role)}
-        guardedNavigate={guardedNavigate}
-        showEvalNudge
-        getButtonNudgeSx={evalNudge.getButtonNudgeSx}
-        nudgeInteractionHandlers={evalNudge.interactionHandlers}
-      />
+      <Box ref={swipeStageRef} sx={{ position: 'relative', overflow: 'visible' }}>
+        <RoleEvaluationCard
+          role={role}
+          categoryKey={categoryKey}
+          inlineDetails
+          stickyTop={0}
+          simulationIdForCards={simulationIdForCards}
+          isViewingSavedSimulation={isViewingSavedSimulation}
+          savedSimulationId={savedSimulationId}
+          onEvaluate={onEvaluate}
+          onSave={() => onToggleSave(role)}
+          isStepSaved={isStepSaved(role)}
+          savingStep={isStepSaving(role)}
+          guardedNavigate={guardedNavigate}
+          showEvalNudge
+          getButtonNudgeSx={evalNudge.getButtonNudgeSx}
+          nudgeInteractionHandlers={evalNudge.interactionHandlers}
+          swipeStageRef={swipeStageRef}
+          expandSwipeToPanel
+        />
+      </Box>
     </>
   );
 }

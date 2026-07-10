@@ -55,6 +55,7 @@ import localizedContentService from '../../utils/localizedContentService';
 import { CareerStepRoleInlineBody } from './CareerStepRoleSections';
 import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
 import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
+import { useSwipePanelExpansion } from '../../hooks/useSwipePanelExpansion';
 import {
   SWIPE_EXIT_MS,
   useRoleEvaluationSwipe,
@@ -143,31 +144,83 @@ const OOTB_SAVE_SAVED_BUTTON_SX = {
 const CARD_ENTER_MS = 280;
 
 /** Animates a swiped-away card off-screen while the next card appears underneath. */
-function RoleEvaluationExitShell({ direction, startOffsetX, children }) {
+function RoleEvaluationExitShell({
+  direction,
+  startOffsetX,
+  children,
+  swipeStageRef = null,
+  expandSwipeToPanel = false,
+  cardHeight,
+}) {
+  const theme = useTheme();
   const shellRef = useRef(null);
+  const measureRef = useRef(null);
   const [offsetX, setOffsetX] = useState(startOffsetX);
 
+  const panelFrame = useSwipePanelExpansion({
+    active: expandSwipeToPanel,
+    stageRef: swipeStageRef,
+    measureRef,
+  });
+
+  const setShellRef = useCallback((node) => {
+    shellRef.current = node;
+    measureRef.current = node;
+  }, []);
+
   useLayoutEffect(() => {
-    const width = shellRef.current?.getBoundingClientRect?.().width || 320;
+    const width = panelFrame?.width || shellRef.current?.getBoundingClientRect?.().width || 320;
     const exitDistance = Math.max(width * 1.15, 280);
     const finalOffset = direction === 'right' ? exitDistance : -exitDistance;
     const frame = requestAnimationFrame(() => setOffsetX(finalOffset));
     return () => cancelAnimationFrame(frame);
-  }, [direction, startOffsetX]);
+  }, [direction, startOffsetX, panelFrame?.width]);
+
+  const shellSx = {
+    pointerEvents: 'none',
+    transform: `translateX(${offsetX}px)`,
+    transition: `transform ${SWIPE_EXIT_MS}ms ease-in`,
+    overflow: 'visible',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  if (panelFrame) {
+    return (
+      <>
+        {(panelFrame.height || cardHeight) ? (
+          <Box
+            aria-hidden
+            sx={{ height: panelFrame.height || cardHeight, pointerEvents: 'none' }}
+          />
+        ) : null}
+        <Box
+          ref={setShellRef}
+          sx={{
+            ...shellSx,
+            position: 'fixed',
+            top: `${panelFrame.top}px`,
+            left: `${panelFrame.left}px`,
+            width: `${panelFrame.width}px`,
+            minHeight: panelFrame.height || cardHeight,
+            zIndex: theme.zIndex.modal - 1,
+          }}
+        >
+          {children}
+        </Box>
+      </>
+    );
+  }
 
   return (
     <Box
-      ref={shellRef}
+      ref={setShellRef}
       sx={{
+        ...shellSx,
         position: 'absolute',
         inset: 0,
         zIndex: 3,
-        pointerEvents: 'none',
-        transform: `translateX(${offsetX}px)`,
-        transition: `transform ${SWIPE_EXIT_MS}ms ease-in`,
         height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
       }}
     >
       {children}
@@ -194,6 +247,8 @@ export function RoleEvaluationCard({
   onSwipeExitStart,
   swipeHandoffToParent = false,
   skipEnterAnimation = false,
+  swipeStageRef = null,
+  expandSwipeToPanel = false,
 }) {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -234,6 +289,7 @@ export function RoleEvaluationCard({
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const cardRef = useRef(null);
   const swipeCueAnchorRef = useRef(null);
+  const measureRef = useRef(null);
   const [swipeCueTopPx, setSwipeCueTopPx] = useState(SWIPE_CUE_FALLBACK_TOP_PX);
 
   const evaluationButtonProps = {
@@ -247,7 +303,12 @@ export function RoleEvaluationCard({
   const swipe = useRoleEvaluationSwipe({
     enabled: enableSwipe,
     handoffExitToParent: swipeHandoffToParent,
-    onExitStart: onSwipeExitStart,
+    onExitStart: (payload) => {
+      onSwipeExitStart?.({
+        ...payload,
+        cardHeight: measureRef.current?.offsetHeight,
+      });
+    },
     onSwipeLeft: () => onEvaluate(role.id, 'dislike'),
     onSwipeRight: () => onEvaluate(role.id, 'keep'),
     onInteractionStart: nudgeHandlers.onMouseEnter,
@@ -303,6 +364,23 @@ export function RoleEvaluationCard({
   }, [enableSwipe, role.id, useStickyCardLayout, roleTitle]);
 
   const isSwipeMotionActive = enableSwipe && (!hasEntered || swipe.dragging || swipe.exiting);
+
+  const isSwipeExpanded = expandSwipeToPanel && enableSwipe && (
+    swipe.dragging
+    || swipe.exiting
+    || Math.abs(swipe.offsetX) > SWIPE_CUE_ACTIVATION_PX
+  );
+
+  const panelFrame = useSwipePanelExpansion({
+    active: isSwipeExpanded,
+    stageRef: swipeStageRef,
+    measureRef,
+  });
+
+  const setSwipeContainerRef = useCallback((node) => {
+    swipe.containerRef.current = node;
+    measureRef.current = node;
+  }, [swipe.containerRef]);
 
   const cardTransform = (() => {
     if (!isSwipeMotionActive) return 'none';
@@ -593,29 +671,48 @@ export function RoleEvaluationCard({
   ) : null;
 
   return (
-    <Box
-      ref={swipe.containerRef}
-      {...swipeSurfaceProps}
-      sx={{
-        position: 'relative',
-        height: '100%',
-        overflow: 'visible',
-        touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'manipulation') : 'auto',
-        userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
-        WebkitUserSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
-      }}
-    >
+    <>
+      {panelFrame?.height ? (
+        <Box
+          aria-hidden
+          sx={{ height: panelFrame.height, pointerEvents: 'none' }}
+        />
+      ) : null}
       <Box
+        ref={setSwipeContainerRef}
+        {...swipeSurfaceProps}
         sx={{
-          height: '100%',
-          overflowX: 'hidden',
-          overflowY: 'visible',
-          transform: isSwipeMotionActive ? cardTransform : 'none',
-          opacity: useStickyCardLayout ? 1 : cardOpacity,
-          transition: isSwipeMotionActive ? cardTransition : 'none',
-          willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
+          ...(panelFrame
+            ? {
+                position: 'fixed',
+                top: `${panelFrame.top}px`,
+                left: `${panelFrame.left}px`,
+                width: `${panelFrame.width}px`,
+                minHeight: panelFrame.height,
+                zIndex: theme.zIndex.modal - 1,
+                overflow: 'visible',
+              }
+            : {
+                position: 'relative',
+                height: '100%',
+                overflow: 'visible',
+              }),
+          touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'manipulation') : 'auto',
+          userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
+          WebkitUserSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
         }}
       >
+        <Box
+          sx={{
+            height: '100%',
+            overflowX: isSwipeExpanded ? 'visible' : 'hidden',
+            overflowY: 'visible',
+            transform: isSwipeMotionActive ? cardTransform : 'none',
+            opacity: useStickyCardLayout ? 1 : cardOpacity,
+            transition: isSwipeMotionActive ? cardTransition : 'none',
+            willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
+          }}
+        >
       <Card
         ref={cardRef}
         variant="outlined"
@@ -713,7 +810,8 @@ export function RoleEvaluationCard({
           {swipeCueLayer}
         </Box>
       ) : null}
-    </Box>
+      </Box>
+    </>
   );
 }
 
@@ -1476,10 +1574,11 @@ export default function SimulationCategoryEvaluation({
   const evalNudge = useEvalActionNudge({ enabled: Boolean(focusRoleId) });
   const rankingRevealNudge = useCtaNudgeAnimation({ enabled: awaitingRankingReveal });
   const useEvalStickyLayout = phase === 'eval' && !awaitingRankingReveal && total > 0;
+  const swipeStageRef = useRef(null);
   const [swipeExitOverlay, setSwipeExitOverlay] = useState(null);
 
-  const handleSwipeExitStart = useCallback((role, { direction, offsetX }) => {
-    setSwipeExitOverlay({ role, direction, offsetX });
+  const handleSwipeExitStart = useCallback((role, { direction, offsetX, cardHeight }) => {
+    setSwipeExitOverlay({ role, direction, offsetX, cardHeight });
   }, []);
 
   useEffect(() => {
@@ -1508,6 +1607,8 @@ export default function SimulationCategoryEvaluation({
         swipeHandoffToParent={swipeHandoff && interactive}
         onSwipeExitStart={(payload) => handleSwipeExitStart(role, payload)}
         skipEnterAnimation={skipEnterAnimation}
+        swipeStageRef={swipeStageRef}
+        expandSwipeToPanel={isMobileViewport}
       />
     ),
     [
@@ -1524,6 +1625,7 @@ export default function SimulationCategoryEvaluation({
       savedSimulationId,
       simulationIdForCards,
       useEvalStickyLayout,
+      isMobileViewport,
     ]
   );
 
@@ -1680,29 +1782,37 @@ export default function SimulationCategoryEvaluation({
             </Typography>
           ) : null}
 
-          <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>
-            {cardsToShow.map((role) => (
-              <Grid item xs={12} sm={6} md={6} lg={4} key={role.id}>
-                <Box sx={{ position: 'relative', height: '100%' }}>
-                  {renderRoleEvaluationCard(role, {
-                    showEvalNudge: role.id === focusRoleId,
-                    swipeHandoff: useEvalStickyLayout,
-                  })}
-                  {useEvalStickyLayout && swipeExitOverlay ? (
-                    <RoleEvaluationExitShell
-                      direction={swipeExitOverlay.direction}
-                      startOffsetX={swipeExitOverlay.offsetX}
-                    >
-                      {renderRoleEvaluationCard(swipeExitOverlay.role, {
-                        skipEnterAnimation: true,
-                        interactive: false,
-                      })}
-                    </RoleEvaluationExitShell>
-                  ) : null}
-                </Box>
-              </Grid>
-            ))}
-          </Grid>
+          <Box
+            ref={swipeStageRef}
+            sx={{ position: 'relative', overflow: 'visible' }}
+          >
+            <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 2 }}>
+              {cardsToShow.map((role) => (
+                <Grid item xs={12} sm={6} md={6} lg={4} key={role.id}>
+                  <Box sx={{ position: 'relative', height: '100%' }}>
+                    {renderRoleEvaluationCard(role, {
+                      showEvalNudge: role.id === focusRoleId,
+                      swipeHandoff: useEvalStickyLayout,
+                    })}
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+            {useEvalStickyLayout && swipeExitOverlay ? (
+              <RoleEvaluationExitShell
+                direction={swipeExitOverlay.direction}
+                startOffsetX={swipeExitOverlay.offsetX}
+                swipeStageRef={swipeStageRef}
+                expandSwipeToPanel={isMobileViewport}
+                cardHeight={swipeExitOverlay.cardHeight}
+              >
+                {renderRoleEvaluationCard(swipeExitOverlay.role, {
+                  skipEnterAnimation: true,
+                  interactive: false,
+                })}
+              </RoleEvaluationExitShell>
+            ) : null}
+          </Box>
         </>
       )}
     </Box>
