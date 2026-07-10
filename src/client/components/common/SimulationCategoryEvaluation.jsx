@@ -69,19 +69,39 @@ const CARD_ACCENT_TOP_BORDER_PX = 3;
 /** Swipe direction labels overlap the card just below the sticky header. */
 const SWIPE_CUE_OVERLAP_BELOW_HEADER_PX = 10;
 const SWIPE_CUE_FALLBACK_TOP_PX = 118;
+/** Show direction labels earlier than the gesture commit threshold. */
+const SWIPE_CUE_ACTIVATION_PX = 6;
+/** Distance over which cue opacity/scale reach full strength. */
+const SWIPE_CUE_RAMP_PX = 36;
 
 const SWIPE_CUE_TYPOGRAPHY_SX = {
   fontWeight: 900,
   fontSize: { xs: '1.85rem', sm: '2.35rem', md: '2.85rem' },
-  lineHeight: 1,
+  lineHeight: 1.15,
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
+  whiteSpace: 'nowrap',
+  display: 'inline-block',
 };
+
+const swipeCueLabelBackdropSx = (theme, accentColor) => ({
+  px: { xs: 1, sm: 1.25 },
+  py: { xs: 0.35, sm: 0.5 },
+  borderRadius: 1.25,
+  bgcolor:
+    theme.palette.mode === 'dark'
+      ? 'rgba(18, 18, 18, 0.72)'
+      : 'rgba(255, 255, 255, 0.92)',
+  boxShadow:
+    theme.palette.mode === 'dark'
+      ? `0 2px 14px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08)`
+      : `0 2px 14px rgba(0, 0, 0, 0.12), inset 0 0 0 1px ${accentColor}22`,
+});
 
 const swipeCueTextShadowSx = (theme) =>
   theme.palette.mode === 'dark'
-    ? '0 2px 18px rgba(0, 0, 0, 0.9)'
-    : '0 2px 18px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.85)';
+    ? '0 1px 2px rgba(0, 0, 0, 0.85)'
+    : '0 1px 2px rgba(255, 255, 255, 0.95)';
 
 /** Darker blue for Save toggle when role is already saved */
 const ROLE_CARD_SAVE_SAVED_SX = {
@@ -299,19 +319,34 @@ export function RoleEvaluationCard({
     return `transform ${CARD_ENTER_MS}ms ease-out, opacity ${CARD_ENTER_MS}ms ease-out`;
   })();
 
+  const getSwipeCueProgress = (direction) => {
+    if (swipe.exiting === direction) return 1;
+
+    const offset = swipe.offsetX;
+    const signedDistance = direction === 'right' ? offset : -offset;
+    if (signedDistance <= SWIPE_CUE_ACTIVATION_PX) return 0;
+
+    return Math.min(1, (signedDistance - SWIPE_CUE_ACTIVATION_PX) / SWIPE_CUE_RAMP_PX);
+  };
+
   const swipeHintOpacity = (direction) => {
-    if (!swipe.swipeDirection || swipe.swipeDirection !== direction) return 0;
-    const progress = Math.min(1, Math.abs(swipe.offsetX) / 96);
-    return 0.28 + progress * 0.72;
+    const progress = getSwipeCueProgress(direction);
+    if (!progress) return 0;
+    return 0.88 + progress * 0.12;
   };
 
   const swipeCueScale = (direction) => {
-    if (!swipe.swipeDirection || swipe.swipeDirection !== direction) return 0.9;
-    const progress = Math.min(1, Math.abs(swipe.offsetX) / 96);
-    return 0.9 + progress * 0.2;
+    const progress = getSwipeCueProgress(direction);
+    if (!progress) return 0.96;
+    return 0.96 + progress * 0.04;
   };
 
-  const activeSwipeLabelDirection = swipe.exiting || swipe.swipeDirection;
+  const activeSwipeLabelDirection = swipe.exiting
+    || (swipe.offsetX > SWIPE_CUE_ACTIVATION_PX
+      ? 'right'
+      : swipe.offsetX < -SWIPE_CUE_ACTIVATION_PX
+        ? 'left'
+        : null);
 
   const inlineDetailsBlock = inlineDetails ? (
     <CareerStepRoleInlineBody
@@ -493,6 +528,7 @@ export function RoleEvaluationCard({
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
+          overflow: 'visible',
           opacity: swipeHintOpacity('left'),
           transform: `translateY(-68%) scale(${swipeCueScale('left')})`,
           transformOrigin: 'left center',
@@ -506,6 +542,7 @@ export function RoleEvaluationCard({
           component="span"
           sx={(theme) => ({
             ...SWIPE_CUE_TYPOGRAPHY_SX,
+            ...swipeCueLabelBackdropSx(theme, theme.palette.error.main),
             color: 'error.main',
             textShadow: swipeCueTextShadowSx(theme),
           })}
@@ -526,6 +563,7 @@ export function RoleEvaluationCard({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
+          overflow: 'visible',
           opacity: swipeHintOpacity('right'),
           transform: `translateY(-68%) scale(${swipeCueScale('right')})`,
           transformOrigin: 'right center',
@@ -539,6 +577,7 @@ export function RoleEvaluationCard({
           component="span"
           sx={(theme) => ({
             ...SWIPE_CUE_TYPOGRAPHY_SX,
+            ...swipeCueLabelBackdropSx(theme, theme.palette.success.main),
             color: 'success.main',
             textShadow: swipeCueTextShadowSx(theme),
           })}
