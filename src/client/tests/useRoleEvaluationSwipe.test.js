@@ -1,4 +1,5 @@
 const {
+  resolvePassiveGestureIntent,
   resolveSwipeCommitDirection,
   shouldCommitToHorizontalSwipe,
   shouldAbortForVerticalSwipe,
@@ -33,6 +34,29 @@ describe('useRoleEvaluationSwipe helpers', () => {
       expect(shouldPreferVerticalScroll(2, 8, scrollEl)).toBe(true);
       expect(shouldPreferVerticalScroll(12, 8, scrollEl)).toBe(false);
       expect(shouldPreferVerticalScroll(2, 8, { scrollHeight: 200, clientHeight: 200 })).toBe(false);
+    });
+  });
+
+  describe('resolvePassiveGestureIntent', () => {
+    it('waits until movement passes activation', () => {
+      expect(resolvePassiveGestureIntent(8, 2)).toBe('pending');
+      expect(resolvePassiveGestureIntent(-6, 4)).toBe('pending');
+    });
+
+    it('locks to horizontal when horizontal movement dominates on touch arcs', () => {
+      expect(resolvePassiveGestureIntent(24, 18)).toBe('horizontal');
+      expect(resolvePassiveGestureIntent(-30, 22)).toBe('horizontal');
+    });
+
+    it('defers to vertical scroll when vertical movement dominates', () => {
+      expect(resolvePassiveGestureIntent(8, 24)).toBe('vertical');
+      expect(resolvePassiveGestureIntent(12, 20)).toBe('vertical');
+    });
+
+    it('defers sooner inside marked scroll regions', () => {
+      const scrollEl = { scrollHeight: 400, clientHeight: 200 };
+      expect(resolvePassiveGestureIntent(2, 8, { scrollEl })).toBe('vertical');
+      expect(resolvePassiveGestureIntent(20, 8, { scrollEl })).toBe('horizontal');
     });
   });
 

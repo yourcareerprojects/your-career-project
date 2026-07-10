@@ -3,10 +3,8 @@ import {
   ROLE_EVAL_SCROLL_SELECTOR,
   SWIPE_ACTIVATION_PX,
   SWIPE_EXIT_MS,
+  resolvePassiveGestureIntent,
   resolveSwipeCommitDirection,
-  shouldAbortForVerticalSwipe,
-  shouldCommitToHorizontalSwipe,
-  shouldPreferVerticalScroll,
 } from '../utils/roleEvaluationSwipeGestures';
 
 export {
@@ -14,11 +12,21 @@ export {
   SWIPE_COMMIT_MIN_PX,
   SWIPE_COMMIT_RATIO,
   SWIPE_EXIT_MS,
+  resolvePassiveGestureIntent,
   resolveSwipeCommitDirection,
   shouldAbortForVerticalSwipe,
   shouldCommitToHorizontalSwipe,
   shouldPreferVerticalScroll,
 } from '../utils/roleEvaluationSwipeGestures';
+
+const TOUCH_SWIPE_ACTIVATION_PX = 10;
+
+function getSwipeActivationPx() {
+  if (typeof window === 'undefined' || !window.matchMedia) return SWIPE_ACTIVATION_PX;
+  return window.matchMedia('(pointer: coarse)').matches
+    ? TOUCH_SWIPE_ACTIVATION_PX
+    : SWIPE_ACTIVATION_PX;
+}
 
 const INTERACTIVE_SELECTOR = 'button, a, [role="button"], input, textarea, select, label';
 
@@ -153,11 +161,6 @@ export function useRoleEvaluationSwipe({
   );
 
   useEffect(() => {
-    const shouldDeferToScroll = (tracking, deltaX, deltaY) => {
-      if (shouldPreferVerticalScroll(deltaX, deltaY, tracking.scrollEl)) return true;
-      return shouldAbortForVerticalSwipe(deltaX, deltaY);
-    };
-
     const upgradeToActiveSwipe = (event, tracking) => {
       const container = containerRef.current;
       const { passiveMove, activeMove } = listenersRef.current;
@@ -182,14 +185,19 @@ export function useRoleEvaluationSwipe({
 
       const deltaX = event.clientX - tracking.startX;
       const deltaY = event.clientY - tracking.startY;
+      const intent = resolvePassiveGestureIntent(deltaX, deltaY, {
+        scrollEl: tracking.scrollEl,
+        activationPx: tracking.activationPx,
+      });
 
-      if (shouldDeferToScroll(tracking, deltaX, deltaY)) {
+      if (intent === 'pending') return;
+
+      if (intent === 'vertical') {
         stopTracking();
         resetGesture();
         callbacksRef.current.onInteractionEnd?.();
         return;
       }
-      if (!shouldCommitToHorizontalSwipe(deltaX, deltaY)) return;
 
       upgradeToActiveSwipe(event, tracking);
       updateOffsetX(deltaX);
@@ -265,6 +273,7 @@ export function useRoleEvaluationSwipe({
         startY: event.clientY,
         committed: false,
         scrollEl,
+        activationPx: getSwipeActivationPx(),
       };
       callbacksRef.current.onInteractionStart?.();
 

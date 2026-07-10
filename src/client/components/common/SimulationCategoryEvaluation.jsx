@@ -556,8 +556,9 @@ export function RoleEvaluationCard({
       sx={{
         position: 'relative',
         height: '100%',
-        touchAction: enableSwipe && swipe.dragging ? 'none' : 'auto',
+        touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'pan-y') : 'auto',
         userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
+        WebkitUserSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
       }}
     >
       <Card

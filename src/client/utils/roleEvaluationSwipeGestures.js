@@ -45,6 +45,31 @@ function resolveSwipeCommitDirection(offsetX, containerWidth) {
   return null;
 }
 
+/**
+ * Decide whether a passive-phase gesture should scroll, swipe, or keep waiting.
+ * Uses direction lock once movement passes activation so diagonal touch arcs can
+ * still commit to horizontal swipes on mobile.
+ * @returns {'pending' | 'vertical' | 'horizontal'}
+ */
+function resolvePassiveGestureIntent(
+  deltaX,
+  deltaY,
+  { scrollEl = null, activationPx = SWIPE_ACTIVATION_PX } = {}
+) {
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+
+  if (scrollEl && shouldPreferVerticalScroll(deltaX, deltaY, scrollEl)) {
+    return 'vertical';
+  }
+
+  if (Math.max(absX, absY) < activationPx) {
+    return 'pending';
+  }
+
+  return absY > absX ? 'vertical' : 'horizontal';
+}
+
 module.exports = {
   SWIPE_ACTIVATION_PX,
   SCROLL_REGION_ACTIVATION_PX,
@@ -56,4 +81,5 @@ module.exports = {
   shouldAbortForVerticalSwipe,
   shouldPreferVerticalScroll,
   resolveSwipeCommitDirection,
+  resolvePassiveGestureIntent,
 };
