@@ -705,7 +705,7 @@ export function RoleEvaluationCard({
         <Box
           sx={{
             height: '100%',
-            overflowX: isSwipeExpanded ? 'visible' : 'hidden',
+            overflowX: useStickyCardLayout || isSwipeExpanded ? 'visible' : 'hidden',
             overflowY: 'visible',
             transform: isSwipeMotionActive ? cardTransform : 'none',
             opacity: useStickyCardLayout ? 1 : cardOpacity,
