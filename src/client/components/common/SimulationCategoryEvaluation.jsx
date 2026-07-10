@@ -528,11 +528,10 @@ export function RoleEvaluationCard({
           position: 'absolute',
           top: swipeCueTopPx,
           left: { xs: 8, sm: 16 },
-          zIndex: 4,
+          zIndex: 6,
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
-          overflow: 'hidden',
           opacity: swipeHintOpacity('left'),
           visibility: swipeCueVisibility('left'),
           transform: `translateY(-68%) scale(${swipeCueScale('left')})`,
@@ -563,12 +562,11 @@ export function RoleEvaluationCard({
           position: 'absolute',
           top: swipeCueTopPx,
           right: { xs: 8, sm: 16 },
-          zIndex: 4,
+          zIndex: 6,
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
-          overflow: 'hidden',
           opacity: swipeHintOpacity('right'),
           visibility: swipeCueVisibility('right'),
           transform: `translateY(-68%) scale(${swipeCueScale('right')})`,
@@ -601,8 +599,7 @@ export function RoleEvaluationCard({
       sx={{
         position: 'relative',
         height: '100%',
-        overflowX: 'clip',
-        overflowY: 'visible',
+        overflow: 'visible',
         touchAction: enableSwipe ? (swipe.dragging ? 'none' : 'manipulation') : 'auto',
         userSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
         WebkitUserSelect: enableSwipe && swipe.dragging ? 'none' : 'auto',
@@ -611,7 +608,7 @@ export function RoleEvaluationCard({
       <Box
         sx={{
           height: '100%',
-          overflowX: 'clip',
+          overflowX: 'hidden',
           overflowY: 'visible',
           transform: isSwipeMotionActive ? cardTransform : 'none',
           opacity: useStickyCardLayout ? 1 : cardOpacity,
@@ -641,7 +638,6 @@ export function RoleEvaluationCard({
           cursor: enableSwipe ? (swipe.dragging ? 'grabbing' : 'grab') : 'auto',
         })}
       >
-        {swipeCueLayer}
         <CardContent
           sx={{
             display: 'flex',
@@ -703,6 +699,20 @@ export function RoleEvaluationCard({
         </CardContent>
       </Card>
       </Box>
+      {swipeCueLayer ? (
+        <Box
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 5,
+            pointerEvents: 'none',
+            overflow: 'visible',
+          }}
+        >
+          {swipeCueLayer}
+        </Box>
+      ) : null}
     </Box>
   );
 }
