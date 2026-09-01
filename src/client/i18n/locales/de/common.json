@@ -12,12 +12,13 @@
   "navigation": {
     "home": "Startseite",
     "profile": "Profil",
+    "careerPuzzle": "PuzzleWEG",
     "openDrawer": "NavigationsmenÜ Öffnen",
     "goHome": "Zur Startseite",
     "bottomNav": {
       "label": "Hauptnavigation",
       "profile": "Profil",
-      "simulation": "Simulation",
+      "simulation": "PuzzleBERUF",
       "home": "Start",
       "savedSearch": "Gespeichert & Suche",
       "settings": "Einstellungen"

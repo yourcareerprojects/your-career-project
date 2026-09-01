@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -26,8 +25,10 @@ import {
   useCoachingChatAutoScroll,
 } from '../../hooks/useCoachingChatAutoScroll';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+import CoachingChatFailureAlert from './CoachingChatFailureAlert';
 
 const CAREER_GOAL_COUNT = 5;
+const PRIORITY_COUNT = 5;
 
 async function postWorkingLifeAchievementCoaching({ seniority, messages, lang, token, cvContext }) {
   const res = await fetch(`/api/profile/working-life-achievement-coaching?${getProfileApiLangQuery()}`, {
@@ -56,6 +57,12 @@ function draftsFromFilledItems(items) {
   return (Array.isArray(items) ? items : [])
     .map((item) => String(item || '').trim())
     .filter(Boolean);
+}
+
+function normalizeEmptyDrafts(items, targetCount) {
+  const filled = draftsFromFilledItems(items);
+  if (filled.length > 0) return filled;
+  return Array.from({ length: targetCount }, () => '');
 }
 
 function parseLinesFromBlock(block) {
@@ -108,11 +115,16 @@ export function WorkingLifeAchievementSummaryPanel({
   confirmCta,
   onConfirm,
   onRestartChat,
+  initialEditing = false,
 }) {
   const { t } = useTranslation('onboarding');
-  const [editing, setEditing] = useState(false);
-  const [goalDrafts, setGoalDrafts] = useState([]);
-  const [priorityDrafts, setPriorityDrafts] = useState([]);
+  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [goalDrafts, setGoalDrafts] = useState(() => (
+    initialEditing ? normalizeEmptyDrafts(careerGoals, CAREER_GOAL_COUNT) : []
+  ));
+  const [priorityDrafts, setPriorityDrafts] = useState(() => (
+    initialEditing ? normalizeEmptyDrafts(priorities, PRIORITY_COUNT) : []
+  ));
 
   useEffect(() => {
     onEditingChange?.(editing);
@@ -121,8 +133,8 @@ export function WorkingLifeAchievementSummaryPanel({
   const canEdit = typeof onSummaryChange === 'function';
 
   const startEditing = () => {
-    setGoalDrafts(draftsFromFilledItems(careerGoals));
-    setPriorityDrafts(draftsFromFilledItems(priorities));
+    setGoalDrafts(normalizeEmptyDrafts(careerGoals, CAREER_GOAL_COUNT));
+    setPriorityDrafts(normalizeEmptyDrafts(priorities, PRIORITY_COUNT));
     setEditing(true);
   };
 
@@ -265,6 +277,7 @@ const WorkingLifeAchievementCoaching = ({
   initialCareerGoals = [],
   initialPriorities = [],
   initialMessages = [],
+  initialManualEntry = false,
   onChatPersist,
   confirmInFooter = false,
   onSummaryFooterStateChange,
@@ -276,16 +289,19 @@ const WorkingLifeAchievementCoaching = ({
   const coachingLang = baseUILanguage() || String(i18n.language || 'de').toLowerCase().split('-')[0];
   const hasInitialSummary = initialCareerGoals.length > 0 || initialPriorities.length > 0;
   const hasInitialChat = initialMessages.length > 0;
-  const [phase, setPhase] = useState(hasInitialSummary ? 'summary' : 'chat');
+  const startInManualEntry = Boolean(initialManualEntry) && !hasInitialSummary;
+  const [phase, setPhase] = useState(hasInitialSummary || startInManualEntry ? 'summary' : 'chat');
   const [messages, setMessages] = useState(initialMessages);
   const [careerGoals, setCareerGoals] = useState(initialCareerGoals);
   const [priorities, setPriorities] = useState(initialPriorities);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat);
-  const [userEdited, setUserEdited] = useState(false);
-  const [summaryEditing, setSummaryEditing] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat || startInManualEntry);
+  const [userEdited, setUserEdited] = useState(Boolean(initialManualEntry));
+  const [manualEntry, setManualEntry] = useState(Boolean(initialManualEntry));
+  const [summaryEditing, setSummaryEditing] = useState(startInManualEntry);
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const messagesRef = useRef(messages);
   const bootstrapStartedRef = useRef(false);
   const requestNextRef = useRef(null);
@@ -313,6 +329,7 @@ const WorkingLifeAchievementCoaching = ({
     careerGoals,
     priorities,
     userEdited,
+    manualEntry,
   });
 
   const requestNext = useCallback(async (history) => {
@@ -370,7 +387,7 @@ const WorkingLifeAchievementCoaching = ({
       bootstrapStartedRef.current = false;
       setLoading(false);
     };
-  }, [bootstrapped, phase]);
+  }, [bootstrapped, phase, bootstrapNonce]);
 
   const handleSend = async () => {
     const answer = draft.trim();
@@ -391,6 +408,28 @@ const WorkingLifeAchievementCoaching = ({
     }
   };
 
+  const handleRetryCoaching = useCallback(() => {
+    setError('');
+    if (!bootstrapped && messagesRef.current.length === 0) {
+      bootstrapStartedRef.current = false;
+      setBootstrapNonce((n) => n + 1);
+    }
+  }, [bootstrapped]);
+
+  const handleEnterManually = useCallback(() => {
+    setError('');
+    setLoading(false);
+    setDraft('');
+    setMessages([]);
+    setCareerGoals([]);
+    setPriorities([]);
+    setUserEdited(true);
+    setManualEntry(true);
+    setSummaryEditing(true);
+    setBootstrapped(true);
+    setPhase('summary');
+  }, []);
+
   const handleConfirmSummary = useCallback(() => {
     const cleanedGoals = careerGoals.map((item) => String(item || '').trim()).filter(Boolean);
     const cleanedPriorities = priorities.map((item) => String(item || '').trim()).filter(Boolean);
@@ -408,8 +447,10 @@ const WorkingLifeAchievementCoaching = ({
     setDraft('');
     setError('');
     setUserEdited(false);
+    setManualEntry(false);
     setSummaryEditing(false);
     setBootstrapped(false);
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -449,11 +490,14 @@ const WorkingLifeAchievementCoaching = ({
         }}
         onUserEdited={() => setUserEdited(true)}
         onEditingChange={setSummaryEditing}
-        introText={t('workingLifeAchievementCoaching.summary.intro')}
+        introText={manualEntry
+          ? t('coachingFallback.manualIntro')
+          : t('workingLifeAchievementCoaching.summary.intro')}
         showConfirm={!confirmInFooter}
         confirmCta={t('workingLifeAchievementCoaching.summary.confirmCta')}
         onConfirm={handleConfirmSummary}
         onRestartChat={handleRestartChat}
+        initialEditing={manualEntry && careerGoals.length === 0 && priorities.length === 0}
       />
     );
   }
@@ -463,11 +507,13 @@ const WorkingLifeAchievementCoaching = ({
       ...coachingChatRootSx,
       ...(layout === 'page' ? coachingChatPageRootSx : coachingChatDialogRootSx),
     }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <CoachingChatFailureAlert
+        error={error}
+        loading={loading}
+        onDismiss={() => setError('')}
+        onRetry={!bootstrapped ? handleRetryCoaching : undefined}
+        onEnterManually={handleEnterManually}
+      />
       <Box ref={messagesScrollRef} sx={messagesScrollSx}>
         {messages.length === 0 && loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

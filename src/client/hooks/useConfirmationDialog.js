@@ -8,6 +8,7 @@ const useConfirmationDialog = () => {
     confirmText: 'Confirm',
     cancelText: 'Cancel',
     severity: 'warning',
+    hideCancel: false,
     loading: false,
     onConfirm: null,
     onCancel: null
@@ -21,6 +22,7 @@ const useConfirmationDialog = () => {
       confirmText: config.confirmText || 'Confirm',
       cancelText: config.cancelText || 'Cancel',
       severity: config.severity || 'warning',
+      hideCancel: Boolean(config.hideCancel),
       loading: false,
       onConfirm: config.onConfirm || null,
       onCancel: config.onCancel || null

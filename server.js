@@ -172,6 +172,14 @@ const profileRoutes = require('./src/server/routes/profile');
 app.use('/api/profile', profileRoutes);
 console.log('Profile routes mounted at /api/profile');
 
+const careerPuzzleRoutes = require('./src/server/routes/careerPuzzle');
+app.use('/api/career-puzzle', careerPuzzleRoutes);
+console.log('Career puzzle routes mounted at /api/career-puzzle');
+
+const careerIdentityRoutes = require('./src/server/routes/careerIdentity');
+app.use('/api/career-identity', careerIdentityRoutes);
+console.log('Career identity routes mounted at /api/career-identity');
+
 const documentRoutes = require('./src/server/routes/documents');
 if (isProduction) {
   app.use('/api/documents', createDocumentRouteIpLimiter(), documentRoutes);
@@ -250,6 +258,28 @@ process.on('unhandledRejection', (reason, _promise) => {
 // Start server
 const server = app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
+
+  setImmediate(() => {
+    try {
+      const {
+        registerIdentityPipelineHandlers,
+      } = require('./src/server/services/careerIdentity/pipeline/registerIdentityPipelineHandlers');
+      registerIdentityPipelineHandlers();
+    } catch (err) {
+      logger.warn('Identity exploration pipeline handlers not registered', {
+        message: err.message,
+      });
+    }
+
+    try {
+      const { warmTraitEmbeddingsCache } = require('./src/server/services/careerIdentity/traitEmbeddingsStore');
+      if (warmTraitEmbeddingsCache()) {
+        logger.info('Identity trait embeddings preloaded');
+      }
+    } catch (err) {
+      logger.warn('Identity trait embeddings preload skipped', { message: err.message });
+    }
+  });
 });
 
 server.on('error', (err) => {

@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import {
   Card,
   CardContent,
@@ -6,14 +5,9 @@ import {
   Box,
   Button,
   Tooltip,
-  Snackbar,
-  Alert,
-  CircularProgress,
 } from '@mui/material';
 import {
   ArrowForward as ArrowForwardIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -25,9 +19,6 @@ const CareerStepCardWithReplacement = ({
   step,
   category,
   simulationId,
-  onSave,
-  isStepSaved,
-  savingStep,
   showReplacementCounter = true,
   remainingAlternatives = 0,
   guardedNavigate = null,
@@ -38,19 +29,10 @@ const CareerStepCardWithReplacement = ({
   const displayTitle = getRoleTitleForLocale(step?.title, uiLang);
   const displayDescription = localizedContentService.getLocalizedWithFallback(step?.description, uiLang, '');
 
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const isReplacement = Boolean(step.isReplacement);
 
-  /** Full-width cells in the action grid; filled primary (`contained`) for More / Save / Saved. */
+  /** Full-width cells in the action grid. */
   const CARD_ACTION_BTN_SX = { width: '100%' };
-  /** Darker brand green when role is already saved (next-steps / default categories). */
-  const SAVE_BTN_SAVED_SX = {
-    bgcolor: 'primary.dark',
-    '&:hover': {
-      bgcolor: 'primary.dark',
-      filter: 'brightness(1.08)',
-    },
-  };
 
   const isOotb = category === 'outsideTheBox';
   const OOTB_ACTION_BTN_SX = {
@@ -58,26 +40,16 @@ const CareerStepCardWithReplacement = ({
     color: 'var(--color-ootb-action-contrast)',
     '&:hover': { bgcolor: 'var(--color-ootb-action-hover)' },
   };
-  const OOTB_SAVE_SAVED_SX = {
-    bgcolor: 'var(--color-ootb-action-saved)',
-    '&:hover': { bgcolor: 'var(--color-ootb-action-saved-hover)' },
-  };
-
   const moreTooltip = t('simulation.evaluationFlow.tooltips.moreDetails');
-  const saveTooltip = isStepSaved
-    ? t('simulation.evaluationFlow.tooltips.savedRemove')
-    : t('simulation.evaluationFlow.tooltips.saveToSavedList');
 
   const getDetailRoute = (context, stepId, simulationId) => {
     switch (context) {
-      case 'saved-steps':
-        return `/saved-career-step/${encodeURIComponent(stepId)}`;
       case 'simulation':
         return `/simulation/result/${encodeURIComponent(stepId)}`;
       case 'saved-simulation':
         return `/saved-simulation/${simulationId}/career-step/${encodeURIComponent(stepId)}`;
       default:
-        return `/saved-career-step/${encodeURIComponent(stepId)}`;
+        return `/simulation/result/${encodeURIComponent(stepId)}`;
     }
   };
 
@@ -90,10 +62,7 @@ const CareerStepCardWithReplacement = ({
     if (path.includes('/simulation') && (!simulationId || simulationId === 'local')) {
       return 'simulation';
     }
-    if (path.includes('/saved-steps')) {
-      return 'saved-steps';
-    }
-    return 'saved-steps';
+    return 'simulation';
   };
 
   const handleMore = () => {
@@ -105,18 +74,6 @@ const CareerStepCardWithReplacement = ({
 
     const navigateFunction = guardedNavigate || navigate;
     navigateFunction(route);
-  };
-
-  const handleSave = async () => {
-    try {
-      await onSave();
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: 'Failed to save career step',
-        severity: 'error'
-      });
-    }
   };
 
   const getBorderColor = () => {
@@ -216,9 +173,7 @@ const CareerStepCardWithReplacement = ({
             className="career-step-actions"
             sx={{
               pt: 1,
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 1,
+              display: 'flex',
               width: '100%',
               alignItems: 'stretch'
             }}
@@ -239,75 +194,10 @@ const CareerStepCardWithReplacement = ({
                 </Button>
               </span>
             </Tooltip>
-
-            {!savingStep ? (
-              <Tooltip title={saveTooltip} arrow>
-                <span>
-                  <Button
-                    aria-label={saveTooltip}
-                    variant="contained"
-                    color={isOotb ? 'inherit' : 'primary'}
-                    size="small"
-                    startIcon={
-                      isStepSaved ? (
-                        <StarIcon sx={{ fontSize: '1rem' }} />
-                      ) : (
-                        <StarBorderIcon sx={{ fontSize: '1rem' }} />
-                      )
-                    }
-                    onClick={handleSave}
-                    className="career-step-action-button"
-                    sx={{
-                      ...CARD_ACTION_BTN_SX,
-                      ...(isOotb
-                        ? { ...OOTB_ACTION_BTN_SX, ...(isStepSaved ? OOTB_SAVE_SAVED_SX : {}) }
-                        : isStepSaved
-                          ? SAVE_BTN_SAVED_SX
-                          : {}),
-                    }}
-                  >
-                    {isStepSaved
-                      ? t('simulation.evaluationFlow.actions.saved')
-                      : t('simulation.evaluationFlow.actions.save')}
-                  </Button>
-                </span>
-              </Tooltip>
-            ) : (
-              <Tooltip title={saveTooltip} arrow>
-                <span>
-                  <Button
-                    aria-label={saveTooltip}
-                    variant="contained"
-                    color={isOotb ? 'inherit' : 'primary'}
-                    size="small"
-                    disabled
-                    startIcon={<CircularProgress size={14} color="inherit" />}
-                    className="career-step-action-button"
-                    sx={{ ...CARD_ACTION_BTN_SX, ...(isOotb ? OOTB_ACTION_BTN_SX : {}) }}
-                  >
-                    {t('simulation.evaluationFlow.actions.saving')}
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
           </Box>
         </CardContent>
       </Card>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </>
   );
 };

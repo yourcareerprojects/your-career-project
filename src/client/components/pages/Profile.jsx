@@ -41,6 +41,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { Save as SaveIcon, Cancel as CancelIcon } from '@mui/icons-material';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SeniorityForm from '../profile/SeniorityForm';
 import ProfileIdentityFieldEditor from '../profile/ProfileIdentityFieldEditor';
 import ProfileIdentityCoachingEditor from '../profile/ProfileIdentityCoachingEditor';
@@ -48,6 +49,7 @@ import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import ProfileDocumentList from '../profile/ProfileDocumentList';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import ProfileSnapTarget from '../profile/ProfileSnapTarget';
+import { PAGE_TITLE_SX } from '../common/PageHeader';
 import {
   buildReviewSaveUserMessage,
   saveExtractedProfileReview,
@@ -63,6 +65,7 @@ import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
 import { normalizeStructuredListItemLabel } from '../../../constants/structuredListItemLabel';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
 import { hasActiveCareerSimulationSession } from '../../utils/simulationPersistence';
+import { resolveCareerSimulationPath } from '../../hooks/useAppNavigation';
 import { queryClient } from '../../queryClient';
 import {
   seedProfileCompletionQueryData,
@@ -82,6 +85,7 @@ import {
   invalidateFullProfileQuery,
   invalidateProfileCompletionQuery
 } from '../../hooks/useProfileQueries';
+import { invalidateCareerIdentityQueries } from '../../hooks/useCareerIdentityQueries';
 import { CURRENT_EMPLOYMENT_STATUS_OPTIONS } from '../../../constants/currentEmploymentStatus';
 import { getProfileStructuredListMaxItems } from '../../../constants/profileReviewFieldLimits';
 import { normalizeIndustryDomains } from '../../../constants/industries';
@@ -108,6 +112,7 @@ import {
   PROFILE_DISPLAY_MODE,
   getWhoAreYouNarratives,
   hasIdentityNarrative,
+  isIdentityFieldNarrativeOutOfDate,
   parseIdentityFieldToBullets,
   parseIdentityFieldForEdit,
   formatIdentityFieldFromEdit,
@@ -121,6 +126,7 @@ import {
 function invalidateProfileCachesAfterMutation() {
   invalidateFullProfileQuery();
   invalidateProfileCompletionQuery();
+  invalidateCareerIdentityQueries({ watchExploration: true });
 }
 
 const PROFILE_CHIP_GAP = 1.25;
@@ -204,6 +210,10 @@ const Profile = ({
   }
   const [profile, setProfile] = useState(initialPageStateRef.current.profile);
   const [completion, setCompletion] = useState(initialPageStateRef.current.completion);
+  /** Incomplete profiles must use /profile/fill — no per-field edits on this page. */
+  const canEditProfileFields =
+    canEditProfile
+    && Number(completion?.overall || 0) >= MIN_PROFILE_COMPLETION_REQUIRED;
   const [loading, setLoading] = useState(initialPageStateRef.current.loading);
   const [error, setError] = useState(null);
   const [editSection, setEditSection] = useState(null);
@@ -231,6 +241,9 @@ const Profile = ({
   const [identityFieldCoachingActive, setIdentityFieldCoachingActive] = useState(false);
   const [identityCoachingRestartKey, setIdentityCoachingRestartKey] = useState(0);
   const [identityCoachingStructuredPatch, setIdentityCoachingStructuredPatch] = useState(null);
+  /** When true, the next identity save came from coaching/restart and should regenerate the AI summary. */
+  const [identitySaveShouldRegenerateNarrative, setIdentitySaveShouldRegenerateNarrative] = useState(false);
+  const [whoAreYouNarrativeRegenLoading, setWhoAreYouNarrativeRegenLoading] = useState(false);
   const [editStructuredCategory, setEditStructuredCategory] = useState(null);
   const [structuredCategoryDraft, setStructuredCategoryDraft] = useState([]);
   const [structuredInfoLoading, setStructuredInfoLoading] = useState(false);
@@ -280,11 +293,20 @@ const Profile = ({
       Number(completion?.overall || 0) >= MIN_PROFILE_COMPLETION_REQUIRED &&
       !hasSimulationSession
   });
-  const goToSimulationHref = useMemo(() => {
-    if (hasSimulationSession) return '/simulation/results';
-    if (lastSimulationQuery.isError || lastSimulationQuery.data == null) return '/simulation';
-    return lastSimulationQuery.data?.results ? '/simulation/results' : '/simulation';
-  }, [hasSimulationSession, lastSimulationQuery.data, lastSimulationQuery.isError]);
+  const goToSimulationHref = useMemo(
+    () =>
+      resolveCareerSimulationPath({
+        hasSimulationSession,
+        isAuthenticated: !!user,
+        queryEnabled:
+          !!user &&
+          !!completion &&
+          Number(completion?.overall || 0) >= MIN_PROFILE_COMPLETION_REQUIRED &&
+          !hasSimulationSession,
+        lastSimQuery: lastSimulationQuery,
+      }),
+    [hasSimulationSession, user, completion, lastSimulationQuery]
+  );
   const currentEmploymentStatusOptionsByValue = useMemo(
     () => Object.fromEntries(CURRENT_EMPLOYMENT_STATUS_OPTIONS.map((option) => [option.value, option.label])),
     []
@@ -334,6 +356,17 @@ const Profile = ({
   useEffect(() => {
     setSectionDisplayModes(readProfileSectionDisplayModes(profileOwnerId));
   }, [profileOwnerId]);
+
+  useEffect(() => {
+    if (canEditProfileFields) return;
+    setEditSection(null);
+    setEditCareerInputs(false);
+    setEditIdentityField(null);
+    setEditStructuredCategory(null);
+    setProfilePictureDialogOpen(false);
+    setProfileNameDialogOpen(false);
+    setDocumentReviewDocId(null);
+  }, [canEditProfileFields]);
 
   /** Confetti once after profile creation or full update (ProfileCreation navigate + session fallback). */
   useEffect(() => {
@@ -956,7 +989,7 @@ const Profile = ({
             key: 'verify-email',
             label: t('profilePagePrompts.verifyEmail.cta'),
             shortLabel: t('profilePagePrompts.verifyEmail.ctaShort'),
-            href: '/check-email',
+            to: '/check-email',
             variant: 'contained',
             startIcon: <ArrowForwardIcon />,
           },
@@ -967,7 +1000,7 @@ const Profile = ({
               key: 'complete-profile',
               label: t('profilePagePrompts.incomplete.cta'),
               shortLabel: t('profilePagePrompts.incomplete.ctaShort'),
-              href: '/profile/fill?mode=full-update',
+              to: '/profile/fill',
               variant: 'contained',
               startIcon: <ArrowForwardIcon />,
             },
@@ -977,7 +1010,7 @@ const Profile = ({
               key: 'full-profile-update',
               label: t('profilePagePrompts.fullUpdateCta'),
               shortLabel: t('profilePagePrompts.fullUpdateCtaShort'),
-              href: '/profile/fill?mode=full-update',
+              to: '/profile/fill?mode=full-update',
               variant: 'outlined',
               startIcon: <ArrowForwardIcon />,
             },
@@ -987,7 +1020,7 @@ const Profile = ({
                     key: 'go-to-simulation',
                     label: t('profilePagePrompts.goToSimulationCta'),
                     shortLabel: t('profilePagePrompts.goToSimulationCtaShort'),
-                    href: goToSimulationHref,
+                    to: goToSimulationHref,
                     variant: 'contained',
                     startIcon: <PuzzlePieceIcon />,
                     nudge: Number(completion?.overall || 0) >= 100,
@@ -1096,6 +1129,7 @@ const Profile = ({
   };
 
   const handleEditStructuredCategory = (arrayKey) => {
+    if (!canEditProfileFields) return;
     setStructuredInfoError(null);
     setStructuredCategoryDraft(getRawItems(structured[arrayKey]));
     setEditStructuredCategory(arrayKey);
@@ -1111,13 +1145,17 @@ const Profile = ({
     queueStructuredCategoryFocus(arrayKey);
   };
 
-  const handleSaveStructuredCategory = async () => {
+  const handleSaveStructuredCategory = async (draftOverride) => {
     if (!editStructuredCategory) return;
+    const draftToSave = draftOverride !== undefined ? draftOverride : structuredCategoryDraft;
+    if (draftOverride !== undefined) {
+      setStructuredCategoryDraft(draftOverride);
+    }
     setStructuredInfoLoading(true);
     setStructuredInfoError(null);
     try {
       const payload = buildStructuredUserInfoPayload(structured, {
-        [editStructuredCategory]: structuredCategoryDraft,
+        [editStructuredCategory]: draftToSave,
       });
       const res = await axios.put(`/api/profile/structured-user-info?${getProfileApiLangQuery()}`, payload);
       setProfile((prev) => {
@@ -1175,6 +1213,7 @@ const Profile = ({
   };
 
   const handleStartEditProfileName = () => {
+    if (!canEditProfileFields) return;
     setProfileNameError(null);
     setProfileNameDraft(profileDisplayName);
     setProfileNameDialogOpen(true);
@@ -1235,19 +1274,18 @@ const Profile = ({
           ...(prev.profile.userIdentityAnswers || {}),
           ...savedIdentityAnswers,
         },
-        who_are_you: res.data?.who_are_you ?? {
-          ...(prev.profile.who_are_you || {}),
-          raw_answers: USER_IDENTITY_FIELDS.map(({ key }) => savedIdentityAnswers[key]),
-        },
+        who_are_you: res.data?.who_are_you ?? prev.profile.who_are_you,
         careerSimulationInputs: res.data?.careerSimulationInputs ?? prev.profile.careerSimulationInputs,
       },
     }));
   };
 
   const handleEditIdentityField = (fieldKey) => {
+    if (!canEditProfileFields) return;
     setIdentityFieldError(null);
     setIdentityFieldCoachingActive(false);
     setIdentityCoachingStructuredPatch(null);
+    setIdentitySaveShouldRegenerateNarrative(false);
     setIdentityFieldDraft(parseIdentityFieldForEdit(fieldKey, userIdentityAnswers[fieldKey]));
     setEditIdentityField(fieldKey);
     queueIdentityFieldFocus(fieldKey);
@@ -1273,6 +1311,7 @@ const Profile = ({
     if (!editIdentityField) return;
     setIdentityFieldDraft(parseIdentityFieldForEdit(editIdentityField, formattedText));
     setIdentityCoachingStructuredPatch(structuredPatch);
+    setIdentitySaveShouldRegenerateNarrative(true);
     setIdentityFieldCoachingActive(false);
     setIdentityFieldError(null);
     queueIdentityFieldFocus(editIdentityField);
@@ -1285,6 +1324,7 @@ const Profile = ({
     setIdentityFieldError(null);
     setIdentityFieldCoachingActive(false);
     setIdentityCoachingStructuredPatch(null);
+    setIdentitySaveShouldRegenerateNarrative(false);
     queueIdentityFieldFocus(fieldKey);
   };
 
@@ -1304,6 +1344,9 @@ const Profile = ({
     setIdentityFieldError(null);
     try {
       const payload = buildUserIdentitySavePayload({ [editIdentityField]: formatted });
+      if (identitySaveShouldRegenerateNarrative) {
+        payload.forceRegenerateWhoAreYouField = editIdentityField;
+      }
       const res = await axios.put(`/api/profile/user-identity?${getProfileApiLangQuery()}`, payload);
       const savedIdentityAnswers = USER_IDENTITY_FIELDS.reduce((acc, { key }) => {
         acc[key] = payload[key];
@@ -1341,6 +1384,7 @@ const Profile = ({
       setEditIdentityField(null);
       setIdentityFieldDraft(null);
       setIdentityFieldCoachingActive(false);
+      setIdentitySaveShouldRegenerateNarrative(false);
       queueIdentityFieldFocus(savedField);
       scheduleNarrativeRefreshAfterSectionSave(narrativesReady, narrativePending);
     } catch (err) {
@@ -1353,7 +1397,37 @@ const Profile = ({
     }
   };
 
+  const handleRegenerateWhoAreYouNarrative = async (fieldKey) => {
+    if (!canEditProfileFields || !fieldKey || whoAreYouNarrativeRegenLoading || identityFieldLoading) return;
+    setWhoAreYouNarrativeRegenLoading(true);
+    setIdentityFieldError(null);
+    try {
+      const payload = {
+        ...buildUserIdentitySavePayload(),
+        forceRegenerateWhoAreYouField: fieldKey,
+      };
+      const res = await axios.put(`/api/profile/user-identity?${getProfileApiLangQuery()}`, payload);
+      const savedIdentityAnswers = USER_IDENTITY_FIELDS.reduce((acc, { key }) => {
+        acc[key] = payload[key];
+        return acc;
+      }, {});
+      applyUserIdentitySaveResult(savedIdentityAnswers, res);
+      invalidateProfileCachesAfterMutation();
+      scheduleNarrativeRefreshAfterSectionSave(
+        res.data?.narrativesReady,
+        res.data?.narrativePending
+      );
+    } catch (err) {
+      const responseData = err.response?.data;
+      const msg = responseData?.message || responseData?.error || t('profilePage.errors.saveChangesFailed');
+      setIdentityFieldError(typeof msg === 'string' ? msg : t('profilePage.errors.saveChangesFailed'));
+    } finally {
+      setWhoAreYouNarrativeRegenLoading(false);
+    }
+  };
+
   const handleEditSeniority = () => {
+    if (!canEditProfileFields) return;
     setEditSection('seniority');
     setFormError(null);
     setEditFormData({
@@ -1411,6 +1485,7 @@ const Profile = ({
 
   // Handler for editing career simulation inputs (only fields used for user vectors)
   const handleEditCareerInputs = () => {
+    if (!canEditProfileFields) return;
     setCareerInputsError(null);
     const raw = { ...(profile?.profile?.careerSimulationInputs || {}) };
     const structuredUserInfo = {
@@ -1983,6 +2058,9 @@ const Profile = ({
     const helper = section.helperKey ? t(section.helperKey) : '';
     const draft = structuredCategoryDraft;
     const maxItems = section.maxItems;
+    const handleDialogSave = (nextValues) => {
+      void handleSaveStructuredCategory(nextValues);
+    };
 
     switch (section.editorType) {
       case 'skillDomains':
@@ -1993,6 +2071,9 @@ const Profile = ({
               onChange={setStructuredCategoryDraft}
               maxItems={maxItems}
               recommendationContextTexts={skillDomainRecommendationContext}
+              defaultDialogOpen
+              onDialogSave={handleDialogSave}
+              onDialogCancel={handleCancelStructuredCategory}
             />
             {draft.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 1 }}>
@@ -2012,6 +2093,11 @@ const Profile = ({
               lang={currentLang}
               placeholder={addLabel}
               maxItems={maxItems}
+              defaultDialogOpen
+              onDialogSave={(nextDomains) => {
+                handleDialogSave(normalizeIndustryDomains(nextDomains, { keepUnknown: true }));
+              }}
+              onDialogCancel={handleCancelStructuredCategory}
             />
             {draft.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 1 }}>
@@ -2029,6 +2115,9 @@ const Profile = ({
               helperText={helper}
               maxItems={maxItems}
               recommendationContextTexts={skillSelectionRecommendationContext}
+              defaultDialogOpen
+              onDialogSave={handleDialogSave}
+              onDialogCancel={handleCancelStructuredCategory}
             />
             {draft.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 1 }}>
@@ -2048,6 +2137,9 @@ const Profile = ({
               recommendationContextTexts={skillSelectionRecommendationContext}
               excludeLabels={excludedSkillLabelsForLearning}
               translationKeyPrefix="skillsToLearnSelection"
+              defaultDialogOpen
+              onDialogSave={handleDialogSave}
+              onDialogCancel={handleCancelStructuredCategory}
             />
             {draft.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 1 }}>
@@ -2122,7 +2214,7 @@ const Profile = ({
       {/* Prompt to complete profile if below threshold */}
       {!canEditProfile ? (
         <ProfileSnapTarget snap>
-          <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
+          <Typography variant="h4" component="h1" sx={PAGE_TITLE_SX}>
             {t('profilePagePrompts.verifyEmail.title')}
           </Typography>
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
@@ -2132,7 +2224,7 @@ const Profile = ({
         </ProfileSnapTarget>
       ) : completion && completion.overall < MIN_PROFILE_COMPLETION_REQUIRED ? (
         <ProfileSnapTarget snap>
-          <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, textAlign: 'center' }}>
+          <Typography variant="h4" component="h1" sx={PAGE_TITLE_SX}>
             {t('profilePagePrompts.incomplete.title')}
           </Typography>
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
@@ -2184,7 +2276,7 @@ const Profile = ({
                     : t('profilePage.photo.add')
                 }
               >
-                {canEditProfile ? (
+                {canEditProfileFields ? (
                 <IconButton
                   size="small"
                   onClick={() => setProfilePictureDialogOpen(true)}
@@ -2217,7 +2309,7 @@ const Profile = ({
                   {profileDisplayName || t('profilePage.nameEditor.placeholderName')}
                 </Typography>
                 <Tooltip title={t('profilePage.nameEditor.editCta')}>
-                  {canEditProfile ? (
+                  {canEditProfileFields ? (
                   <IconButton
                     size="small"
                     onClick={handleStartEditProfileName}
@@ -2254,6 +2346,11 @@ const Profile = ({
             {t('profilePage.sections.identity')}
           </Typography>
         </ProfileSnapTarget>
+        {identityFieldError && !editIdentityField ? (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {identityFieldError}
+          </Alert>
+        ) : null}
         {USER_IDENTITY_FIELDS.map(({ key, questionKey }, idx) => {
           const isEditing = editIdentityField === key;
           const isAnotherFieldEditing = editIdentityField && !isEditing;
@@ -2261,8 +2358,17 @@ const Profile = ({
           const bulletItems = parseIdentityFieldToBullets(key, userIdentityAnswers[key]);
           const hasAnswer = bulletItems.length > 0;
           const narrativeReady = hasIdentityNarrative(whoAreYouNarratives, idx);
-          const narrativePending = pendingNarrativeFields.includes('who_are_you') && hasAnswer && !narrativeReady;
+          const narrativePending = (
+            pendingNarrativeFields.includes('who_are_you')
+            || whoAreYouNarrativeRegenLoading
+          ) && hasAnswer && !narrativeReady;
           const narrativeAvailable = narrativeReady || narrativePending;
+          const narrativeOutOfDate = isIdentityFieldNarrativeOutOfDate(
+            key,
+            userIdentityAnswers,
+            p?.who_are_you,
+            USER_IDENTITY_FIELDS
+          );
           const displayMode = resolveSectionDisplayMode(
             sectionDisplayModes,
             sectionKey,
@@ -2403,29 +2509,49 @@ const Profile = ({
                         />
                       )}
                       narrativeContent={(
-                        <Typography variant="body1" component="div">
-                          {narrativePending ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5 }}>
-                              <CircularProgress size={20} />
-                              <Box component="span" sx={{ color: 'text.secondary' }}>
-                                {t('profilePage.displayMode.narrativeLoading')}
+                        <Box>
+                          <Typography variant="body1" component="div">
+                            {narrativePending ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5 }}>
+                                <CircularProgress size={20} />
+                                <Box component="span" sx={{ color: 'text.secondary' }}>
+                                  {t('profilePage.displayMode.narrativeLoading')}
+                                </Box>
                               </Box>
-                            </Box>
-                          ) : narrativeText || (
-                            <Box component="span" sx={{ fontStyle: 'italic' }}>
-                              {t('profilePage.notProvided')}
-                            </Box>
-                          )}
-                        </Typography>
+                            ) : narrativeText || (
+                              <Box component="span" sx={{ fontStyle: 'italic' }}>
+                                {t('profilePage.notProvided')}
+                              </Box>
+                            )}
+                          </Typography>
+                          {canEditProfileFields && narrativeReady && !narrativePending ? (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<AutoAwesomeIcon />}
+                              onClick={() => handleRegenerateWhoAreYouNarrative(key)}
+                              disabled={
+                                !narrativeOutOfDate
+                                || whoAreYouNarrativeRegenLoading
+                                || identityFieldLoading
+                                || Boolean(editIdentityField)
+                                || Boolean(editStructuredCategory)
+                              }
+                              sx={{ mt: 1.5 }}
+                            >
+                              {t('profilePage.actions.regenerateAiSummary')}
+                            </Button>
+                          ) : null}
+                        </Box>
                       )}
                     />
-                    {canEditProfile && (
+                    {canEditProfileFields && (
                       <Button
                         variant="outlined"
                         size="small"
                         startIcon={<EditIcon />}
                         onClick={() => handleEditIdentityField(key)}
-                        disabled={Boolean(isAnotherFieldEditing) || identityFieldLoading || Boolean(editStructuredCategory)}
+                        disabled={Boolean(isAnotherFieldEditing) || identityFieldLoading || Boolean(editStructuredCategory) || whoAreYouNarrativeRegenLoading}
                         sx={{ mt: 1 }}
                       >
                         {t('profilePage.actions.edit')}
@@ -2451,6 +2577,8 @@ const Profile = ({
         {STRUCTURED_GOOD_AT_SECTIONS.map((section, sectionIdx) => {
           const isEditing = editStructuredCategory === section.arrayKey;
           const isAnotherCategoryEditing = editStructuredCategory && !isEditing;
+          const usesDialogEditor = section.editorType !== 'textList';
+          const showInlineEditActions = !usesDialogEditor || Boolean(structuredInfoError);
           return (
             <ProfileSnapTarget key={section.uiKey} snap={sectionIdx > 0}>
               <Box
@@ -2473,44 +2601,48 @@ const Profile = ({
                         {structuredInfoError}
                       </Alert>
                     )}
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                      {t('profilePage.structuredInfo.maxEntriesPerCategory', { max: section.maxItems })}
-                    </Typography>
+                    {!usesDialogEditor ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                        {t('profilePage.structuredInfo.maxEntriesPerCategory', { max: section.maxItems })}
+                      </Typography>
+                    ) : null}
                     {renderStructuredCategoryEditor(section)}
-                    <Box
-                      sx={{
-                        mt: 1.5,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 1,
-                      }}
-                    >
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<SaveIcon />}
-                        onClick={handleSaveStructuredCategory}
-                        disabled={structuredInfoLoading}
+                    {showInlineEditActions ? (
+                      <Box
+                        sx={{
+                          mt: 1.5,
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
                       >
-                        {t('profilePage.actions.save')}
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        startIcon={<CancelIcon />}
-                        onClick={handleCancelStructuredCategory}
-                        disabled={structuredInfoLoading}
-                      >
-                        {t('profilePage.actions.cancel')}
-                      </Button>
-                    </Box>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<SaveIcon />}
+                          onClick={() => handleSaveStructuredCategory()}
+                          disabled={structuredInfoLoading}
+                        >
+                          {t('profilePage.actions.save')}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<CancelIcon />}
+                          onClick={handleCancelStructuredCategory}
+                          disabled={structuredInfoLoading}
+                        >
+                          {t('profilePage.actions.cancel')}
+                        </Button>
+                      </Box>
+                    ) : null}
                   </>
                 ) : (
                   <>
                     {renderStructuredCategoryDisplay(section)}
-                    {canEditProfile && (
+                    {canEditProfileFields && (
                       <Button
                         variant="outlined"
                         size="small"
@@ -2561,7 +2693,7 @@ const Profile = ({
                 )}
               </React.Fragment>
             ))}
-            {canEditProfile && (
+            {canEditProfileFields && (
             <Button
               variant="outlined"
               size="small"
@@ -2589,7 +2721,7 @@ const Profile = ({
               <br />
               <strong>{t('profilePage.careerInputs.tipLabel')}</strong> {t('profilePage.careerInputs.tipDescription')}
             </Typography>
-            {!editCareerInputs && canEditProfile && (
+            {!editCareerInputs && canEditProfileFields && (
               <Box sx={{ display: 'flex', gap: 1, mt: 1, mb: 2 }}>
                 <Button
                   variant="outlined"
@@ -2924,8 +3056,8 @@ const Profile = ({
         <ProfileDocumentList
           documents={documents ? documents.map((doc) => ({ ...doc, id: doc.id || doc._id })) : []}
           onDocumentsUpdate={handleDocumentsUpdate}
-          disabled={!canEditProfile || loading || savingCvReview}
-          onOpenReview={canEditProfile ? (docId) => setDocumentReviewDocId(String(docId)) : undefined}
+          disabled={!canEditProfileFields || loading || savingCvReview}
+          onOpenReview={canEditProfileFields ? (docId) => setDocumentReviewDocId(String(docId)) : undefined}
         />
       </Paper>
 

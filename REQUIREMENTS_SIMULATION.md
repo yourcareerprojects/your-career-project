@@ -135,11 +135,7 @@ Per path, store: `hybridScoreNextRole`, `hybridCosineNextRole`, `hybridScoreOutO
 
 **Exploration defaults (`roleMatchingScorer.js`):** `EXPLORATION_IDENTITY_THRESHOLD=0.50`, `EXPLORATION_STRUCTURE_UPPER_BOUND=0.75`, `EXPLORATION_STRUCTURE_LOWER_BOUND=0.40`.
 
-### 3.3 Duplicate save (library)
-
-`duplicateDetection.js` on **`POST /api/profile/saved-career-steps`**: exact `stepId`, content heuristics, semantic match threshold **0.8** → **409** with clear client messaging.
-
-### 3.4 Algorithm modules
+### 3.3 Algorithm modules
 
 | Purpose | Path |
 |---------|------|
@@ -205,8 +201,6 @@ results: {
 | `POST` | `/simulation/:simulationId/replace-career-step/:stepId` | **Legacy** — replace step (no current client UI) |
 | `DELETE` | `/simulation-results/:simulationId/career-steps/:stepId` | **Legacy** — remove step + list replacement (no current client UI) |
 
-**Save step library:** `POST` / `DELETE` **`/api/profile/saved-career-steps`** (not in table above). No `simulation.interactions[]` or `POST .../interactions`.
-
 ---
 
 ## 6. Role evaluation & card actions
@@ -232,7 +226,7 @@ results: {
 - Stored on each role in `evaluationFlow.{nextSteps|outsideTheBox}`.
 - User may change a rating until the ranked view is opened (re-click toggles selection state on the card).
 - **Persistence:** updates `results.evaluationFlow` in React state; unsaved runs → session persistence; saved runs → **`PUT /api/profile/simulation-results/:simulationId`** with full `results`. Sets **`simulationState === 'modified'`**.
-- Distinct from **Save to library** (star) and from legacy server **remove/replace** endpoints (§6.7).
+- Distinct from the legacy server **remove/replace** endpoints (§6.6).
 
 ### 6.3 Evaluation phase (`phases.* === 'eval'`)
 
@@ -248,68 +242,55 @@ results: {
 - UI: grouped columns (keep / skip / dislike) with drag-and-drop reorder (`@dnd-kit`); order stored via `handleReorderRankedRoles` / `buildRankedRowsFromOrderedRoles`.
 - **Edit ratings** returns the category to `eval` without clearing existing `userEvaluation` values.
 
-### 6.5 More & Save (library)
+### 6.5 More
 
 | Action | Behavior |
 |--------|----------|
 | **More** | Writes `currentStepDetails` to sessionStorage → detail route (`/simulation/result/:stepId` or saved-simulation variant) |
-| **Save / Saved** | Toggle **`POST` / `DELETE` `/api/profile/saved-career-steps`**; independent of `userEvaluation` |
 
-Duplicate library save → **409** (§3.3). Tooltips and labels: dashboard i18n `simulation.evaluationFlow.tooltips.*` / `actions.*`.
+Tooltips and labels: dashboard i18n `simulation.evaluationFlow.tooltips.*` / `actions.*`.
 
-### 6.6 Saved career steps list
-
-`SavedCareerSteps.jsx` uses the same **Keep / Skip / Dislike** row plus **More** + **Saved** (unsave); evaluations persist on the saved-step document where implemented.
-
-### 6.7 Legacy remove/replace (server only)
+### 6.6 Legacy remove/replace (server only)
 
 `DELETE .../simulation-results/:simulationId/career-steps/:stepId` and `POST .../replace-career-step/:stepId` remain in `profile.js` but have **no wired client UI**. Edit saved simulations via evaluation changes + **Save Changes** (`PUT`).
 
 ### 6.8 Card action layout (visual)
 
-Visual and layout reference for action buttons on career-step **cards** (not detail pages — see [REQUIREMENTS_CAREER_STEP.md](./REQUIREMENTS_CAREER_STEP.md)). There is no single shared `ACTION_BUTTON_SX` constant — each surface defines local `sx` (typically `width: '100%'` in grid cells).
+Visual and layout reference for action buttons on simulation role **cards**. There is no single shared `ACTION_BUTTON_SX` constant — each surface defines local `sx` (typically `width: '100%'` in grid cells).
 
 #### 6.8.1 Surfaces
 
 | Surface | Component | Actions |
 |---------|-----------|---------|
-| **Simulation run** (`Simulation.jsx`) | `SimulationCategoryEvaluation.jsx` → `RoleEvaluationCard` | **Keep / Skip / Dislike** (3-col), then **More** + **Save / Saved** (2-col) |
+| **Simulation run** (`Simulation.jsx`) | `SimulationCategoryEvaluation.jsx` → `RoleEvaluationCard` | **Keep / Skip / Dislike** (3-col), then **More** (single action row as implemented) |
 | **Saved simulation** (with `evaluationFlow`) | Same as above | Same |
-| **Saved simulation** (legacy, no `evaluationFlow`) | `CareerStepCardWithReplacement.jsx` | **More**, **Save / Saved** only |
-| **Saved career steps** (`SavedCareerSteps.jsx`) | Inline card layout | **Keep / Skip / Dislike** (3-col), then **More** + **Saved** (unsave) |
+| **Saved simulation** (legacy, no `evaluationFlow`) | `CareerStepCardWithReplacement.jsx` | **More** only |
 
 #### 6.8.2 Simulation evaluation (`SimulationCategoryEvaluation.jsx`)
 
 - Category sections: `nextSteps`, `outsideTheBox`, `furtherAdvice`
-- **Outside-the-box** More/Save use CSS tokens `--color-ootb-action` / `--color-ootb-action-saved`
-- **Next steps** Save uses `primary` / `primary.dark` when saved
+- **Outside-the-box** actions use the `--color-ootb-action` token family where present
 - Evaluation buttons: `variant` toggles outlined ↔ contained; `size="small"`; black border on eval row where styled
 - Local constants: `ACTION_BUTTON_SX`, `OOTB_ACTION_BUTTON_SX`, `EVAL_BUTTON_BORDER_SX` in file
 
 #### 6.8.3 Card grid (`CareerStepCardWithReplacement.jsx`)
 
 ```jsx
-// 2-column grid — More | Save/Saved
-gridTemplateColumns: '1fr 1fr', gap: 1
+// action grid for role cards
+gridTemplateColumns: '1fr', gap: 1
 ```
 
 - `variant="contained"`, `size="small"`, `startIcon` (not `endIcon`)
 - `className="career-step-action-button"` on both buttons
-- `CARD_ACTION_BTN_SX = { width: '100%' }` plus category color overrides (`OOTB_ACTION_BTN_SX`, `SAVE_BTN_SAVED_SX`)
+- `CARD_ACTION_BTN_SX = { width: '100%' }` plus category color overrides where needed
 - Left border accent per category: `--color-primary` / `--color-warning` / `--color-success`
 
-#### 6.8.4 Saved career steps list (`SavedCareerSteps.jsx`)
-
-- **Evaluation row:** `gridTemplateColumns: '1fr 1fr 1fr'` — Keep (success), Skip (outlined + icon), Dislike (error)
-- **Action row:** same 2-column pattern as §6.8.3 — More + Saved (confirm → `DELETE` saved step)
-- `CAREER_STEP_ACTION_BTN_SX = { width: '100%' }`, `CAREER_STEP_SAVED_BTN_SX` for saved-state color
-
-#### 6.8.5 When changing buttons
+#### 6.8.4 When changing buttons
 
 1. Match the grid pattern and `size="small"` of the surface you are editing  
 2. Keep full-width cells (`width: '100%'`) inside CSS grid  
 3. Preserve tooltips + `aria-label` aligned with dashboard i18n keys  
-4. For simulation evaluation, update **`SimulationCategoryEvaluation.jsx`** and **`SavedCareerSteps.jsx`** eval row together if UX should stay aligned
+4. For simulation evaluation, keep desktop/mobile interaction patterns aligned across ranking surfaces
 
 ---
 

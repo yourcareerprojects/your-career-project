@@ -7,21 +7,15 @@ const INDUSTRY_SECTOR_GROUPS = [
     key: 'healthLife',
     ids: [
       'healthcare',
-      'medtech',
-      'life_sciences',
-      'biophysics',
-      'biology',
+      'animals_veterinary',
       'pharmaceuticals',
     ],
   },
   {
     key: 'sciences',
     ids: [
-      'physics',
-      'chemistry_science',
+      'natural_sciences',
       'environmental_science',
-      'earth_sciences',
-      'mathematics',
     ],
   },
   {
@@ -30,13 +24,13 @@ const INDUSTRY_SECTOR_GROUPS = [
       'software',
       'artificial_intelligence',
       'telecommunications',
-      'ecommerce',
     ],
   },
   {
     key: 'financeBusiness',
     ids: [
       'finance',
+      'economy',
       'insurance',
       'legal_services',
       'real_estate',
@@ -46,7 +40,6 @@ const INDUSTRY_SECTOR_GROUPS = [
     key: 'industryManufacturing',
     ids: [
       'manufacturing',
-      'chemicals',
       'mining_metals',
       'energy',
       'sustainability',
@@ -57,15 +50,11 @@ const INDUSTRY_SECTOR_GROUPS = [
     ids: [
       'construction',
       'architecture',
-      'urban_planning',
       'skilled_trades',
       'electrical_trades',
       'plumbing_hvac',
       'metalworking',
       'woodworking_carpentry',
-      'painting_finishing',
-      'roofing_building_envelope',
-      'automotive_trades',
       'cleaning_facility_services',
     ],
   },
@@ -82,7 +71,6 @@ const INDUSTRY_SECTOR_GROUPS = [
     ids: [
       'agriculture',
       'food_beverage',
-      'food_trades',
       'gardening_landscaping',
     ],
   },
@@ -90,6 +78,7 @@ const INDUSTRY_SECTOR_GROUPS = [
     key: 'retailHospitality',
     ids: [
       'retail',
+      'ecommerce',
       'hospitality',
       'tourism_travel',
       'fashion_apparel',
@@ -100,6 +89,7 @@ const INDUSTRY_SECTOR_GROUPS = [
     key: 'mediaCulture',
     ids: [
       'media_entertainment',
+      'marketing',
       'culture',
       'sports',
     ],
@@ -108,6 +98,7 @@ const INDUSTRY_SECTOR_GROUPS = [
     key: 'educationSocial',
     ids: [
       'education',
+      'social_language_sciences',
       'social_work',
       'nonprofit',
     ],

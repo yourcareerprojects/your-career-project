@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { clearAppQueryCache } from '../hooks/useProfileQueries';
+import { clearAppQueryCache, lastSimulationQueryKey, fetchLastSimulation, baseUILanguage } from '../hooks/useProfileQueries';
+import { queryClient } from '../queryClient';
 import { clearSimulationSessionForAuthChange } from '../utils/simulationPersistence';
 
 const AuthContext = createContext(null);
@@ -75,12 +76,24 @@ export const AuthProvider = ({ children }) => {
 
       setUser(user);
       setIsAuthenticated(true);
+      queryClient.prefetchQuery(
+        [...lastSimulationQueryKey, baseUILanguage()],
+        fetchLastSimulation
+      ).catch(() => {});
       return { success: true, user };
     } catch (error) {
       console.error('Login failed:', error);
+      const serverMessage = error.response?.data?.error || error.response?.data?.message;
+      const networkDown =
+        !error.response
+        && (error.code === 'ERR_NETWORK' || error.message === 'Network Error');
       return {
         success: false,
-        error: error.response?.data?.error || error.response?.data?.message || 'Login failed',
+        error:
+          serverMessage
+          || (networkDown
+            ? 'Server unavailable. Please wait a moment and try again.'
+            : 'Login failed'),
       };
     }
   };

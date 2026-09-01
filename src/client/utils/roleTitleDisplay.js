@@ -36,7 +36,7 @@ export function getRoleTitleForLocale(title, language = 'en') {
 }
 
 /**
- * English-normalized string for matching saved steps / evaluation keys (language-agnostic keys).
+ * English-normalized string for matching role titles and evaluation keys.
  * @param {unknown} value – title or other embedded i18n
  * @returns {string}
  */
@@ -50,4 +50,35 @@ export function getRoleTitleEnglishForMatch(value) {
  */
 export function normalizeTextForI18nMatch(str) {
   return getRoleTitleEnglishForMatch(str).toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function normalizeStringList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return Array.from(new Set(raw.map((s) => String(s || '').trim()).filter(Boolean)));
+}
+
+/**
+ * Localized alternative titles for role detail display (mirrors server localizedResponse).
+ * @param {object} [details]
+ * @param {string} [lang]
+ */
+export function getLocalizedAltTitles(details, lang = 'en') {
+  const isDe = String(lang || 'en').toLowerCase().startsWith('de');
+  const en = normalizeStringList(details?.altTitles);
+  const de = normalizeStringList(details?.altTitlesDe);
+  if (isDe && de.length > 0) return de;
+  return en;
+}
+
+/**
+ * Localized ESCO hidden alternative titles for role detail display.
+ * @param {object} [details]
+ * @param {string} [lang]
+ */
+export function getLocalizedHiddenTitles(details, lang = 'en') {
+  const isDe = String(lang || 'en').toLowerCase().startsWith('de');
+  const en = normalizeStringList(details?.hiddenTitles);
+  const de = normalizeStringList(details?.hiddenTitlesDe);
+  if (isDe && de.length > 0) return de;
+  return en;
 }

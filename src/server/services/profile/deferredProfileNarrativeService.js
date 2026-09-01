@@ -11,10 +11,10 @@ const {
   generateWhoAreYouNarratives,
   PLACEHOLDER: WHO_ARE_YOU_PLACEHOLDER,
 } = require('../jobAnalysis/whoAreYouNarrativeGenerator');
-const { generateWhoAreYouIdentityEmbeddingText } = require('../jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
+const { generateWhoAreYouIdentityEmbeddingText, PLACEHOLDER: WHO_ARE_YOU_IDENTITY_PLACEHOLDER } = require('../jobAnalysis/whoAreYouIdentityEmbeddingTextGenerator');
 const { filterIndustryDomainRawItems } = require('../../constants/industryDomainFilters');
 const { getRawItems } = require('./profileReviewSaveService');
-const { meetsWhoAreYouNarrativesQuality, meetsDimensionSummaryQuality } = require('./narrativeQualityGate');
+const { meetsWhoAreYouLineQuality, meetsDimensionSummaryQuality } = require('./narrativeQualityGate');
 const {
   buildWhoAreYouRawAnswersFromIdentity,
   getEffectiveIdentityAnswersForNarratives,
@@ -272,10 +272,16 @@ async function refreshDeferredWhoAreYouOnUser(user, options = {}) {
 
   const summaryRaw = String(localizedContentService.get(who.summary_text, sourceLang) || '').trim();
   const parsed = parseWhoAreYouNarratives(summaryRaw);
-  const needsNarratives = !summaryRaw
-    || parsed.length !== 5
-    || !meetsWhoAreYouNarrativesQuality(parsed, rawAnswers);
-  const needsIdentity = !String(who.identity_embedding_text || '').trim();
+  const indicesNeedingRegen = [];
+  for (let idx = 0; idx < 5; idx += 1) {
+    if (!String(rawAnswers[idx] || '').trim()) continue;
+    if (!meetsWhoAreYouLineQuality(parsed[idx], rawAnswers[idx])) {
+      indicesNeedingRegen.push(idx);
+    }
+  }
+  const needsNarratives = indicesNeedingRegen.length > 0;
+  const needsIdentity = !String(who.identity_embedding_text || '').trim()
+    || who.identity_embedding_text === WHO_ARE_YOU_IDENTITY_PLACEHOLDER;
   const needsTranslation = SUPPORTED_NARRATIVE_LANGS.some(
     (lang) => whoAreYouSummaryMissingLanguage(who.summary_text, lang, rawAnswers)
   );
@@ -311,16 +317,38 @@ async function refreshDeferredWhoAreYouOnUser(user, options = {}) {
         canonicalLanguage,
         localized,
       } = unwrapWhoAreYouGenerated(generated);
-      const safeNarratives = Array.isArray(narratives) && narratives.length === 5
+      const generatedCanonical = Array.isArray(narratives) && narratives.length === 5
         ? narratives.map((value) => String(value || '').trim() || WHO_ARE_YOU_PLACEHOLDER)
         : Array(5).fill(WHO_ARE_YOU_PLACEHOLDER);
-      const summaryJson = JSON.stringify(safeNarratives);
+
+      // Only replace slots that actually need regeneration; keep other sub-section summaries.
+      const mergedCanonical = parseWhoAreYouNarratives(summaryRaw);
+      while (mergedCanonical.length < 5) mergedCanonical.push(WHO_ARE_YOU_PLACEHOLDER);
+      for (const idx of indicesNeedingRegen) {
+        mergedCanonical[idx] = generatedCanonical[idx];
+      }
+      const summaryJson = JSON.stringify(mergedCanonical);
+
+      const localizedMap = {};
+      for (const [lang, arr] of Object.entries(localized || {})) {
+        if (!Array.isArray(arr) || arr.length !== 5) continue;
+        const existingLangRaw = String(localizedContentService.get(who.summary_text, lang) || '').trim();
+        const mergedLocalized = existingLangRaw
+          ? parseWhoAreYouNarratives(existingLangRaw)
+          : [...mergedCanonical];
+        while (mergedLocalized.length < 5) mergedLocalized.push(WHO_ARE_YOU_PLACEHOLDER);
+        for (const idx of indicesNeedingRegen) {
+          mergedLocalized[idx] = String(arr[idx] || '').trim() || WHO_ARE_YOU_PLACEHOLDER;
+        }
+        localizedMap[lang] = JSON.stringify(mergedLocalized);
+      }
+
       const canonicalLang = normalizeLangCode(canonicalLanguage || sourceLang, sourceLang);
       who.summary_text = await ensureBilingualWhoAreYouSummaryField(
         who.summary_text,
         summaryJson,
         canonicalLang,
-        localized,
+        localizedMap,
         rawAnswers
       );
     }

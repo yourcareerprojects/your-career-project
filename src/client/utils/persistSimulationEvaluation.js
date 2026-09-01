@@ -1,4 +1,5 @@
 import { applyUserEvaluationToEvaluationFlow } from './simulationRoleRanking';
+import { toPersistedEvaluationFlow } from './evaluationFlowModel';
 
 async function fetchSavedSimulation(simulationId, token) {
   const res = await fetch(`/api/profile/simulation/saved/${simulationId}`, {
@@ -47,7 +48,7 @@ export async function persistUserEvaluationToSavedSimulation(
     ...sim,
     results: {
       ...sim.results,
-      evaluationFlow: nextFlow,
+      evaluationFlow: toPersistedEvaluationFlow(nextFlow),
     },
   };
 

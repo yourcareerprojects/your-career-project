@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const CareerPath = require('../models/CareerPath');
+const CareerPathPlan = require('../models/CareerPathPlan');
 const {
   getCachedProfileResponse,
   setCachedProfileResponse,
@@ -19,7 +20,6 @@ const { runSimulationInChildProcess } = require('../services/simulation/simulati
 const { getSimulationJobExecutionLimitMs } = require('../services/simulation/simulationJobExecutionLimits');
 const { attachSimulationPoolPrefetch, buildSimulationPoolPrefetchForUserId } = require('../services/simulation/simulationPoolPrefetch');
 const { generateStepId, mapPrioritizedListCategoryToStepCategory } = require('../utils/stepId');
-const { buildSavedCareerStepKey } = require('../utils/savedCareerStepIdentity');
 const { getEnrichedSimulationInputs } = require('../services/documents/profileEnrichmentService');
 const {
   scheduleRefreshUserIdentityEmbeddingForUser,
@@ -27,6 +27,20 @@ const {
   USER_IDENTITY_ANSWER_KEYS,
   mergeProfileIdentityAnswers,
 } = require('../services/embedding/userIdentityEmbeddingTextService');
+const {
+  scheduleIdentityExplorationAfterActivity,
+} = require('../services/careerIdentity/scheduleIdentityExplorationAfterActivity');
+const {
+  ensureExplorationAccumulationUnlocked,
+} = require('../services/careerIdentity/explorationUnlockService');
+const identityEngine = require('../services/careerIdentity/identityEngine');
+const {
+  logUserActivity,
+  maybeRecordProfileFilled,
+  maybeRecordFirstSimulation,
+  ACTIVITY_TYPES,
+} = require('../services/userHistory/logUserActivity');
+const { buildUserHistoryTimeline } = require('../services/userHistory/buildUserHistoryTimeline');
 const {
   mergeCvExtractLocalizationPatch,
   overlayIdentityAnswersWithCvLocalization,
@@ -52,7 +66,12 @@ const { advanceTopicsIndustriesCoaching } = require('../services/profile/topicsI
 const { advanceNaturallyGoodAtCoaching } = require('../services/profile/naturallyGoodAtCoachingService');
 const { advanceWorkEnvironmentCoaching } = require('../services/profile/workEnvironmentCoachingService');
 const { advanceWorkingLifeAchievementCoaching } = require('../services/profile/workingLifeAchievementCoachingService');
+const { advanceCareerPathCoaching, normalizeRole } = require('../services/profile/careerPathCoachingService');
+const {
+  scheduleCareerPathEnrichmentPrefetch,
+} = require('../services/profile/careerPathPlanning/careerPathEnrichmentPrefetch');
 const { applyLocalizedFieldsToCareerPathPayload } = require('../utils/localizedResponse');
+const { resolveEvaluationFlowRoles, areBothSimulationRankingsComplete } = require('../utils/evaluationFlowRoles');
 const {
   mergeLocalizedCareerPathStep,
   listDistinctRoleSkillsForSelection,
@@ -81,6 +100,7 @@ const {
   getProfileDisplayNarrativesReadiness,
   getProfileNarrativeQualityReadiness,
   isWhoAreYouNarrativeReady,
+  isWhoAreYouNarrativeDisplayReady,
 } = require('../services/profile/profileNarrativeReadinessService');
 const {
   meetsWhoAreYouNarrativesQuality,
@@ -171,7 +191,18 @@ async function buildCareerPathDocMapsForSteps(steps = []) {
   const escoList = [...escoCandidates].filter(Boolean);
   if (escoList.length > 0) {
     const fromEsco = await CareerPath.find({ escoId: { $in: escoList } })
-      .select({ escoId: 1, mergedFromEscoIds: 1, title: 1, description: 1, keyResponsibilities: 1, keyResponsibilitiesDe: 1 })
+      .select({
+        escoId: 1,
+        mergedFromEscoIds: 1,
+        title: 1,
+        description: 1,
+        keyResponsibilities: 1,
+        keyResponsibilitiesDe: 1,
+        altTitles: 1,
+        altTitlesDe: 1,
+        hiddenTitles: 1,
+        hiddenTitlesDe: 1,
+      })
       .lean();
     for (const d of fromEsco) {
       addDocToEscoMap(d);
@@ -179,7 +210,19 @@ async function buildCareerPathDocMapsForSteps(steps = []) {
   }
   if (mongoIds.length > 0) {
     const fromId = await CareerPath.find({ _id: { $in: mongoIds } })
-      .select({ _id: 1, escoId: 1, mergedFromEscoIds: 1, title: 1, description: 1, keyResponsibilities: 1, keyResponsibilitiesDe: 1 })
+      .select({
+        _id: 1,
+        escoId: 1,
+        mergedFromEscoIds: 1,
+        title: 1,
+        description: 1,
+        keyResponsibilities: 1,
+        keyResponsibilitiesDe: 1,
+        altTitles: 1,
+        altTitlesDe: 1,
+        hiddenTitles: 1,
+        hiddenTitlesDe: 1,
+      })
       .lean();
     for (const d of fromId) {
       if (d && d._id) byId.set(String(d._id), d);
@@ -229,6 +272,12 @@ function overlayStepFromCareerPathDoc(step, lang, careerPathMaps) {
       responsibilities: td.keyResponsibilities.responsibilities,
     };
   }
+  if (Array.isArray(td.altTitles) && td.altTitles.length > 0) {
+    out.altTitles = td.altTitles;
+  }
+  if (Array.isArray(td.hiddenTitles) && td.hiddenTitles.length > 0) {
+    out.hiddenTitles = td.hiddenTitles;
+  }
   return out;
 }
 
@@ -246,24 +295,16 @@ async function localizeOneCareerPathShapedStep(step, language, careerPathMaps = 
   return overlayStepFromCareerPathDoc(merged, lang, careerPathMaps);
 }
 
-/**
- * Drag-and-rank row: mirrors `row.title` from `row.step` on the client; localize `step` and keep `title` in sync.
- */
-async function localizeRankedEvaluationRow(row, language, careerPathMaps) {
-  if (!row || typeof row !== 'object') return row;
-  const step = row.step;
-  if (!step || typeof step !== 'object') return row;
-  const locStep = await localizeOneCareerPathShapedStep(step, language, careerPathMaps);
-  return {
-    ...row,
-    step: locStep,
-    title: locStep.title != null && locStep.title !== '' ? locStep.title : row.title,
-  };
-}
-
-function collectStepsFromRankedRows(rows) {
-  if (!Array.isArray(rows)) return [];
-  return rows.map((r) => r && r.step).filter((s) => s && typeof s === 'object');
+/** Persist roles[] + flags only; derived dual lists / ranked boards are client-normalized on read. */
+function stripDerivedEvaluationViews(flow) {
+  if (!flow || typeof flow !== 'object') return flow;
+  const {
+    nextSteps: _nextSteps,
+    outsideTheBox: _outsideTheBox,
+    ranked: _ranked,
+    ...rest
+  } = flow;
+  return rest;
 }
 
 /** Keep evaluationFlow.simulationId aligned with results.simulationId for saved-simulation UI gates. */
@@ -289,23 +330,17 @@ async function localizeSimulationResults(results, language) {
     ? results.prioritizedLists.outsideTheBoxRoles
     : [];
 
-  const evalFlow = results.evaluationFlow && typeof results.evaluationFlow === 'object' ? results.evaluationFlow : null;
-  const efNextRaw = evalFlow && Array.isArray(evalFlow.nextSteps) ? evalFlow.nextSteps : [];
-  const efOutsideRaw = evalFlow && Array.isArray(evalFlow.outsideTheBox) ? evalFlow.outsideTheBox : [];
-  const rankedNextSource = evalFlow?.ranked?.nextSteps;
-  const rankedOutsideSource = evalFlow?.ranked?.outsideTheBox;
-  const rankedNextRows = Array.isArray(rankedNextSource) ? rankedNextSource : [];
-  const rankedOutsideRows = Array.isArray(rankedOutsideSource) ? rankedOutsideSource : [];
+  const evalFlow = results.evaluationFlow && typeof results.evaluationFlow === 'object'
+    ? results.evaluationFlow
+    : null;
+  const efRolesRaw = evalFlow ? resolveEvaluationFlowRoles(evalFlow) : [];
 
   const allStepsForCareerPath = [
     ...nextRaw,
     ...outsideRaw,
     ...prioritizedNextRaw,
     ...prioritizedOutsideRaw,
-    ...efNextRaw,
-    ...efOutsideRaw,
-    ...collectStepsFromRankedRows(rankedNextRows),
-    ...collectStepsFromRankedRows(rankedOutsideRows),
+    ...efRolesRaw,
   ];
   const careerPathMaps = await buildCareerPathDocMapsForSteps(allStepsForCareerPath);
 
@@ -324,33 +359,15 @@ async function localizeSimulationResults(results, language) {
 
   let localizedEvalFlow;
   if (evalFlow) {
-    const locEfNext = await Promise.all(
-      efNextRaw.map((s) => localizeOneCareerPathShapedStep(s, normalizedLanguage, careerPathMaps))
-    );
-    const locEfOutside = await Promise.all(
-      efOutsideRaw.map((s) => localizeOneCareerPathShapedStep(s, normalizedLanguage, careerPathMaps))
-    );
-    const locRankedNext = Array.isArray(rankedNextSource)
+    const locRoles = efRolesRaw.length
       ? await Promise.all(
-          rankedNextRows.map((row) => localizeRankedEvaluationRow(row, normalizedLanguage, careerPathMaps))
+          efRolesRaw.map((s) => localizeOneCareerPathShapedStep(s, normalizedLanguage, careerPathMaps))
         )
-      : rankedNextSource;
-    const locRankedOutside = Array.isArray(rankedOutsideSource)
-      ? await Promise.all(
-          rankedOutsideRows.map((row) => localizeRankedEvaluationRow(row, normalizedLanguage, careerPathMaps))
-        )
-      : rankedOutsideSource;
-
-    localizedEvalFlow = {
+      : [];
+    localizedEvalFlow = stripDerivedEvaluationViews({
       ...evalFlow,
-      nextSteps: locEfNext,
-      outsideTheBox: locEfOutside,
-      ranked: {
-        ...(evalFlow.ranked && typeof evalFlow.ranked === 'object' ? evalFlow.ranked : {}),
-        nextSteps: locRankedNext,
-        outsideTheBox: locRankedOutside,
-      },
-    };
+      roles: locRoles,
+    });
   }
 
   const localizedResults = {
@@ -372,50 +389,6 @@ async function localizeSimulationResults(results, language) {
   return localizedResults;
 }
 
-async function localizeSavedCareerSteps(savedSteps = [], language) {
-  if (!Array.isArray(savedSteps) || savedSteps.length === 0) return savedSteps;
-  const lang = language || 'en';
-  const plainSteps = savedSteps.map(plainSavedCareerStepSubdoc);
-  const careerPathMaps = await buildCareerPathDocMapsForSteps(plainSteps);
-  const localized = await Promise.all(
-    plainSteps.map((step) => localizeOneCareerPathShapedStep(step, lang, careerPathMaps))
-  );
-  return localized.map((step) => {
-    const withDisplay = ensureSavedStepDisplayFields(step);
-    // Always recompute on response so legacy keys with old category labels normalize consistently.
-    withDisplay.savedKey = buildSavedCareerStepKey(withDisplay);
-    return withDisplay;
-  });
-}
-
-/** Decode :stepId once when the client sent an encoded segment (Express usually decodes once; this covers drift). */
-function decodeStepIdParam(paramStepId) {
-  if (paramStepId == null || paramStepId === '') return '';
-  const s = String(paramStepId);
-  try {
-    const once = decodeURIComponent(s);
-    return once !== s ? once : s;
-  } catch {
-    return s;
-  }
-}
-
-/**
- * Match a route :stepId to a stored subdocument (exact + single decode fallback).
- * @returns {number} index in user.savedCareerSteps, or -1
- */
-function findSavedCareerStepIndex(user, paramStepId) {
-  const list = user?.savedCareerSteps;
-  if (!Array.isArray(list) || list.length === 0) return -1;
-  const raw = String(paramStepId || '');
-  const candidates = new Set([raw, decodeStepIdParam(raw)].filter(Boolean));
-  for (const c of candidates) {
-    const idx = list.findIndex((step) => step && step.stepId === c);
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
-
 /** Mongoose subdocument or plain object (e.g. migrated BSON). */
 function plainSimulationResultEntry(sim) {
   if (sim && typeof sim.toObject === 'function') {
@@ -434,57 +407,8 @@ function normalizeSimulationResultEntryForResponse(sim, language = 'en') {
   return rest;
 }
 
-/**
- * Plain POJO for saved career step subdocs so `getLocalizedFieldLenient` and spreads see { en, de }.
- * Raw Mongoose subdocs often fail to enumerate nested i18n on `{ ...sub }` / JSON, yielding empty strings.
- */
-function plainSavedCareerStepSubdoc(step) {
-  if (step == null) return step;
-  if (typeof step.toObject === 'function') {
-    try {
-      return step.toObject({ flattenMaps: true, depopulate: true, virtuals: false });
-    } catch (e) {
-      return { ...step };
-    }
-  }
-  if (typeof step === 'object' && !Array.isArray(step)) {
-    return { ...step };
-  }
-  return step;
-}
-
-/**
- * If localization still left empty display strings, fill from esco / stepId (never send blank cards).
- */
-function ensureSavedStepDisplayFields(step) {
-  if (step == null || typeof step !== 'object' || Array.isArray(step)) return step;
-  const out = { ...step };
-  const t = out.title;
-  const titleEmpty =
-    t == null ||
-    t === '' ||
-    (typeof t === 'string' && !t.trim()) ||
-    (typeof t === 'object' && !Array.isArray(t) && !Object.values(t).some((v) => v != null && String(v).trim() !== ''));
-  if (titleEmpty) {
-    if (out.escoId && String(out.escoId).trim()) {
-      out.title = String(out.escoId).trim();
-    } else if (out.stepId && String(out.stepId).trim()) {
-      out.title = String(out.stepId)
-        .split('-')
-        .filter((p) => p && /[a-zA-Z]/.test(p))
-        .join(' ')
-        .trim() || String(out.stepId).trim();
-    } else {
-      out.title = 'Career step';
-    }
-  }
-  return out;
-}
-
 const { filterIndustryDomainRawItems } = require('../constants/industryDomainFilters');
-const { normalizeIndustryDomains } = require('../../constants/industries');
-const { normalizeSavedStepI18n } = require('../utils/savedStepI18n');
-const { applyCareerPathAndUserLocaleToSavedStep } = require('../utils/savedCareerStepI18nMerge');
+const { normalizeIndustryDomains, normalizeOccupationDomain } = require('../../constants/industries');
 
 const STRUCTURED_DIMENSIONS = [
   { key: 'skillDomains', label: 'Strengths' },
@@ -854,6 +778,89 @@ function parseWhoAreYouNarratives(summaryText = '') {
   }
 }
 
+/**
+ * Set selected narrative slots to the placeholder across bilingual summary_text.
+ * Used when regenerating only specific who-are-you sub-sections.
+ */
+function invalidateWhoAreYouSummaryIndices(summaryField, indices = []) {
+  const indexSet = new Set(
+    (Array.isArray(indices) ? indices : [])
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < 5)
+  );
+  if (indexSet.size === 0) return summaryField;
+
+  const patchJson = (raw) => {
+    const parsed = parseWhoAreYouNarratives(raw);
+    for (const idx of indexSet) {
+      parsed[idx] = WHO_ARE_YOU_PLACEHOLDER;
+    }
+    return JSON.stringify(parsed);
+  };
+
+  if (summaryField == null || typeof summaryField === 'string') {
+    return patchJson(summaryField || '');
+  }
+  if (typeof summaryField !== 'object' || Array.isArray(summaryField)) {
+    return patchJson('');
+  }
+
+  let field = {
+    ...summaryField,
+    translations: { ...(summaryField.translations || {}) },
+  };
+  const langs = new Set([
+    ...SUPPORTED_NARRATIVE_LANGS,
+    normalizeLangCode(field.original_language, 'en'),
+    ...Object.keys(field.translations || {}),
+  ]);
+  for (const lang of langs) {
+    const existing = String(localizedContentService.get(field, lang) || '').trim();
+    if (!existing) continue;
+    field = localizedContentService.set(field, lang, patchJson(existing));
+  }
+  if (typeof field.original === 'string' && field.original.trim()) {
+    field.original = patchJson(field.original);
+  }
+  return field;
+}
+
+/**
+ * Regenerate one (or more) who-are-you narrative slots without wiping the others.
+ * Updates only the selected raw_answers indices to current identity answers.
+ */
+function applyPartialWhoAreYouForceRegenerate({
+  existingWhoAreYou = {},
+  nextRawAnswers = [],
+  indices = [],
+} = {}) {
+  const indexSet = new Set(
+    (Array.isArray(indices) ? indices : [])
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < 5)
+  );
+  const existingRaw = Array.isArray(existingWhoAreYou.raw_answers)
+    ? existingWhoAreYou.raw_answers.map((value) => String(value || '').trim())
+    : [];
+  const identityRaw = Array.isArray(nextRawAnswers)
+    ? nextRawAnswers.map((value) => String(value || '').trim())
+    : [];
+  const mergedRaw = [];
+  for (let idx = 0; idx < 5; idx += 1) {
+    if (indexSet.has(idx) || !existingRaw[idx]) {
+      mergedRaw[idx] = identityRaw[idx] || '';
+    } else {
+      mergedRaw[idx] = existingRaw[idx];
+    }
+  }
+  return {
+    ...existingWhoAreYou,
+    raw_answers: mergedRaw,
+    summary_text: invalidateWhoAreYouSummaryIndices(existingWhoAreYou.summary_text, [...indexSet]),
+    identity_embedding_text: String(existingWhoAreYou.identity_embedding_text || '').trim(),
+  };
+}
+
 async function normalizeWhoAreYouForStorage(
   profile = {},
   {
@@ -895,10 +902,15 @@ async function normalizeWhoAreYouForStorage(
       changedRaw
       || !meetsWhoAreYouNarrativesQuality(parsedForQuality, rawAnswers);
     const onlyMinorChanges = identityChangeClass?.onlyMinorChanges === true;
-    const needsGeneration = !deferLlm && !onlyMinorChanges && (
+    const needsGeneration = !deferLlm && (
       forceRegenerate
-      || currentSummaryIsPlaceholder
-      || narrativesStaleForAnswers
+      || (
+        !onlyMinorChanges
+        && (
+          currentSummaryIsPlaceholder
+          || narrativesStaleForAnswers
+        )
+      )
     );
     if (
       onlyMinorChanges
@@ -939,32 +951,37 @@ async function normalizeWhoAreYouForStorage(
     } else if (
       deferLlm
       && (
-        changedRaw
+        forceRegenerate
+        || changedRaw
         || narrativesStaleForAnswers
         || !currentSummary
         || parsed.every((value) => value === WHO_ARE_YOU_PLACEHOLDER)
       )
     ) {
-      const previousRawAnswers = Array.isArray(source.who_are_you?.raw_answers)
-        ? source.who_are_you.raw_answers.map((value) => String(value || '').trim())
-        : [];
-      summaryText = buildDeferredWhoAreYouSummaryText({
-        parsedForQuality,
-        rawAnswers,
-        currentSummaryIsPlaceholder,
-        currentSummary,
-        changedRaw,
-        narrativesStaleForAnswers,
-        identityChangeClass,
-        previousRawAnswers,
-      });
+      if (forceRegenerate) {
+        summaryText = JSON.stringify(Array(5).fill(WHO_ARE_YOU_PLACEHOLDER));
+      } else {
+        const previousRawAnswers = Array.isArray(source.who_are_you?.raw_answers)
+          ? source.who_are_you.raw_answers.map((value) => String(value || '').trim())
+          : [];
+        summaryText = buildDeferredWhoAreYouSummaryText({
+          parsedForQuality,
+          rawAnswers,
+          currentSummaryIsPlaceholder,
+          currentSummary,
+          changedRaw,
+          narrativesStaleForAnswers,
+          identityChangeClass,
+          previousRawAnswers,
+        });
+      }
       changed = true;
     }
     const needsIdentityGeneration = !deferLlm && (forceRegenerate || !currentIdentityEmbeddingText);
     if (needsIdentityGeneration) {
       identityEmbeddingText = await generateWhoAreYouIdentityEmbeddingText(rawAnswers);
       changed = true;
-    } else if (deferLlm && !currentIdentityEmbeddingText) {
+    } else if (deferLlm && (forceRegenerate || !currentIdentityEmbeddingText)) {
       identityEmbeddingText = WHO_ARE_YOU_IDENTITY_PLACEHOLDER;
       changed = true;
     }
@@ -1890,6 +1907,92 @@ exports.getLastSimulationResult = async (req, res) => {
   }
 };
 
+/**
+ * Persist ranking / evaluation progress for the user's latest (unsaved) simulation run.
+ * Does not create a saved simulation — only updates `lastSimulationResult.results.evaluationFlow`.
+ */
+exports.updateLastSimulationResult = async (req, res) => {
+  try {
+    const userId = req.user && req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { evaluationFlow } = req.body || {};
+    if (!evaluationFlow || typeof evaluationFlow !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'evaluationFlow is required and must be an object.',
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user || !user.lastSimulationResult || !user.lastSimulationResult.results) {
+      return res.status(404).json({
+        success: false,
+        message: 'No last simulation result to update.',
+      });
+    }
+
+    const storedResults = user.lastSimulationResult.results;
+    const storedSimId = storedResults.simulationId;
+    const flowSimId = evaluationFlow.simulationId;
+    if (
+      storedSimId
+      && flowSimId
+      && flowSimId !== 'local'
+      && storedSimId !== flowSimId
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: 'Evaluation flow does not match the current last simulation.',
+      });
+    }
+
+    storedResults.evaluationFlow = stripDerivedEvaluationViews(evaluationFlow);
+    syncEvaluationFlowSimulationId(storedResults);
+    user.lastSimulationResult.results = storedResults;
+    user.markModified('lastSimulationResult');
+    await user.save();
+
+    // Unlock exploration accumulation once both rankings are done so the
+    // progress card starts at 0% (onboarding identity growth must not count).
+    // Refresh identity first so simulation ratings are in the baseline.
+    if (areBothSimulationRankingsComplete(storedResults.evaluationFlow)) {
+      try {
+        const language = req.language === 'en' ? 'en' : 'de';
+        const identity = await identityEngine.forceRefreshIdentity(userId, {
+          language,
+          skipPipelineEmit: true,
+        });
+        await ensureExplorationAccumulationUnlocked(userId, identity);
+      } catch (unlockErr) {
+        logControllerError(
+          'Exploration accumulation unlock after simulation rankings failed (non-fatal)',
+          unlockErr
+        );
+      }
+    }
+
+    const localizedResults = await localizeSimulationResults(
+      user.lastSimulationResult.results,
+      req.language
+    );
+
+    return res.json({
+      success: true,
+      results: localizedResults,
+      date: user.lastSimulationResult.date,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update last simulation result.',
+      error: err.message,
+    });
+  }
+};
+
 // Update career simulation inputs (manual edit)
 exports.updateCareerSimulationInputs = async (req, res) => {
   try {
@@ -2016,336 +2119,6 @@ exports.getCareerSimulationInputs = async (req, res) => {
   }
 };
 
-// Get saved career steps for logged-in user
-exports.getSavedCareerSteps = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const savedSteps = await localizeSavedCareerSteps(
-      user.savedCareerSteps || [],
-      req.language
-    );
-    res.json({ success: true, savedCareerSteps: savedSteps });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch saved career steps', details: err.message });
-  }
-};
-
-// Get specific saved career step
-exports.getSavedCareerStep = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const { stepId } = req.params;
-    if (!stepId) {
-      return res.status(400).json({ error: 'Step ID is required' });
-    }
-    
-    // Saved career steps are keyed by step.stepId (not step.id)
-    const stepIdx = findSavedCareerStepIndex(user, stepId);
-    const step = stepIdx >= 0 ? user.savedCareerSteps[stepIdx] : null;
-    if (!step) {
-      return res.status(404).json({ error: 'Career step not found' });
-    }
-    
-    const [localizedStep] = await localizeSavedCareerSteps([step], req.language);
-    res.json({ success: true, savedCareerStep: localizedStep || step });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch career step', details: err.message });
-  }
-};
-
-const normalizeSavedStepUserEvaluation = (raw) => {
-  if (raw == null || raw === '') return undefined;
-  const v = String(raw).toLowerCase();
-  if (v === 'keep' || v === 'skip' || v === 'dislike') return v;
-  return undefined;
-};
-
-// Save career step
-exports.saveCareerStep = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      logControllerError('User not found', new Error('User not found for ID'), { userId: req.user.userId });
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    // Accept data directly from request body (frontend sends it this way)
-    const { stepId, title, description, matchedProfileInputs, simulationResultId,
-            requiredSkills, altTitles, hiddenTitles, seniority, keyResponsibilities, skillDomains, skillModel,
-            listCategory, category, hybridScoreNextRole, hybridScoreOutOfTheBox, userEvaluation, escoId, careerPathId, _id } = req.body;
-    
-    // Validate input data
-    const validation = require('../utils/duplicateDetection').validateStepData({
-      stepId,
-      title,
-      description
-    });
-    
-    if (!validation.isValid) {
-      logControllerError('Validation errors', new Error('Invalid input data'), validation.errors);
-      return res.status(400).json({ 
-        error: 'Invalid input data', 
-        details: validation.errors 
-      });
-    }
-    
-    let titleDesc;
-    try {
-      titleDesc = normalizeSavedStepI18n(title, description, {
-        sourceLanguage: req.language || 'en',
-      });
-    } catch (e) {
-      return res.status(400).json({ error: e.message || 'Invalid title/description' });
-    }
-
-    // Prepare new step data
-    const newStep = {
-      stepId,
-      title: titleDesc.title,
-      description: titleDesc.description,
-      matchedProfileInputs: matchedProfileInputs || [],
-      simulationResultId: simulationResultId || '',
-      savedAt: new Date(),
-      escoId: typeof escoId === 'string' && escoId.trim() ? escoId.trim() : undefined,
-      careerPathId: careerPathId || _id || undefined,
-      // Enrichment fields (optional)
-      requiredSkills: normalizeDisplayStringArray(requiredSkills),
-      altTitles: normalizeDisplayStringArray(altTitles),
-      hiddenTitles: normalizeDisplayStringArray(hiddenTitles),
-      seniority: seniority || null,
-      keyResponsibilities: keyResponsibilities || null,
-      skillDomains: skillDomains || null,
-      skillModel: skillModel || null
-    };
-
-    const categoryForStorage = listCategory != null && String(listCategory).trim() !== ''
-      ? String(listCategory).trim()
-      : (category != null && String(category).trim() !== '' ? String(category).trim() : '');
-    if (categoryForStorage) {
-      newStep.listCategory = categoryForStorage;
-    }
-    if (typeof hybridScoreNextRole === 'number' && Number.isFinite(hybridScoreNextRole)) {
-      newStep.hybridScoreNextRole = hybridScoreNextRole;
-    }
-    if (typeof hybridScoreOutOfTheBox === 'number' && Number.isFinite(hybridScoreOutOfTheBox)) {
-      newStep.hybridScoreOutOfTheBox = hybridScoreOutOfTheBox;
-    }
-
-    const evalNorm = normalizeSavedStepUserEvaluation(userEvaluation);
-    if (evalNorm) {
-      newStep.userEvaluation = evalNorm;
-    }
-
-    await applyCareerPathAndUserLocaleToSavedStep(newStep, {
-      rawTitle: title,
-      rawDescription: description,
-      sourceLanguage: req.language || 'en',
-    });
-    newStep.savedKey = buildSavedCareerStepKey(newStep);
-    
-    // Enhanced duplicate detection using multi-level checking
-    const { detectDuplicates, getDuplicateMessage } = require('../utils/duplicateDetection');
-    const duplicateResult = detectDuplicates(newStep, user.savedCareerSteps);
-    
-    if (duplicateResult.hasDuplicate) {
-      const message = getDuplicateMessage(duplicateResult);
-      const savedLocalized = await localizeSavedCareerSteps(
-        user.savedCareerSteps || [],
-        req.language
-      );
-      return res.status(409).json({
-        success: false,
-        message: message,
-        duplicateType: duplicateResult.duplicateType,
-        existingStep: duplicateResult.existingStep,
-        similarity: duplicateResult.similarity,
-        savedCareerSteps: savedLocalized,
-      });
-    }
-    
-    // No duplicate found, proceed with saving
-    user.savedCareerSteps.push(newStep);
-    await user.save();
-    const savedLocalized = await localizeSavedCareerSteps(
-      user.savedCareerSteps || [],
-      req.language
-    );
-    const savedCareerStepForClient =
-      savedLocalized.find((s) => s && s.stepId === newStep.stepId) || newStep;
-    res.json({ 
-      success: true, 
-      savedCareerStep: savedCareerStepForClient,
-      savedCareerSteps: savedLocalized 
-    });
-  } catch (err) {
-    logControllerError('Error saving career step', err);
-    res.status(500).json({ error: 'Failed to save career step', details: err.message });
-  }
-};
-
-// Delete saved career step
-exports.deleteSavedCareerStep = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      logControllerError('User not found', new Error('User not found for ID'), { userId: req.user.userId });
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const { stepId } = req.params;
-    if (!stepId) {
-      logControllerError('Missing required parameter', new Error('No stepId provided in params'));
-      return res.status(400).json({ error: 'Step ID is required' });
-    }
-    
-    // Fix: Look for step.stepId instead of step.id (tolerate encoding drift vs stored key)
-    const stepIndex = findSavedCareerStepIndex(user, stepId);
-    
-    if (stepIndex === -1) {
-      logControllerError('Career step not found', new Error('Career step not found with stepId'), { stepId });
-      return res.status(404).json({ error: 'Career step not found' });
-    }
-
-    user.savedCareerSteps.splice(stepIndex, 1);
-    await user.save();
-    const savedLocalized = await localizeSavedCareerSteps(
-      user.savedCareerSteps || [],
-      req.language
-    );
-    // Return the updated list of saved career steps so frontend can update its state
-    res.json({ 
-      success: true, 
-      message: 'Career step deleted successfully',
-      savedCareerSteps: savedLocalized
-    });
-  } catch (err) {
-    logControllerError('Error deleting career step', err);
-    res.status(500).json({ error: 'Failed to delete career step', details: err.message });
-  }
-};
-
-// Bulk delete saved career steps (atomic pull by stepId set)
-exports.bulkDeleteSavedCareerSteps = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-    const incomingStepIds = Array.isArray(req.body?.stepIds) ? req.body.stepIds : [];
-    const stepIds = [...new Set(
-      incomingStepIds
-        .map((id) => (id == null ? '' : String(id).trim()))
-        .filter(Boolean)
-        .map((id) => decodeStepIdParam(id))
-    )];
-
-    if (stepIds.length === 0) {
-      return res.status(400).json({ error: 'stepIds must be a non-empty array of step IDs' });
-    }
-
-    const user = await User.findById(userId).select('savedCareerSteps');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const existingStepIds = new Set(
-      (user.savedCareerSteps || [])
-        .map((step) => (step?.stepId == null ? '' : String(step.stepId)))
-        .filter(Boolean)
-    );
-    const matchedStepIds = stepIds.filter((id) => existingStepIds.has(id));
-    const notFoundStepIds = stepIds.filter((id) => !existingStepIds.has(id));
-
-    if (matchedStepIds.length > 0) {
-      await User.updateOne(
-        { _id: userId },
-        { $pull: { savedCareerSteps: { stepId: { $in: matchedStepIds } } } }
-      );
-    }
-
-    const refreshed = await User.findById(userId).select('savedCareerSteps');
-    const savedLocalized = await localizeSavedCareerSteps(
-      refreshed?.savedCareerSteps || [],
-      req.language
-    );
-
-    return res.json({
-      success: true,
-      requestedCount: stepIds.length,
-      removedCount: matchedStepIds.length,
-      notFoundStepIds,
-      savedCareerSteps: savedLocalized,
-    });
-  } catch (err) {
-    logControllerError('Error bulk deleting saved career steps', err);
-    return res.status(500).json({ error: 'Failed to bulk delete career steps', details: err.message });
-  }
-};
-
-// Update Keep / Skip / Dislike on a saved career step (null clears to unrated)
-exports.patchSavedCareerStep = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { stepId } = req.params;
-    if (!stepId) {
-      return res.status(400).json({ error: 'Step ID is required' });
-    }
-    if (!Object.prototype.hasOwnProperty.call(req.body, 'userEvaluation')) {
-      return res.status(400).json({ error: 'userEvaluation is required (use null to clear)' });
-    }
-
-    const user = await User.findById(userId).select('savedCareerSteps');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const stepIdx = findSavedCareerStepIndex(user, stepId);
-    if (stepIdx === -1) {
-      return res.status(404).json({ error: 'Career step not found' });
-    }
-    const actualStepId = user.savedCareerSteps[stepIdx].stepId;
-
-    const raw = req.body.userEvaluation;
-    const filter = { _id: userId };
-    const arrayOpts = { arrayFilters: [{ 's.stepId': actualStepId }] };
-
-    if (raw === null || raw === '') {
-      await User.updateOne(
-        filter,
-        { $unset: { 'savedCareerSteps.$[s].userEvaluation': '' } },
-        arrayOpts
-      );
-    } else {
-      const evalNorm = normalizeSavedStepUserEvaluation(raw);
-      if (!evalNorm) {
-        return res.status(400).json({ error: 'userEvaluation must be keep, skip, dislike, or null' });
-      }
-      await User.updateOne(
-        filter,
-        { $set: { 'savedCareerSteps.$[s].userEvaluation': evalNorm } },
-        arrayOpts
-      );
-    }
-
-    const refreshed = await User.findById(userId);
-    const savedLocalized = await localizeSavedCareerSteps(
-      refreshed?.savedCareerSteps || [],
-      req.language
-    );
-    res.json({
-      success: true,
-      savedCareerSteps: savedLocalized,
-    });
-  } catch (err) {
-    logControllerError('Error patching saved career step', err);
-    res.status(500).json({ error: 'Failed to update career step', details: err.message });
-  }
-};
-
 // Get simulation results for logged-in user
 exports.getSimulationResults = async (req, res) => {
   try {
@@ -2415,6 +2188,9 @@ exports.saveSimulationResult = async (req, res) => {
     // Ensure results payload carries version + simulationId fields
     results.simulationId = incomingSimulationId;
     syncEvaluationFlowSimulationId(results);
+    if (results.evaluationFlow) {
+      results.evaluationFlow = stripDerivedEvaluationViews(results.evaluationFlow);
+    }
     results.algorithmVersion = algorithmVersion;
     results.scoringVersion = scoringVersion;
     results.scoringWeights = scoringWeights || undefined;
@@ -2481,7 +2257,7 @@ exports.saveSimulationResult = async (req, res) => {
       }
       user.simulationResults.push(newSimulation);
     }
-    // Unsaved "last run" is now persisted as a saved simulation; clear so /simulation/results
+    // Unsaved "last run" is now persisted as a saved simulation; clear so /puzzle-job
     // and nav do not treat an ephemeral last run as still active.
     user.lastSimulationResult = undefined;
     try {
@@ -2490,7 +2266,17 @@ exports.saveSimulationResult = async (req, res) => {
       logControllerError('Save simulation validation error', saveError, saveError?.errors);
       throw saveError;
     }
-    
+
+    scheduleIdentityExplorationAfterActivity(user._id, { language: req.language });
+
+    logUserActivity(user._id, {
+      type: ACTIVITY_TYPES.SIMULATION_SAVED,
+      meta: {
+        simulationId: incomingSimulationId,
+        simulationName: newSimulation.name || null,
+      },
+    });
+
     // Persist prioritized list items for indexed retrieval
     await upsertSimulationPrioritizedItems({
       userId: user._id,
@@ -2564,7 +2350,6 @@ exports.getProfile = async (req, res) => {
     // Exclude very large embedded arrays and per-document extraction payloads (multi‑MB).
     const user = await User.findById(req.user.userId).select({
       simulationResults: 0,
-      savedCareerSteps: 0,
       lastSimulationResult: 0,
       'profile.documents.extractedProfileData': 0,
       'profile.documents.cvExtractLocalization': 0,
@@ -2623,9 +2408,16 @@ exports.getProfile = async (req, res) => {
     const existingWhoAreYou = profilePayload.who_are_you && typeof profilePayload.who_are_you === 'object'
       ? profilePayload.who_are_you
       : {};
+    const existingWhoRawAnswers = Array.isArray(existingWhoAreYou.raw_answers)
+      ? existingWhoAreYou.raw_answers.map((value) => String(value || '').trim())
+      : [];
+    // Keep summary-source raw_answers when present so the client can detect
+    // bullet edits that have not yet been used to regenerate the AI summary.
     profilePayload.who_are_you = {
       ...existingWhoAreYou,
-      raw_answers: buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers),
+      raw_answers: existingWhoRawAnswers.some(Boolean)
+        ? existingWhoRawAnswers
+        : buildWhoAreYouRawAnswersFromIdentity(mergedIdentityAnswers),
     };
     const profileStructured = profilePayload?.structuredUserInfo || {};
 
@@ -2684,6 +2476,24 @@ exports.getProfileCompletion = async (req, res) => {
     res.json({ success: true, completion });
   } catch (err) {
     res.status(500).json({ error: 'Failed to calculate profile completion', details: err.message });
+  }
+};
+
+/**
+ * GET /api/profile/history — chronological milestone timeline for Saved & Search → History.
+ */
+exports.getUserHistory = async (req, res) => {
+  try {
+    const timeline = await buildUserHistoryTimeline(req.user.userId, {
+      language: req.language,
+    });
+    res.json({ success: true, ...timeline });
+  } catch (err) {
+    if (err?.status === 404) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    logControllerError('Error getting user history', err);
+    res.status(500).json({ error: 'Failed to load history', details: err.message });
   }
 };
 
@@ -2959,6 +2769,194 @@ exports.searchRoleSkillDomainsForSelection = async (req, res) => {
  * POST body: { role, language | lang, simulationScopeId?, roleContext?, debug? }
  * Returns cached or freshly generated explanation (persisted). { success, text, source, cached }.
  */
+/**
+ * POST body: { role, userContext?, messages?: { role, content }[] }
+ * Returns the next path-planning question or a structured path summary.
+ */
+exports.postCareerPathCoaching = async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const role = body.role && typeof body.role === 'object' ? body.role : null;
+    if (!role) {
+      return res.status(400).json({ success: false, error: 'role is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const userId = req.user && req.user.userId;
+    const result = await advanceCareerPathCoaching({
+      role,
+      userContext: body.userContext,
+      messages: body.messages,
+      state: body.state,
+      preferences: body.preferences,
+      lang: explicitLang || req.language || 'de',
+      userId,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logControllerError('postCareerPathCoaching', err);
+    const status = /too many|answer the current|role\.title/i.test(String(err.message || '')) ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 400 ? err.message : 'Failed to run career path coaching',
+      details: err.message,
+    });
+  }
+};
+
+/**
+ * POST body: { role, lang? }
+ * Warms career context enrichment while the user answers the questionnaire.
+ */
+exports.postCareerPathCoachingPrefetch = async (req, res) => {
+  try {
+    const userId = req.user && req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const role = normalizeRole(body.role);
+    const roleTitle = String(role.title || '').trim();
+    if (!roleTitle) {
+      return res.status(400).json({ success: false, error: 'role.title is required' });
+    }
+    const explicitLang = body.lang || req.query?.lang || req.query?.language;
+    const prefetchStatus = scheduleCareerPathEnrichmentPrefetch({
+      userId,
+      role,
+      lang: explicitLang || req.language || 'de',
+    });
+    res.json({ success: true, prefetch: prefetchStatus });
+  } catch (err) {
+    logControllerError('postCareerPathCoachingPrefetch', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to prefetch career path enrichment',
+      details: err.message,
+    });
+  }
+};
+
+function normalizeCareerPathPlanEscoId(value) {
+  return String(value || '').trim().toLowerCase().slice(0, 512);
+}
+
+function normalizeCareerPathPlanLang(value) {
+  return String(value || 'en').toLowerCase().split('-')[0] === 'de' ? 'de' : 'en';
+}
+
+function serializeCareerPathPlan(doc) {
+  if (!doc) return null;
+  return {
+    escoId: doc.escoId,
+    language: doc.language,
+    roleTitle: doc.roleTitle ?? null,
+    pathPlan: doc.pathPlan ?? null,
+    answers: doc.answers ?? {},
+    audience: doc.audience ?? null,
+    updatedAt: doc.updatedAt,
+    createdAt: doc.createdAt,
+  };
+}
+
+/**
+ * GET /api/profile/career-path-plans
+ * Returns all persisted career path plans for the current user (keyed by escoId).
+ */
+exports.listCareerPathPlans = async (req, res) => {
+  try {
+    const userId = req.user && req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+    const plans = await CareerPathPlan.find({ userId }).lean();
+    res.json({
+      success: true,
+      careerPathPlans: plans.map(serializeCareerPathPlan).filter(Boolean),
+    });
+  } catch (err) {
+    logControllerError('listCareerPathPlans', err);
+    res.status(500).json({ success: false, error: 'Failed to load career path plans' });
+  }
+};
+
+/**
+ * PUT /api/profile/career-path-plans/:escoId
+ * Upserts the user's generated plan for a role. Body: { pathPlan, answers?, audience?, roleTitle?, lang? }
+ */
+exports.upsertCareerPathPlan = async (req, res) => {
+  try {
+    const userId = req.user && req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+    const escoId = normalizeCareerPathPlanEscoId(req.params.escoId);
+    if (!escoId) {
+      return res.status(400).json({ success: false, error: 'escoId is required' });
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!body.pathPlan || typeof body.pathPlan !== 'object') {
+      return res.status(400).json({ success: false, error: 'pathPlan is required' });
+    }
+    const language = normalizeCareerPathPlanLang(body.lang || body.language || req.language);
+    const filter = { userId, escoId, language };
+    const update = {
+      $set: {
+        pathPlan: body.pathPlan,
+        answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
+        audience: body.audience || null,
+        roleTitle: body.roleTitle ?? null,
+        language,
+      },
+    };
+    let doc;
+    try {
+      doc = await CareerPathPlan.findOneAndUpdate(filter, update, {
+        upsert: true,
+        new: true,
+      }).lean();
+    } catch (err) {
+      if (err && err.code === 11000) {
+        await CareerPathPlan.updateOne(filter, update);
+        doc = await CareerPathPlan.findOne(filter).lean();
+      } else {
+        throw err;
+      }
+    }
+    res.json({ success: true, careerPathPlan: serializeCareerPathPlan(doc) });
+  } catch (err) {
+    logControllerError('upsertCareerPathPlan', err);
+    res.status(500).json({ success: false, error: 'Failed to save career path plan' });
+  }
+};
+
+/**
+ * DELETE /api/profile/career-path-plans/:escoId
+ * Removes the user's plan for a role (used by "start over").
+ */
+exports.deleteCareerPathPlan = async (req, res) => {
+  try {
+    const userId = req.user && req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+    const escoId = normalizeCareerPathPlanEscoId(req.params.escoId);
+    if (!escoId) {
+      return res.status(400).json({ success: false, error: 'escoId is required' });
+    }
+    // With ?lang, delete only that language's plan; otherwise remove all languages for the role.
+    const langParam = req.query && (req.query.lang || req.query.language);
+    const filter = { userId, escoId };
+    if (langParam) {
+      filter.language = normalizeCareerPathPlanLang(langParam);
+    }
+    await CareerPathPlan.deleteMany(filter);
+    res.json({ success: true });
+  } catch (err) {
+    logControllerError('deleteCareerPathPlan', err);
+    res.status(500).json({ success: false, error: 'Failed to delete career path plan' });
+  }
+};
+
 exports.postRoleFitExplanation = async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -2998,6 +2996,7 @@ exports.postRoleFitExplanation = async (req, res) => {
     res.json({
       success: true,
       text: result.text,
+      bullets: result.bullets,
       source: result.explanationSource,
       cached: result.fromCache,
     });
@@ -3055,7 +3054,19 @@ exports.updateUserIdentity = async (req, res) => {
     }
 
     const bodyRaw = req.body || {};
-    const { cvExtractLocalization: incomingCvLoc, ...answersBody } = bodyRaw;
+    const {
+      cvExtractLocalization: incomingCvLoc,
+      forceRegenerateWhoAreYou: forceRegenerateWhoAreYouRaw,
+      forceRegenerateWhoAreYouField: forceRegenerateWhoAreYouFieldRaw,
+      ...answersBody
+    } = bodyRaw;
+    const forceRegenerateFieldKey = String(forceRegenerateWhoAreYouFieldRaw || '').trim();
+    const forceRegenerateFieldIndex = USER_IDENTITY_ANSWER_KEYS.indexOf(forceRegenerateFieldKey);
+    const forceRegenerateAll = Boolean(forceRegenerateWhoAreYouRaw);
+    const forceRegenerateIndices = forceRegenerateFieldIndex >= 0
+      ? [forceRegenerateFieldIndex]
+      : (forceRegenerateAll ? [0, 1, 2, 3, 4] : []);
+    const wantsForceRegenerate = forceRegenerateIndices.length > 0;
 
     const nextAnswers = normalizeUserIdentityAnswers({});
     for (const k of USER_IDENTITY_ANSWER_KEYS) {
@@ -3090,23 +3101,43 @@ exports.updateUserIdentity = async (req, res) => {
     const narrativeSourceLanguage = resolveNarrativeSourceLanguage(user.profile || {}, 'en');
     const nextRawAnswers = buildWhoAreYouRawAnswersFromIdentity(user.profile.userIdentityAnswers || {});
     const identityChangeClass = classifyIdentityAnswerChanges(baselineRawAnswers, nextRawAnswers);
-    const deferWhoAreYouNarrative = profileWhoAreYouNeedsNarrativeWork(
-      user.profile || {},
-      narrativeSourceLanguage,
-      identityChangeClass
-    );
-    const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
-      user.profile || {},
-      {
-        forceRegenerate: false,
-        deferLlm: deferWhoAreYouNarrative,
-        language: req.language,
-        sourceLanguage: narrativeSourceLanguage,
-        identityChangeClass,
-      }
-    );
-    user.profile.who_are_you = normalizedWhoAreYou;
-    user.markModified('profile.who_are_you');
+    // Manual bullet edits keep the last saved AI summary until the user explicitly regenerates
+    // (or coaching restart / first-fill paths request force regenerate).
+    const existingWhoAreYou = user.profile.who_are_you || {};
+    const existingWhoRawAnswers = Array.isArray(existingWhoAreYou.raw_answers)
+      ? existingWhoAreYou.raw_answers.map((value) => String(value || '').trim())
+      : [];
+    const hasExistingWhoAreYouSummary = existingWhoRawAnswers.some(Boolean)
+      && isWhoAreYouNarrativeDisplayReady(existingWhoAreYou, narrativeSourceLanguage);
+    const canPreserveWhoAreYouNarrative = !wantsForceRegenerate && hasExistingWhoAreYouSummary;
+
+    if (forceRegenerateFieldIndex >= 0 && hasExistingWhoAreYouSummary) {
+      // Regenerate only the requested sub-section; keep other AI summaries intact.
+      user.profile.who_are_you = applyPartialWhoAreYouForceRegenerate({
+        existingWhoAreYou,
+        nextRawAnswers,
+        indices: forceRegenerateIndices,
+      });
+      user.markModified('profile.who_are_you');
+    } else if (!canPreserveWhoAreYouNarrative) {
+      const deferWhoAreYouNarrative = wantsForceRegenerate || profileWhoAreYouNeedsNarrativeWork(
+        user.profile || {},
+        narrativeSourceLanguage,
+        identityChangeClass
+      );
+      const { normalized: normalizedWhoAreYou } = await normalizeWhoAreYouForStorage(
+        user.profile || {},
+        {
+          forceRegenerate: forceRegenerateAll,
+          deferLlm: deferWhoAreYouNarrative,
+          language: req.language,
+          sourceLanguage: narrativeSourceLanguage,
+          identityChangeClass,
+        }
+      );
+      user.profile.who_are_you = normalizedWhoAreYou;
+      user.markModified('profile.who_are_you');
+    }
 
     try {
       const computed = await calculateCareerSimulationInputs(user.profile);
@@ -3156,6 +3187,17 @@ exports.updateUserIdentity = async (req, res) => {
     if (narrativeStatus.narrativesReady && identityChangeClass.hasMajorChange) {
       scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
     }
+
+    scheduleIdentityExplorationAfterActivity(req.user.userId, { language: req.language });
+
+    logUserActivity(req.user.userId, {
+      type: ACTIVITY_TYPES.PROFILE_SECTION_UPDATED,
+      meta: { section: 'userIdentity' },
+    });
+    void maybeRecordProfileFilled(
+      req.user.userId,
+      computeProfileCompletion(user.profile).overall
+    );
 
     const profileStructured = user.profile.structuredUserInfo || {};
     const responseWhoAreYou = normalizeLocalizedProfileFieldsForResponse(
@@ -3266,6 +3308,15 @@ exports.updateSeniority = async (req, res) => {
     }
 
     await user.save();
+
+    logUserActivity(req.user.userId, {
+      type: ACTIVITY_TYPES.PROFILE_SECTION_UPDATED,
+      meta: { section: 'seniority' },
+    });
+    void maybeRecordProfileFilled(
+      req.user.userId,
+      computeProfileCompletion(user.profile).overall
+    );
 
     const responseSeniority = {
       currentStatus: user.profile.seniority?.currentStatus || '',
@@ -3430,6 +3481,17 @@ exports.updateStructuredUserInfo = async (req, res) => {
     if (narrativeStatus.narrativesReady) {
       scheduleRefreshUserIdentityEmbeddingForUser(req.user.userId);
     }
+
+    scheduleIdentityExplorationAfterActivity(req.user.userId, { language: req.language });
+
+    logUserActivity(req.user.userId, {
+      type: ACTIVITY_TYPES.PROFILE_SECTION_UPDATED,
+      meta: { section: 'structuredUserInfo' },
+    });
+    void maybeRecordProfileFilled(
+      req.user.userId,
+      computeProfileCompletion(user.profile).overall
+    );
 
     const profileStructured = user.profile.structuredUserInfo || {};
     res.json({
@@ -3659,6 +3721,15 @@ exports.saveProfileReview = async (req, res) => {
     user.markModified('profile.who_are_you');
 
     await user.save();
+
+    logUserActivity(req.user.userId, {
+      type: ACTIVITY_TYPES.PROFILE_SECTION_UPDATED,
+      meta: { section: 'profileReview' },
+    });
+    void maybeRecordProfileFilled(
+      req.user.userId,
+      computeProfileCompletion(user.profile).overall
+    );
 
     const narrativeStatus = schedulePendingProfileNarrativesIfNeeded(
       req.user.userId,
@@ -4057,9 +4128,6 @@ exports.archiveSavedSimulation = async (req, res) => {
     res.status(500).json({ error: 'Failed to archive simulation', details: err.message });
   }
 };
-
-// Remove career step (alias for deleteSavedCareerStep)
-exports.removeCareerStep = exports.deleteSavedCareerStep;
 
 // Remove individual career step from simulation results
 exports.removeCareerStepFromSimulation = async (req, res) => {
@@ -4591,6 +4659,11 @@ exports.updateSimulationResult = async (req, res) => {
 
     validatedData.results.simulationId = simulationId;
     syncEvaluationFlowSimulationId(validatedData.results);
+    if (validatedData.results.evaluationFlow) {
+      validatedData.results.evaluationFlow = stripDerivedEvaluationViews(
+        validatedData.results.evaluationFlow
+      );
+    }
     validatedData.results.algorithmVersion = algorithmVersion;
     validatedData.results.scoringVersion = scoringVersion;
     validatedData.results.scoringWeights =

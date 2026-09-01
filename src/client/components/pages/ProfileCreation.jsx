@@ -5,10 +5,12 @@ import { Box, Typography, Paper, Alert, Button } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import DocumentUploadForm from '../profile/DocumentUploadForm';
 import { USER_IDENTITY_FIELDS } from '../../constants/userIdentityFields';
+import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import {
   baseUILanguage,
   refreshSeededFullProfileInBackground,
+  useProfileCompletionQuery,
 } from '../../hooks/useProfileQueries';
 import { buildReviewSaveUserMessage, saveExtractedProfileReview } from '../../utils/profileReviewSaveFlow';
 import { clearCvReviewDraft } from '../../utils/cvReviewDraftStorage';
@@ -22,6 +24,12 @@ const ProfileCreation = () => {
   const location = useLocation();
   const fullUpdateMode = new URLSearchParams(location.search).get('mode') === 'full-update';
   const { user } = useAuth();
+  const completionQuery = useProfileCompletionQuery({ enabled: Boolean(user) });
+  const overallCompletion = Number(completionQuery.data?.completion?.overall || 0);
+  const profileBelowMinCompletion =
+    completionQuery.isSuccess && overallCompletion < MIN_PROFILE_COMPLETION_REQUIRED;
+  /** Incomplete profiles must always reach the fill wizard, even without ?mode=full-update. */
+  const allowProfileFill = fullUpdateMode || profileBelowMinCompletion;
   const [error, setError] = useState(null);
   const [profileExists, setProfileExists] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -34,8 +42,8 @@ const ProfileCreation = () => {
   };
 
   useEffect(() => {
-    // Check if user is verified
-    if (!user?.isVerified) {
+    // Check if user is verified (same flags as VerifiedEmailOutlet)
+    if (!user?.isVerified && !user?.emailVerified) {
       setError(t('profileCreation.errors.verifyEmailRequired'));
       setLoading(false);
       return;
@@ -77,7 +85,7 @@ const ProfileCreation = () => {
       }
     };
     fetchProfile();
-  }, [user]);
+  }, [user, t]);
 
   // Save reviewed profile payload coming from extraction dialog.
   const handleExtractedProfileReview = async (profileData) => {
@@ -121,11 +129,11 @@ const ProfileCreation = () => {
     }
   };
 
-  if (loading) {
+  if (loading || (user && completionQuery.isLoading)) {
     return <Box sx={{ p: 3 }}><Typography>{t('profileCreation.loading')}</Typography></Box>;
   }
 
-  if (profileExists && !fullUpdateMode) {
+  if (profileExists && !allowProfileFill) {
     return (
       <Box sx={{ p: 3 }}>
         <Paper sx={{ p: 3, mb: 3 }}>
@@ -143,6 +151,8 @@ const ProfileCreation = () => {
     );
   }
 
+  const showFullUpdateCopy = fullUpdateMode || profileBelowMinCompletion;
+
   return (
     <Box sx={{ p: 3 }}>
       {error && (
@@ -156,9 +166,9 @@ const ProfileCreation = () => {
         </Alert>
       )}
       <PageHeader
-        title={fullUpdateMode ? t('profileCreation.fullUpdate.title') : t('profileCreation.default.title')}
+        title={showFullUpdateCopy ? t('profileCreation.fullUpdate.title') : t('profileCreation.default.title')}
         description={
-          fullUpdateMode
+          showFullUpdateCopy
             ? t('profileCreation.fullUpdate.description')
             : t('profileCreation.default.description')
         }
@@ -173,7 +183,7 @@ const ProfileCreation = () => {
           enableExtractionReview
           defaultDocumentType="resume"
           showSectionTitle={false}
-          reviewSaveMode={fullUpdateMode ? 'replace' : 'merge'}
+          reviewSaveMode={showFullUpdateCopy ? 'replace' : 'merge'}
           showManualFillOption
           manualFillOnly
         />

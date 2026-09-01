@@ -46,15 +46,15 @@ STRUCTURED PROFILE
 skillDomains requirements:
 - high-level skill clusters (more generic capability themes)
 - examples: Strategy, Leadership, Communication, Analysis, Execution, Design
-- put job functions/capabilities here (e.g. Marketing, Sales, Business Development, Social Media, Product Management) — NOT in domains
+- put job functions/capabilities here (e.g. Business Development, Social Media, Product Management) — NOT in domains
 - return 3-6 distinct skillDomains when signals exist
 
 Domains requirements (critical — industry / sector ONLY):
 - domains must be ECONOMIC SECTORS or SCIENTIFIC / INDUSTRY VERTICALS the person works in or wants to work in
 - use ONLY labels from this canonical list (exact spelling): ${formatIndustryTaxonomyForPrompt(requested)}
-- NEVER put these in domains (use skillDomains or skills instead): Marketing, Digital Marketing, Social Media, Business Development, Sales, HR, Product Management, Project Management, Operations, Analytics, Consulting (as a role), Design (as a job function), Customer Success
+- NEVER put these in domains (use skillDomains or skills instead): Social Media, Business Development, HR, Product Management, Project Management, Operations, Analytics, Consulting (as a role), Design (as a job function), Customer Success
 - infer from employers, products, regulated environments, and industry nouns — not from channel or go-to-market verbs
-- generalize: hospital/clinic -> Healthcare; drug R&D -> Life Sciences or Pharmaceuticals; factory floor -> Manufacturing; university -> Education
+- generalize: hospital/clinic -> Healthcare; drug R&D -> Pharmaceuticals; factory floor -> Manufacturing; university -> Education; campaigns/brand work as a sector -> Marketing; sales/customer service work as a sector -> Sales and Customer Service
 - return 3-6 distinct domains when signals exist; prefer fewer if unclear
 - deduplicate synonyms; map to the closest canonical sector name
 
@@ -63,7 +63,7 @@ Responsibilities requirements:
 - use "description" field (not "name")
 - each 8-20 words, start with an active verb
 - include action + context (+ optional outcome)
-- avoid short labels like "Project Management" or "Marketing"
+- avoid short labels like "Project Management" or "Account Management"
 - merge overlapping activities and avoid duplicates
 ${requested === 'de' ? `
 Responsibilities requirements (German — mandatory):

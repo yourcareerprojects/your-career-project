@@ -4,7 +4,7 @@ const { parseActivitiesFromText, formatActivitiesAsText } = require('../componen
 const {
   parseInterestTopicsFromText,
   formatInterestTopicsAsText,
-} = require('../components/profile/TopicsIndustriesCoaching');
+} = require('./topicsIndustriesText');
 const {
   parseNaturallyGoodAtFromText,
   formatNaturallyGoodAtAsText,
@@ -65,6 +65,28 @@ function getWhoAreYouNarratives(whoAreYou, lang) {
 
 function hasIdentityNarrative(narratives, index) {
   return Boolean(String(narratives?.[index] || '').trim());
+}
+
+/**
+ * True when the current identity answer for this slot differs from the answers
+ * the saved AI summary was generated from (`who_are_you.raw_answers`).
+ *
+ * @param {string} fieldKey
+ * @param {Record<string, string>} identityAnswers
+ * @param {{ raw_answers?: string[] }|null|undefined} whoAreYou
+ * @param {Array<{ key: string }>} identityFields
+ * @returns {boolean}
+ */
+function isIdentityFieldNarrativeOutOfDate(fieldKey, identityAnswers, whoAreYou, identityFields = []) {
+  const fields = Array.isArray(identityFields) ? identityFields : [];
+  const fieldIndex = fields.findIndex((field) => field?.key === fieldKey);
+  if (fieldIndex < 0) return false;
+  const current = String(identityAnswers?.[fieldKey] || '').trim();
+  const summarySource = Array.isArray(whoAreYou?.raw_answers)
+    ? String(whoAreYou.raw_answers[fieldIndex] || '').trim()
+    : '';
+  if (!current && !summarySource) return false;
+  return current !== summarySource;
 }
 
 /**
@@ -240,6 +262,7 @@ module.exports = {
   PROFILE_DISPLAY_MODE,
   getWhoAreYouNarratives,
   hasIdentityNarrative,
+  isIdentityFieldNarrativeOutOfDate,
   parseIdentityFieldToBullets,
   parseIdentityFieldForEdit,
   formatIdentityFieldFromEdit,

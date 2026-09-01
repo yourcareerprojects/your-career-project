@@ -21,20 +21,21 @@ import {
 import {
   Home as HomeIcon,
   Person as PersonIcon,
-  Edit as EditIcon,
   ExitToApp as LogoutIcon,
   DarkModeOutlined,
   LightModeOutlined,
+  Bookmark as SavedSearchIcon,
 } from '@mui/icons-material';
 import ExtensionIcon from '@mui/icons-material/Extension';
-import StarIcon from '@mui/icons-material/Star';
-import SearchIcon from '@mui/icons-material/Search';
+import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined';
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import { useThemeMode } from '../../contexts/ThemeModeContext';
-import { useAppNavigation } from '../../hooks/useAppNavigation';
+import { useAppNavigation, isSavedSearchPath } from '../../hooks/useAppNavigation';
 import LanguageSwitcher from '../common/LanguageSwitcher';
 import MobileBottomNav, { MOBILE_BOTTOM_NAV_HEIGHT } from './MobileBottomNav';
+import IdentityExplorationGlobalListener from '../careerIdentity/IdentityExplorationGlobalListener';
 
 const drawerWidth = 240;
 
@@ -46,7 +47,7 @@ const Layout = ({ children }) => {
   const { isAuthenticated, logout } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const { guardedNavigate } = useNavigationGuardContext();
-  const { canAccessSavedPages, careerSimulationPath } = useAppNavigation();
+  const { careerSimulationPath } = useAppNavigation();
 
   const handleNavigation = (path) => {
     guardedNavigate(path);
@@ -56,20 +57,29 @@ const Layout = ({ children }) => {
     { text: t('navigation.home', { ns: 'common' }), icon: <HomeIcon />, path: '/' },
     ...(isAuthenticated
       ? [
+          { text: t('navigation.profile', { ns: 'common' }), icon: <PersonIcon />, path: '/profile' },
+          {
+            text: t('careerIdentity.menuLabel', { ns: 'dashboard' }),
+            icon: <HubOutlinedIcon />,
+            path: '/puzzle-you',
+          },
           {
             text: t('simulation.menuLabel', { ns: 'dashboard' }),
             icon: <ExtensionIcon />,
             path: careerSimulationPath,
             isCareerSimulation: true,
           },
-          { text: t('navigation.profile', { ns: 'common' }), icon: <PersonIcon />, path: '/profile' },
-          ...(canAccessSavedPages
-            ? [
-                { text: t('roleSearch.menuLabel', { ns: 'dashboard' }), icon: <SearchIcon />, path: '/explore-roles' },
-                { text: t('saved.simulations', { ns: 'dashboard' }), icon: <EditIcon />, path: '/simulations' },
-                { text: t('saved.careerSteps', { ns: 'dashboard' }), icon: <StarIcon />, path: '/saved-steps' },
-              ]
-            : []),
+          {
+            text: t('careerPuzzle.menuLabel', { ns: 'dashboard' }),
+            icon: <ExtensionOutlinedIcon />,
+            path: '/puzzle-path',
+          },
+          {
+            text: t('savedSearch.menuLabel', { ns: 'dashboard' }),
+            icon: <SavedSearchIcon />,
+            path: '/saved-search',
+            isSavedSearch: true,
+          },
         ]
       : []),
   ];
@@ -78,8 +88,20 @@ const Layout = ({ children }) => {
     if (location.pathname === '/simulation') {
       return t('simulation.pageTitle', { ns: 'dashboard' });
     }
-    if (location.pathname === '/simulation/results') {
+    if (location.pathname === '/puzzle-job') {
       return t('simulation.resultsTitle', { ns: 'dashboard' });
+    }
+    if (location.pathname === '/puzzle-path') {
+      return t('careerPuzzle.pageTitle', { ns: 'dashboard' });
+    }
+    if (location.pathname === '/puzzle-you') {
+      return t('careerIdentity.pageTitle', { ns: 'dashboard' });
+    }
+    if (location.pathname === '/saved-paths') {
+      return t('saved.careerPaths', { ns: 'dashboard' });
+    }
+    if (location.pathname.startsWith('/saved-paths/')) {
+      return t('savedLists.savedCareerPaths.editTitle', { ns: 'dashboard' });
     }
     if (location.pathname === '/explore-roles') {
       return t('roleSearch.pageTitle', { ns: 'dashboard' });
@@ -90,13 +112,18 @@ const Layout = ({ children }) => {
     if (location.pathname === '/saved-search') {
       return t('savedSearch.pageTitle', { ns: 'dashboard' });
     }
+    if (location.pathname === '/history') {
+      return t('history.pageTitle', { ns: 'dashboard' });
+    }
     if (location.pathname === '/settings') {
       return t('settings.pageTitle', { ns: 'common' });
     }
     const match = menuItems.find((item) =>
       item.isCareerSimulation
-        ? location.pathname === '/simulation' || location.pathname === '/simulation/results'
-        : item.path === location.pathname
+        ? location.pathname === '/simulation' || location.pathname === '/puzzle-job'
+        : item.isSavedSearch
+          ? isSavedSearchPath(location.pathname)
+          : item.path === location.pathname
     );
     return match?.text || t('app.name', { ns: 'common' });
   })();
@@ -116,8 +143,10 @@ const Layout = ({ children }) => {
             onClick={() => handleNavigation(item.path)}
             selected={
               item.isCareerSimulation
-                ? location.pathname === '/simulation' || location.pathname === '/simulation/results'
-                : location.pathname === item.path
+                ? location.pathname === '/simulation' || location.pathname === '/puzzle-job'
+                : item.isSavedSearch
+                  ? isSavedSearchPath(location.pathname)
+                  : location.pathname === item.path
             }
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
@@ -128,7 +157,12 @@ const Layout = ({ children }) => {
     </div>
   );
 
+  const showMobileBottomNav = isMobile && isAuthenticated;
   const mobileBottomPadding = `calc(${MOBILE_BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`;
+  const brandName = t('app.name', { ns: 'common' });
+  // Guests on mobile: brand is the Home affordance; keep Login/Register as the other two entries.
+  const showGuestBrandHome = isMobile && !isAuthenticated;
+  const headerTitle = showGuestBrandHome ? brandName : derivedPageTitle;
 
   return (
     <Box
@@ -150,14 +184,27 @@ const Layout = ({ children }) => {
           <Typography
             variant="h6"
             noWrap
-            component="div"
+            component={showGuestBrandHome ? 'button' : 'div'}
+            type={showGuestBrandHome ? 'button' : undefined}
+            onClick={showGuestBrandHome ? () => handleNavigation('/') : undefined}
+            aria-label={showGuestBrandHome ? t('navigation.home', { ns: 'common' }) : undefined}
             sx={{
               flexGrow: 1,
               minWidth: 0,
               color: 'var(--color-header-brand-headline)',
+              ...(showGuestBrandHome
+                ? {
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    textAlign: 'left',
+                  }
+                : {}),
             }}
           >
-            {derivedPageTitle}
+            {headerTitle}
           </Typography>
           {!isMobile && (
             <>
@@ -267,12 +314,16 @@ const Layout = ({ children }) => {
           p: { xs: 2, sm: 3 },
           width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
           mt: '64px',
-          pb: { xs: `calc(${mobileBottomPadding} + 16px)`, sm: 3 },
+          pb: {
+            xs: showMobileBottomNav ? `calc(${mobileBottomPadding} + 16px)` : 2,
+            sm: 3,
+          },
         }}
       >
         {children}
       </Box>
-      {isMobile && <MobileBottomNav />}
+      {showMobileBottomNav && <MobileBottomNav />}
+      {isAuthenticated && <IdentityExplorationGlobalListener />}
     </Box>
   );
 };

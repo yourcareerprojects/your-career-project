@@ -4,6 +4,7 @@ import {
   isEvaluationComplete,
   isMobileOutsideTheBoxUnlocked,
   isOutsideTheBoxDeferred,
+  getEvalQueue,
 } from './simulationRoleRanking';
 
 export const NEXT_SIMULATION_WIZARD_TOTAL = 12;
@@ -55,12 +56,12 @@ export function isSimulationWizardEvaluationInProgress(evaluationFlow) {
 
   if (nextRanked && (ootbRanked || ootbDeferred)) return false;
 
-  if (!isEvaluationComplete(evaluationFlow.nextSteps)) return true;
+  if (!isEvaluationComplete(getEvalQueue(evaluationFlow, 'nextSteps'))) return true;
 
   if (!isMobileOutsideTheBoxUnlocked(evaluationFlow) && !ootbDeferred) return true;
 
   if (isMobileOutsideTheBoxUnlocked(evaluationFlow) && !ootbDeferred) {
-    if (!isEvaluationComplete(evaluationFlow.outsideTheBox)) return true;
+    if (!isEvaluationComplete(getEvalQueue(evaluationFlow, 'outsideTheBox'))) return true;
     if (!ootbRanked) return true;
   }
 
@@ -106,9 +107,9 @@ export function deriveSimulationWizardStep({ simLoading = false, evaluationFlow 
     return { phase: 'next', step: NEXT_WIZARD_LOADING_STEP };
   }
 
-  const nextComplete = isEvaluationComplete(evaluationFlow.nextSteps);
+  const nextComplete = isEvaluationComplete(getEvalQueue(evaluationFlow, 'nextSteps'));
   if (!nextComplete) {
-    const evaluated = countEvaluatedRoles(evaluationFlow.nextSteps);
+    const evaluated = countEvaluatedRoles(getEvalQueue(evaluationFlow, 'nextSteps'));
     return { phase: 'next', step: getNextWizardStepForEvaluatedCount(evaluated) };
   }
 
@@ -121,9 +122,9 @@ export function deriveSimulationWizardStep({ simLoading = false, evaluationFlow 
 
   if (ootbDeferred) return null;
 
-  const ootbComplete = isEvaluationComplete(evaluationFlow.outsideTheBox);
+  const ootbComplete = isEvaluationComplete(getEvalQueue(evaluationFlow, 'outsideTheBox'));
   if (!ootbComplete) {
-    const evaluated = countEvaluatedRoles(evaluationFlow.outsideTheBox);
+    const evaluated = countEvaluatedRoles(getEvalQueue(evaluationFlow, 'outsideTheBox'));
     return {
       phase: 'ootb',
       step: Math.min(Math.max(1, evaluated + 1), OOTB_SIMULATION_WIZARD_TOTAL),

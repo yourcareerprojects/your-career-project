@@ -1,8 +1,8 @@
 {
   "simulation": {
-    "menuLabel": "Berufssimulation",
+    "menuLabel": "PuzzleBERUF",
     "pageTitle": "Deine Berufssimulation",
-    "resultsTitle": "Deine Simulationsergebnisse",
+    "resultsTitle": "PuzzleBERUF",
     "subtitle": {
       "hasResults": "Prüfe deine zuletzt generierten Berufsempfehlungen und erkunde jede Rolle im Detail.",
       "empty": "Starte eine Simulation, um personalisierte Berufsempfehlungen und nächste Schritte basierend auf deinem Profil zu erhalten."
@@ -21,49 +21,24 @@
       "title": "Vollständiges Profil erforderlich",
       "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um eine Berufssimulation zu starten."
     },
-    "emailVerificationGate": {
-      "title": "Bestätige zuerst deine E-Mail",
-      "description": "Erst dann kannst du die Berufssimulation starten.",
-      "cta": "Posteingang prüfen"
-    },
     "tooltips": {
       "completeProfileFirst": "Vervollständige zuerst mindestens {{min}}% deines Profils",
-      "verifyEmailFirst": "Bestätige zuerst deine E-Mail-Adresse",
       "startSimulation": "Generiere neue Berufsvorschläge",
       "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
-      "saveResults": "Diese Simulation zu deinen gespeicherten Simulationen hinzufügen",
-      "clearAndRestart": "Aktuelle Ergebnisse löschen und neu starten",
       "updateProfile": "Profildaten aktualisieren",
       "saveEdits": "Deine Änderungen an dieser gespeicherten Simulation speichern"
     },
     "aria": {
       "startSimulation": "Generiere neue Berufsvorschläge",
       "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
-      "saveResults": "Diese Simulation zu deinen gespeicherten Simulationen hinzufügen",
-      "clearAndRestart": "Ergebnisse löschen und neue Simulation starten",
       "goToProfile": "Zur Profilseite gehen",
       "saveEdits": "Deine Änderungen an dieser gespeicherten Simulation speichern"
     },
     "actions": {
       "start": "Simulation starten",
-      "saveResults": "Ergebnisse speichern",
-      "saveResultsShort": "Speichern",
-      "clearAndRestart": "Ergebnisse löschen und neue Simulation starten",
-      "clearAndRestartShort": "Neu starten",
       "goToProfile": "Zu meinem Profil",
       "goToProfileShort": "Profil",
-      "startNew": "Neue Simulation starten",
-      "openSavedSimulation": "Gespeicherte Simulation öffnen",
       "open": "Öffnen"
-    },
-    "saveDialog": {
-      "title": "Simulation speichern",
-      "nameLabel": "Name der Simulation"
-    },
-    "unsavedDialog": {
-      "title": "Ungespeicherte Änderungen",
-      "description": "Du hast ungespeicherte Simulationsergebnisse. Möchtest du trotzdem eine neue Simulation starten?",
-      "warning": "Alle ungespeicherten Änderungen gehen verloren."
     },
     "deleteDialog": {
       "title": "Simulation löschen",
@@ -118,6 +93,7 @@
         "skip": "Weiß nicht",
         "dislike": "Uncool",
         "more": "Mehr",
+        "planPath": "Weg planen",
         "save": "Speichern",
         "saved": "Gespeichert",
         "saving": "Wird gespeichert..."
@@ -128,6 +104,7 @@
         "dislikePoorFit": "Uncool - passt schlecht",
         "dragToReorder": "Zum Neuordnen oder Verschieben zwischen Gruppen ziehen",
         "moreDetails": "Details zu dieser Rolle anzeigen",
+        "planPath": "Erfahre, wie du diese Rolle erreichen kannst",
         "savedRemove": "Gespeichert - klicken, um aus der gespeicherten Liste zu entfernen",
         "saveToSavedList": "Diese Rolle in deiner gespeicherten Liste speichern"
       }
@@ -137,21 +114,21 @@
       "loadingTitle": "Simulation wird erstellt",
       "loadingDescription": "Wir analysieren dein Profil und erstellen personalisierte Rollenvorschläge...",
       "nextRoleTitle": "Naheliegende Rollen",
-      "nextRoleIntro": "Bewerte diesen Vorschlag — nach rechts wischen für Cool oder nach links für Uncool, oder nutze die Buttons. Danach erscheint die nächste Rolle automatisch.",
+      "nextRoleIntro": "Bewerte diesen Vorschlag. Danach erscheint die nächste Rolle automatisch.",
       "ootbChoiceTitle": "Überraschende Perspektiven",
       "ootbRoleTitle": "Überraschende Perspektiven",
-      "ootbRoleIntro": "Bewerte diesen Vorschlag — nach rechts wischen für Cool oder nach links für Uncool, oder nutze die Buttons.",
+      "ootbRoleIntro": "Bewerte diesen Vorschlag. Danach erscheint die nächste Rolle automatisch.",
       "exitRanking": "Bewertung beenden",
       "pauseDialog": {
         "title": "Bewertung beenden?",
-        "description": "Deine bisherigen Bewertungen werden in dieser Browser-Sitzung gespeichert. Du kannst jederzeit dort weitermachen, wo du aufgehört hast, oder jetzt weiter bearbeiten.",
+        "description": "Deine bisherigen Bewertungen werden gespeichert. Du kannst jederzeit dort weitermachen, wo du aufgehört hast.",
         "stay": "Weiter bearbeiten",
         "saveAndExit": "Speichern und später fortsetzen",
         "savedMessage": "Fortschritt gespeichert. Du kannst die Bewertung jederzeit von deinen Ergebnissen aus fortsetzen."
       },
       "pausedPrompt": {
         "title": "Bewertung läuft",
-        "descriptionNext": "Du hast {{evaluated}} von {{total}} nächsten Karriererollen bewertet. Mach dort weiter, wo du aufgehört hast.",
+        "descriptionNext": "Du hast {{evaluated}} von {{total}} Berufen bewertet. Mach dort weiter, wo du aufgehört hast.",
         "descriptionOotbChoice": "Du hast alle nächsten Karriererollen bewertet. Fahre fort, wenn du bereit bist, {{count}} Outside-the-Box-Vorschläge zu bewerten.",
         "descriptionOotb": "Du hast {{evaluated}} von {{total}} Outside-the-Box-Rollen bewertet. Mach dort weiter, wo du aufgehört hast.",
         "resume": "Bewertung fortsetzen"
@@ -164,25 +141,14 @@
     "messages": {
       "loadFailed": "Simulation konnte nicht geladen werden",
       "profileCompletionRequired": "Dein Profil muss mindestens zu {{min}}% vollständig sein, um eine Simulation auszuführen. Aktualisiere dein Profil und versuche es erneut.",
-      "emailVerificationRequired": "Bitte bestätige deine E-Mail-Adresse, bevor du eine Simulation startest.",
       "completeProfileToRun": "Vervollständige mindestens {{min}}% deines Profils, um eine Simulation zu starten.",
       "failedTryAgain": "Simulation fehlgeschlagen. Bitte versuche es erneut.",
       "failedCheckConnection": "Simulation fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.",
-      "saveCancelledByUser": "Speichern vom Benutzer abgebrochen",
-      "savedSuccessfully": "Simulation erfolgreich gespeichert!",
-      "saveFailed": "Simulation konnte nicht gespeichert werden",
       "changesSavedSuccessfully": "Änderungen erfolgreich gespeichert!",
       "saveChangesFailed": "Änderungen konnten nicht gespeichert werden",
       "loadedSuccessfully": "Simulation erfolgreich geladen!",
       "deletedSuccessfully": "Simulation erfolgreich gelöscht!",
       "deleteFailed": "Simulation konnte nicht gelöscht werden",
-      "noSavedCareerSteps": "Keine gespeicherten Berufsschritte verfügbar",
-      "careerStepNotFound": "Berufsschritt wurde in der gespeicherten Liste nicht gefunden",
-      "careerStepRemoved": "Berufsschritt aus Gespeichert entfernt",
-      "careerStepRemoveFailed": "Berufsschritt konnte nicht entfernt werden",
-      "careerStepSaved": "Berufsschritt gespeichert",
-      "alreadySaved": "Bereits gespeichert",
-      "careerStepSaveFailed": "Berufsschritt konnte nicht gespeichert werden",
       "similaritySuffix": "({{percent}}% ähnlich)"
     },
     "errors": {
@@ -201,16 +167,12 @@
     "stepDetailsNotFound": "Schrittdetails nicht gefunden",
     "context": {
       "savedSimulation": "Gespeicherte Simulation",
-      "unsavedSimulation": "Ungespeicherte Simulation",
-      "savedCareerStep": "Gespeicherter Berufsschritt",
-      "savedSimulationCareerStep": "Berufsschritt aus gespeicherter Simulation"
+      "unsavedSimulation": "Ungespeicherte Simulation"
     },
     "actions": {
       "backToResults": "Zurück zu Ergebnissen",
       "backToSimulation": "Zurück zur Simulation",
       "backToSimulations": "Zurück zu Simulationen",
-      "saveToSavedSteps": "Berufsschritt speichern",
-      "removeFromSavedSteps": "Speicherung verwerfen",
       "share": "Teilen",
       "saving": "Wird gespeichert...",
       "loading": "Wird geladen..."
@@ -224,8 +186,6 @@
       "simulationDate": "Simulationsdatum",
       "roleDescription": "Rollenbeschreibung",
       "noDetailedDescription": "Keine detaillierte Beschreibung verfügbar.",
-      "additionalInformation": "Zusätzliche Informationen",
-      "resourceHelpText": "Diese Ressource bzw. Empfehlung unterstützt dich in deiner beruflichen Entwicklung.",
       "actions": "Aktionen",
       "profileEnrichmentTitle": "Profilanreicherung aus hochgeladenen Dokumenten",
       "profileEnrichmentFallback": "Dokumentbasierte Signale wurden angewendet, um Empfehlungen zu verbessern.",
@@ -260,13 +220,13 @@
       "skillDomains": "Stärken",
       "showMore": "Mehr anzeigen",
       "showLess": "Weniger anzeigen",
+      "more": "Mehr",
       "includes": "Enthält: {{items}}",
       "noRequiredSkills": "Für diese Rolle sind keine erforderlichen Fähigkeiten aufgeführt.",
       "noRoleInsights": "Für diesen Schritt liegen noch keine Rollen-Insights (Seniorität, zentrale Aufgaben oder Stärken) vor. Sie werden aus der Berufe-Datenbank geladen, wenn eine Career-Path-ID oder eine ESCO-ID vorhanden ist."
     },
     "messages": {
       "ratingSavedToSimulation": "Bewertung in Simulation gespeichert",
-      "ratingSavedToSavedSteps": "Bewertung in deinen gespeicherten Schritten gespeichert",
       "simulationUpdatedSuccessfully": "Simulation erfolgreich aktualisiert!"
     },
     "errors": {
@@ -275,8 +235,7 @@
       "loadStepDetailsFailed": "Schrittdetails konnten nicht geladen werden. Bitte versuche es erneut.",
       "updateRatingFailed": "Bewertung konnte nicht aktualisiert werden",
       "careerStepNotFoundInSimulation": "Berufsschritt in dieser Simulation nicht gefunden",
-      "updateSimulationFailed": "Simulation konnte nicht aktualisiert werden",
-      "savedStepNotFoundForRemoval": "Der gespeicherte Berufsschritt zum Entfernen konnte nicht gefunden werden"
+      "updateSimulationFailed": "Simulation konnte nicht aktualisiert werden"
     },
     "tooltips": {
       "editSimulationDetails": "Simulationsdetails bearbeiten",
@@ -284,34 +243,77 @@
     },
     "dialogs": {
       "editSimulationTitle": "Simulation bearbeiten"
-    },
-    "unsaveDialog": {
-      "title": "Gespeicherten Berufsschritt entfernen?",
-      "message": "Dadurch wird dieser Berufsschritt aus deinen gespeicherten Berufsschritten entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
-      "confirm": "Entfernen"
     }
   },
   "saved": {
     "simulations": "Gespeicherte Simulationen",
-    "careerSteps": "Gespeicherte Berufsschritte"
+    "careerPaths": "Gespeicherte Karrierewege"
   },
   "savedSearch": {
     "pageTitle": "Gespeichert & Suche",
-    "subtitle": "Suche nach Rollen, sieh gespeicherte Berufsschritte an oder öffne gespeicherte Simulationen.",
+    "subtitle": "Erkunde Rollen, sieh dir deinen Verlauf an oder öffne gespeicherte Simulationen und Karrierewege.",
+    "menuLabel": "Gespeichert & Suche",
     "searchRoles": {
-      "title": "Rollen suchen",
+      "title": "Rollen erkunden",
       "description": "Durchsuche und erkunde Berufsrollen, die zu deinen Interessen passen."
     },
-    "savedCareerSteps": {
-      "title": "Gespeicherte Berufsschritte",
-      "description": "Sieh dir gespeicherte Berufsschritte an und verwalte sie."
+    "savedCareerPaths": {
+      "title": "Gespeicherte Karrierewege",
+      "description": "Öffne Karriere-Puzzle-Pfade, die du für später gespeichert hast."
     },
     "savedSimulations": {
       "title": "Gespeicherte Simulationen",
       "description": "Öffne Simulationen, die du für später gespeichert hast."
+    },
+    "history": {
+      "title": "Deine Geschichte",
+      "description": "Sieh dir deine Meilensteine und die Aktivitäten an, die dazu geführt haben."
+    }
+  },
+  "history": {
+    "pageTitle": "Deine Geschichte",
+    "subtitle": "Dein Weg bisher vom Profil bis zu neuen Rollen.",
+    "empty": "Noch kein Verlauf.",
+    "loadError": "Dein Verlauf konnte nicht geladen werden. Bitte versuche es erneut.",
+    "recentActivity": "Aktuelle Aktivitäten",
+    "milestones": {
+      "profile_created": "Profil erstellt",
+      "profile_filled": "Profil ausgefüllt",
+      "first_simulation": "1. Simulation",
+      "roles_unlocked": "Neue Rollen freigeschaltet"
+    },
+    "activities": {
+      "profile_section_updated": "Profil aktualisiert",
+      "profile_section_updated_with_section": "{{section}} aktualisiert",
+      "document_uploaded": "Dokument hochgeladen",
+      "document_uploaded_named": "{{name}} hochgeladen",
+      "simulation_completed": "Simulation abgeschlossen",
+      "simulation_saved": "Simulation gespeichert",
+      "simulation_saved_named": "Simulation „{{name}}“ gespeichert",
+      "career_step_saved": "Rolle gespeichert",
+      "career_step_saved_named": "Rolle „{{title}}“ gespeichert",
+      "career_step_evaluated": "Gespeicherte Rolle bewertet",
+      "career_step_evaluated_named": "Gespeicherte Rolle „{{title}}“ als {{evaluation}} bewertet",
+      "trait_voted": "Identitätsmerkmal bewertet",
+      "sections": {
+        "userIdentity": "Identitätsantworten",
+        "structuredUserInfo": "Fähigkeiten und Erfahrung",
+        "seniority": "Seniorität",
+        "profileReview": "Profilprüfung",
+        "profile": "Profil"
+      },
+      "evaluations": {
+        "keep": "Behalten",
+        "skip": "Überspringen",
+        "dislike": "Ablehnen"
+      }
     }
   },
   "savedLists": {
+    "common": {
+      "onDate": "am {{date}}",
+      "retry": "Erneut versuchen"
+    },
     "savedSimulations": {
       "subtitle": "Verwalte und prüfe deine gespeicherten Berufssimulationen",
       "empty": "Noch keine gespeicherten Simulationen",
@@ -334,45 +336,40 @@
         "delete": "Löschen"
       }
     },
-    "savedCareerSteps": {
-      "subtitle": "Verwalte und prüfe deine gespeicherten Berufsoptionen aus vorherigen Simulationen",
-      "searchPlaceholder": "Berufsschritte durchsuchen...",
-      "resultsFound": "{{count}} Berufsschritt gefunden",
-      "resultsFound_other": "{{count}} Berufsschritte gefunden",
-      "emptyTitle": "Keine gespeicherten Berufsschritte gefunden",
-      "emptyAdjustSearch": "Passe deine Suche an",
-      "emptyStartSimulation": "Starte eine Berufssimulation, um interessante Berufsschritte zu speichern",
-      "selectAllOnPage": "Alle auf dieser Seite auswählen",
-      "rateThisRole": "Diese Rolle bewerten",
-      "onDate": "am {{date}}",
-      "tooltips": {
-        "moreDetails": "Details zu dieser Rolle anzeigen",
-        "savedRemove": "Gespeichert - klicken, um aus der gespeicherten Liste zu entfernen",
-        "keepStrongFit": "Cool - passt sehr gut",
-        "skipNotSure": "Weiß nicht - unsicher",
-        "dislikePoorFit": "Uncool - passt schlecht"
-      },
-      "actions": {
-        "retry": "Erneut versuchen",
-        "removeSelected": "Auswahl entfernen ({{count}})",
-        "keep": "Cool",
-        "skip": "Weiß nicht",
-        "dislike": "Uncool",
-        "more": "Mehr",
-        "saved": "Gespeichert"
-      },
-      "messages": {
-        "removedFromSavedList": "Berufsschritt aus der gespeicherten Liste entfernt",
-        "bulkRemoved": "{{count}} Berufsschritte entfernt",
-        "bulkPartiallyRemoved": "{{removed}} von {{count}} Berufsschritten entfernt"
+    "savedCareerPaths": {
+      "subtitle": "Verwalte und prüfe die Karriere-Puzzle-Pfade, die du gespeichert hast",
+      "emptyTitle": "Keine gespeicherten Karrierewege gefunden",
+      "emptySubtitle": "Baue einen Pfad im Karriere-Puzzle und tippe auf Speichern, um ihn hier zu sehen",
+      "goToPuzzleCta": "Zum Karriere-Puzzle",
+      "unnamed": "Unbenannter Karriereweg",
+      "noTimestamp": "Kein Zeitstempel",
+      "invalidDate": "Ungültiges Datum",
+      "aria": {
+        "openPath": "Gespeicherten Karriereweg {{name}} öffnen",
+        "unsavePath": "Gespeicherten Karriereweg {{name}} entfernen"
       },
       "errors": {
-        "fetchFailed": "Gespeicherte Berufsschritte konnten nicht geladen werden",
-        "bulkRemoveFailed": "Ausgewählte Berufsschritte konnten nicht entfernt werden",
-        "bulkRemoveNoneRemoved": "Keiner der ausgewählten Berufsschritte konnte entfernt werden"
+        "invalidPathId": "Ungültige Karriereweg-ID",
+        "fetchFailed": "Gespeicherte Karrierewege konnten nicht geladen werden",
+        "openFailed": "Dieser Karriereweg konnte nicht geöffnet werden",
+        "unsaveFailed": "Dieser Karriereweg konnte nicht aus den Gespeicherten entfernt werden",
+        "pathNotFound": "Dieser Karriereweg wurde nicht gefunden"
       },
-      "dialogs": {
-        "bulkRemoveMessage": "Dadurch werden die ausgewählten Berufsempfehlungen aus deinen gespeicherten Berufsschritten entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+      "actions": {
+        "more": "Mehr",
+        "remove": "Entfernen"
+      },
+      "messages": {
+        "unsaved": "Karriereweg aus den Gespeicherten entfernt"
+      },
+      "editTitle": "Karriereweg bearbeiten",
+      "editSubtitle": "Änderungen werden beim Bearbeiten gespeichert. Kehre zu Gespeicherte Karrierewege zurück, wenn du fertig bist.",
+      "backToList": "Zurück zu gespeicherten Karrierewegen",
+      "unsaveDialog": {
+        "title": "Gespeicherten Karriereweg entfernen?",
+        "message": "Dadurch wird dieser Pfad aus deinen gespeicherten Karrierewegen entfernt. Du kannst ihn später im Karriere-Puzzle erneut speichern.",
+        "confirm": "Entfernen",
+        "nameLabel": "Pfad:"
       }
     }
   },
@@ -382,6 +379,8 @@
     "detailPageTitle": "Rollendetails",
     "subtitle": "Suche nach einer Rolle, die du im Sinn hast. Wir schlagen passende Berufe aus unserer Datenbank vor – auch alternative Bezeichnungen, die du vielleicht meintest.",
     "searchPlaceholder": "Rollen nach Titel oder Synonym suchen…",
+    "domainFilterLabel": "Branche",
+    "domainFilterPlaceholder": "Alle Branchen",
     "minLengthHint": "Gib mindestens 2 Zeichen ein, um zu suchen.",
     "resultsFound": "{{count}} mögliche Rolle gefunden",
     "resultsFound_other": "{{count}} mögliche Rollen gefunden",
@@ -399,12 +398,386 @@
     },
     "actions": {
       "backToSearch": "Zurück zur Rollensuche",
-      "viewSavedDetail": "Gespeicherten Berufsschritt öffnen"
+      "clearSearch": "Suche löschen"
     },
     "errors": {
       "searchFailed": "Rollensuche fehlgeschlagen. Bitte versuche es erneut.",
       "roleNotFound": "Rolle nicht gefunden.",
       "loadFailed": "Rollendetails konnten nicht geladen werden. Bitte versuche es erneut."
     }
+  },
+  "careerPathPlanning": {
+    "pageTitleQuestionnaire": "Dein Weg planen",
+    "pageTitleOverview": "Dein persönlicher Weg zum Beruf",
+    "actions": {
+      "back": "Zurück",
+      "backToRanking": "Zurück zum Ranking",
+      "planPath": "Weg planen"
+    },
+    "errors": {
+      "missingStep": "Für die Wegplanung wurde keine Rolle angegeben.",
+      "missingRole": "Rollendaten fehlen. Bitte starte erneut aus deinem Ranking."
+    },
+    "questionnaire": {
+      "intro": "Beantworte {{count}} kurze Fragen — danach erhältst du sofort deinen persönlichen Karriereweg.",
+      "progress": "Frage {{current}} von {{total}}",
+      "generating": "Dein persönlicher Weg wird erstellt…",
+      "back": "Zurück",
+      "errors": {
+        "noPlan": "Es wurde kein Wegplan zurückgegeben. Bitte versuche es erneut.",
+        "generateFailed": "Dein Wegplan konnte nicht erstellt werden. Bitte versuche es erneut.",
+        "loadFailed": "Der Fragebogen konnte nicht geladen werden. Bitte versuche es erneut."
+      },
+      "shared": {
+        "boolean": {
+          "yes": "Ja",
+          "maybe": "Vielleicht",
+          "no": "Nein"
+        }
+      },
+      "audiences": {
+        "pupil": {
+          "questions": {
+            "educationPreference": {
+              "short": "Nach der Schule",
+              "question": "Wie möchtest du nach der Schule weitermachen?",
+              "options": {
+                "work": "Ich möchte möglichst schnell ins Berufsleben starten.",
+                "school": "Ich möchte noch weiter zur Schule gehen.",
+                "unsure": "Ich bin mir noch nicht sicher."
+              }
+            },
+            "apprenticeship": {
+              "short": "Ausbildung",
+              "question": "Könntest du dir eine Ausbildung vorstellen?",
+              "options": {
+                "yes": "Ja",
+                "maybe": "Vielleicht",
+                "no": "Nein"
+              }
+            },
+            "university": {
+              "short": "Studium",
+              "question": "Könntest du dir später ein Studium vorstellen?",
+              "options": {
+                "yes": "Ja",
+                "maybe": "Vielleicht",
+                "no": "Nein"
+              }
+            }
+          }
+        },
+        "student": {
+          "questions": {
+            "studyPace": {
+              "short": "Lerntempo",
+              "question": "Wie möchtest du Studium oder Ausbildung angehen?",
+              "options": {
+                "finish_first": "Ich möchte Studium/Ausbildung zuerst abschließen.",
+                "start_sooner": "Ich möchte früher in diese Rolle starten.",
+                "unsure": "Ich bin mir noch nicht sicher."
+              }
+            },
+            "extraQualification": {
+              "short": "Zusatzqualifikation",
+              "question": "Könnte eine Zusatz- oder Dualqualifikation dir helfen?",
+              "options": {
+                "yes": "Ja",
+                "maybe": "Vielleicht",
+                "no": "Nein"
+              }
+            }
+          }
+        },
+        "career": {
+          "questions": {
+            "timeline": {
+              "short": "Zeitrahmen",
+              "question": "Wie bald möchtest du in diese Rolle wechseln?",
+              "options": {
+                "asap": "Möglichst bald",
+                "one_to_two_years": "In etwa 1–2 Jahren",
+                "exploring": "Ich orientiere mich noch"
+              }
+            },
+            "gapClosing": {
+              "short": "Lücken schließen",
+              "question": "Wie möchtest du Skill-Lücken für diese Rolle schließen?",
+              "options": {
+                "on_the_job": "Im Job lernen",
+                "courses": "Gezielte Kurse oder Weiterbildung",
+                "further_degree": "Einen weiteren Abschluss",
+                "unsure": "Ich bin mir noch nicht sicher"
+              }
+            },
+            "moveType": {
+              "short": "Art des Wechsels",
+              "question": "Was für ein Schritt ist das für dich?",
+              "options": {
+                "deepen": "Vertiefung in meinem aktuellen Feld",
+                "pivot": "Wechsel in ein angrenzendes Feld",
+                "leadership": "Schritt in Richtung Führung"
+              }
+            }
+          }
+        },
+        "senior": {
+          "questions": {
+            "scope": {
+              "short": "Ausrichtung",
+              "question": "Welchen Scope strebst du in dieser Rolle an?",
+              "options": {
+                "ic": "Fachliche Expert:innenrolle",
+                "leadership": "Führungsrolle",
+                "hybrid": "Mischung aus Fach- und Führung"
+              }
+            },
+            "changePace": {
+              "short": "Tempo",
+              "question": "Wie zügig soll dieser Wechsel passieren?",
+              "options": {
+                "gradual": "Schrittweise",
+                "decisive": "Entschlossen / eher schnell",
+                "exploring": "Ich orientiere mich noch"
+              }
+            },
+            "constraints": {
+              "short": "Rahmenbedingungen",
+              "question": "Welche Rahmenbedingungen sind für den Wechsel wichtig?",
+              "options": {
+                "flexible": "Ich bin flexibel",
+                "geography": "Standort / Region ist wichtig",
+                "industry": "Branche ist wichtig",
+                "both": "Standort und Branche sind wichtig"
+              }
+            }
+          }
+        }
+      }
+    },
+    "overview": {
+      "introduction": "Warum das zu dir passt",
+      "whyThisPath": "Warum dieser Weg passt",
+      "keySkills": "Skills, die du aufbauen solltest",
+      "alternatives": "Alternative Optionen",
+      "recommendedPath": "Empfohlener Weg",
+      "pathsCarousel": {
+        "slide": "Weg {{current}} von {{total}}: {{title}}",
+        "dots": "Weg auswählen",
+        "goToSlide": "Zu Weg {{index}}: {{title}}"
+      },
+      "pros": "Vorteile",
+      "cons": "Nachteile",
+      "adjustAnswers": {
+        "recalculate": "Weg neu berechnen",
+        "recalculating": "Wird neu berechnet…",
+        "loadFailed": "Deine Antworten konnten nicht geladen werden. Bitte lade die Seite neu."
+      }
+    }
+  },
+  "careerPuzzle": {
+    "menuLabel": "PuzzleWEG",
+    "pageTitle": "PuzzleWEG",
+    "pageSubtitle": "Baue deine Zukunft Schritt für Schritt. Starte dort, wo du stehst und entscheide selbst, was als Nächstes kommt.",
+    "profileGate": {
+      "title": "Vollständiges Profil erforderlich",
+      "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um dein Karriereweg-Puzzle zu bauen."
+    },
+    "emptySlot": "Dein nächster Schritt",
+    "emptySlotAria": "Nächste Schritte öffnen",
+    "dropHere": "Hier ablegen, um hinzuzufügen",
+    "dropToRemove": "Hier ablegen zum Entfernen",
+    "dropToRemoveHint": "Loslassen, um das letzte Teil von deinem Pfad zu entfernen.",
+    "chooseNext": "Dein nächster Schritt",
+    "selectCategoryHint": "Wähle eine Kategorie, um passende nächste Schritte zu sehen.",
+    "noNextSteps": "Von hier aus gibt es noch keine weiteren Teile — mache einen Schritt rückgängig.",
+    "pathCompleteTitle": "Pfad vollständig",
+    "pathCompleteHint": "Du hast {{count}} Schritte voraus geplant. Speichere diesen Pfad oder mache einen Schritt rückgängig, um ihn zu ändern.",
+    "locked": "Aus deinem Profil",
+    "pathActions": "Pfad",
+    "undo": "Rückgängig",
+    "favorite": "Speichern",
+    "unfavorite": "Gespeichert",
+    "saveDialog": {
+      "title": "Karriereweg speichern",
+      "nameLabel": "Name des Pfads",
+      "hint": "Beim Speichern wird dieser Pfad gesichert und ein neuer Pfad nur mit deinen gesperrten Profilschritten gestartet. Den gespeicherten Pfad kannst du jederzeit unter Gespeicherte Karrierewege wieder öffnen."
+    },
+    "messages": {
+      "savedSuccessfully": "Karriereweg gespeichert — du kannst jetzt einen neuen Pfad starten",
+      "saveFailed": "Dieser Karriereweg konnte nicht gespeichert werden",
+      "unsavedSuccessfully": "Karriereweg aus den Gespeicherten entfernt",
+      "openSavedPaths": "Gespeicherte Karrierewege öffnen",
+      "pieceUpdated": "Puzzleteil aktualisiert",
+      "pieceUpdateFailed": "Dieses Puzzleteil konnte nicht aktualisiert werden",
+      "pieceCreated": "Profilschritt hinzugefügt",
+      "pieceCreateFailed": "Dieser Profilschritt konnte nicht hinzugefügt werden",
+      "pieceDeleted": "Profilschritt entfernt",
+      "pieceDeleteFailed": "Dieser Profilschritt konnte nicht entfernt werden",
+      "stepRemoved": "Schritt vom Pfad entfernt",
+      "stepRemoveFailed": "Dieser Schritt konnte nicht vom Pfad entfernt werden"
+    },
+    "addProfileStep": "Profilschritt hinzufügen",
+    "editDialog": {
+      "title": "Puzzleteil bearbeiten",
+      "createTitle": "Profilschritt hinzufügen",
+      "editAria": "Puzzleteil bearbeiten",
+      "closeAria": "Bearbeiten schließen",
+      "delete": "Löschen",
+      "deleteDialog": {
+        "title": "Profilschritt löschen?",
+        "message": "Diesen Profilschritt von deinem Pfad entfernen? Mindestens zwei Profilschritte müssen bleiben.",
+        "confirm": "Löschen"
+      },
+      "categoryLabel": "Kategorie",
+      "titleLabel": "Titel",
+      "descriptionLabel": "Beschreibung",
+      "roleSearchLabel": "Beruf suchen",
+      "roleSearchPlaceholder": "Berufe nach Titel oder Synonym suchen…",
+      "roleSearchHint": "Die Auswahl eines Berufs füllt Titel und Beschreibung aus.",
+      "endDateLabel": "Enddatum",
+      "endDateHint": "Optional",
+      "endDateDisplay": "Bis {{date}}",
+      "monthPlaceholder": "Monat",
+      "yearPlaceholder": "Jahr",
+      "errors": {
+        "categoryRequired": "Bitte wähle eine Kategorie",
+        "titleRequired": "Bitte gib einen Titel ein",
+        "endDateIncomplete": "Bitte wähle Monat und Jahr, oder lasse beide leer",
+        "roleLookupFailed": "Dieser Beruf konnte nicht geladen werden. Bitte versuche einen anderen."
+      },
+      "months": {
+        "1": "Januar",
+        "2": "Februar",
+        "3": "März",
+        "4": "April",
+        "5": "Mai",
+        "6": "Juni",
+        "7": "Juli",
+        "8": "August",
+        "9": "September",
+        "10": "Oktober",
+        "11": "November",
+        "12": "Dezember"
+      }
+    },
+    "loadError": "Dein Karriere-Puzzle konnte nicht geladen werden.",
+    "more": "Mehr",
+    "addToPath": "Zum Pfad hinzufügen",
+    "removeFromPath": "Vom Pfad entfernen",
+    "pieceDetail": "Puzzleteil-Details",
+    "closeDetail": "Details schließen",
+    "pieceNotFound": "Dieses Puzzleteil wurde nicht gefunden.",
+    "estimatedDuration": "Etwa {{months}} Monate",
+    "escoLinked": "Verknüpfter Beruf",
+    "coreSkills": "Kernskills: {{skills}}",
+    "categories": {
+      "school": "Schulische Bildung",
+      "apprenticeship": "Ausbildung",
+      "university": "Universität",
+      "further_education": "Weiterbildung",
+      "occupation": "Beruf"
+    }
+  },
+  "careerIdentity": {
+    "menuLabel": "PuzzleICH",
+    "pageTitle": "PuzzleICH",
+    "pageSubtitle": "Dein Berufsleben ist ein Puzzle. Jede Erfahrung fügt dem Puzzlebild neue Erkenntnisse hinzu. So kannst du dich selbst besser kennenlernen.",
+    "profileGate": {
+      "title": "Vollständiges Profil erforderlich",
+      "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um dein Identitäts-Puzzle freizuschalten."
+    },
+    "loadError": "Deine berufliche Identität konnte nicht geladen werden.",
+    "closeDetail": "Details schließen",
+    "emptyGraph": "Deine Puzzleteile erscheinen hier, sobald du dein Profil befüllst und Berufe erkundest. Los geht's!",
+    "confidence": {
+      "strong": "Wird klarer",
+      "emerging": "Nimmt Gestalt an",
+      "early": "Beginnt gerade"
+    },
+    "whyWeThinkThis": "Warum denken wir das?",
+    "noEvidenceYet": "Noch keine Belege für dieses Merkmal. Erkunde, reflektiere oder lade deinen Lebenslauf hoch, um Klarheit zu gewinnen.",
+    "vote": {
+      "title": "Passt das zu dir?",
+      "saveError": "Dein Feedback konnte nicht gespeichert werden.",
+      "dropConfirmTitle": "Puzzle-Stück entfernen?",
+      "dropConfirmMessage": "Mit dieser Bewertung wird „{{name}}“ aus deinem Identitäts-Puzzle entfernt.",
+      "dropConfirmAction": "Stück entfernen",
+      "dropNoticeTitle": "Puzzle-Stück entfernt",
+      "dropNoticeMessage": "„{{name}}“ wurde aufgrund deiner Bewertung aus deinem Identitäts-Puzzle entfernt.",
+      "dropNoticeAction": "OK",
+      "actions": {
+        "confirm": "Ja, sehr",
+        "unsure": "Bin mir nicht sicher",
+        "reject": "Nein, nicht wirklich"
+      },
+      "tooltips": {
+        "confirm": "Bestätige dieses Merkmal — es stärkt dieses Puzzle-Stück etwas.",
+        "unsure": "Noch unentschieden — wir sammeln weiter Belege aus deiner Nutzung der App.",
+        "reject": "Sag, dass das nicht passt — es schwächt dieses Puzzle-Stück etwas."
+      }
+    },
+    "voteFlow": {
+      "title": "Identitäts-Puzzle bewerten",
+      "intro": "Schau dir dieses Puzzle-Stück an und sag uns, wie gut es zu dir passt.",
+      "doneTitle": "Puzzle bewertet",
+      "doneBody": "Du hast jedes Stück deines Identitäts-Puzzles bewertet. Dein Feedback schärft deine berufliche Identität.",
+      "empty": "Jedes Stück deines Identitäts-Puzzles hat bereits dein Feedback. Öffne jederzeit ein Stück, um eine Bewertung zu ändern.",
+      "close": "Schließen",
+      "done": "Fertig"
+    },
+    "categories": {
+      "values": "Werte",
+      "interests": "Interessen",
+      "strengths": "Stärken",
+      "work_style": "Arbeitsstil",
+      "thinking_style": "Denkstil",
+      "motivation": "Motivation",
+      "environment": "Umgebung",
+      "communication": "Kommunikation",
+      "leadership": "Führung",
+      "problem_solving": "Problemlösung",
+      "learning": "Lernen",
+      "social_orientation": "Soziale Orientierung"
+    },
+    "progress": {
+      "title": "Du möchtest neue Berufe entdecken?",
+      "ready": "Du hast genug verändert. Wir bereiten neue Berufsvorschläge für dich vor.",
+      "preparing": "Wir haben nach neuen Berufen gesucht, aber noch keinen passenden Treffer gefunden. Mach weiter — wir versuchen es erneut, sobald sich deine Identität weiter verändert.",
+      "preparingShort": "Wird vorbereitet…",
+      "updating": "Wir aktualisieren deinen Fortschritt nach den letzten Profiländerungen…",
+      "updatingShort": "Wird aktualisiert…",
+      "delivered": "Neue Berufsvorschläge sind bereit. Bewerte sie, um fortzufahren — der Fortschritt wird danach zurückgesetzt.",
+      "percentLabel": "{{percent}}%",
+      "helpText": "Durch deine Aktivitäten in der App aktualisierst du dein Puzzle. Dadurch erhältst du neue Berufsvorschläge. Was möchtest du als nächstes tun?",
+      "completeSimulationFirst": "Schließe zuerst deine Berufssimulation ab. Danach kannst du durch deine Aktivitäten in der App neue Berufe entdecken.",
+      "ctaCompleteSimulation": "Zur Simulation",
+      "ctaUpdateProfile": "Profil aktualisieren",
+      "ctaPuzzlePath": "Meinen Weg puzzlen",
+      "ctaRateIdentity": "Meine Identitäts-Puzzle bewerten",
+      "ctaRateIdentityDisabled": "Alle Puzzle-Stücke haben bereits dein Feedback.",
+      "reasonsTitle": "Das bewegt den Balken gerade"
+    },
+    "exploration": {
+      "discoveredBody_one": "Wir haben {{count}} neuen Beruf entdeckt, der zu dir passt.",
+      "discoveredBody_other": "Wir haben {{count}} neue Berufe entdeckt, die zu dir passen.",
+      "cta": "Jetzt entdecken",
+      "ctaContinue": "Bewertung fortsetzen",
+      "continueBody": "Du hast {{evaluated}} von {{total}} Berufen bewertet. Mach dort weiter, wo du aufgehört hast.",
+      "discoverTitle": "Neue Berufe für dich",
+      "discoverSubtitle": "Basierend auf der Änderung deiner beruflichen Identität lohnen sich diese Rollen neu zur Erkundung.",
+      "roleIntro": "Schau dir diese Rolle an und wähle Behalten, Überspringen oder Ablehnen — wie nach einer Simulation.",
+      "preparingRoles": "Deine neuen Rollenvorschläge werden vorbereitet…",
+      "rankingTitle": "Dein Ranking",
+      "rankingDescription": "Ziehe Rollen zwischen Behalten, Überspringen und Ablehnen, um dein Ranking zu verfeinern.",
+      "rankCategoryLabel": "Vorgeschlagene Rollen",
+      "loadError": "Diese Exploration konnte nicht geladen werden.",
+      "empty": "Keine neuen Berufe in dieser Exploration.",
+      "untitledRole": "Unbenannte Rolle",
+      "roleMeta": "{{domain}}",
+      "close": "Schließen",
+      "done": "Fertig"
+    }
   }
 }
+

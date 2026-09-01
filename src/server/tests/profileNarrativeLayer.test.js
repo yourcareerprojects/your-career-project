@@ -404,7 +404,7 @@ describe('profileController narrative layer', () => {
     expect(res.json.mock.calls[0][0].narrativesReady).toBe(true);
   });
 
-  test('updateUserIdentity skips narrative work for minor identity edits', async () => {
+  test('updateUserIdentity preserves AI summary for minor identity edits', async () => {
     const identityBody = {
       workEnjoyMost: 'Solving practical product problems',
       topicsIndustriesInterest: 'Health tech and education',
@@ -412,13 +412,14 @@ describe('profileController narrative layer', () => {
       workEnvironmentFit: 'Calm teams with shared ownership',
       workingLifeAchievement: 'Build products that improve access',
     };
+    const polishedWhoAreYou = buildPolishedWhoAreYou(Object.values(identityBody));
     const created = await User.create({
       email: 'who-are-you-minor-edit@example.com',
       password: 'password123!',
       profile: {
         personalInfo: {},
         userIdentityAnswers: identityBody,
-        who_are_you: buildPolishedWhoAreYou(Object.values(identityBody)),
+        who_are_you: polishedWhoAreYou,
         structuredUserInfo: {},
         careerSimulationInputs: { structuredUserInfo: {} },
         documents: [],
@@ -448,10 +449,16 @@ describe('profileController narrative layer', () => {
     expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
     expect(scheduleDeferredProfileNarrativesForUser).not.toHaveBeenCalled();
     expect(payload.userIdentity.workEnjoyMost).toBe('Solving practical product problem');
-    expect(JSON.parse(payload.who_are_you.summary_text)[0]).toBe('Solving practical product problem');
+    expect(payload.who_are_you.raw_answers[0]).toBe(identityBody.workEnjoyMost);
+    expect(JSON.parse(payload.who_are_you.summary_text)[0]).toBe(
+      JSON.parse(
+        polishedWhoAreYou.summary_text.translations?.en
+        || polishedWhoAreYou.summary_text.original
+      )[0]
+    );
   });
 
-  test('updateUserIdentity clears stale localized narratives and returns saved answers', async () => {
+  test('updateUserIdentity preserves AI summary on major manual edits until force regenerate', async () => {
     const identityBody = {
       workEnjoyMost: 'Solving practical product problems',
       topicsIndustriesInterest: 'Health tech and education',
@@ -460,23 +467,13 @@ describe('profileController narrative layer', () => {
       workingLifeAchievement: 'Build products that improve access',
     };
     const polishedWhoAreYou = buildPolishedWhoAreYou(Object.values(identityBody));
-    const staleEnglishNarratives = JSON.stringify([
-      'STALE EN narrative line one that should not survive a profile edit save.',
-      'STALE EN narrative line two that should not survive a profile edit save.',
-      'STALE EN narrative line three that should not survive a profile edit save.',
-      'STALE EN narrative line four that should not survive a profile edit save.',
-      'STALE EN narrative line five that should not survive a profile edit save.',
-    ]);
-    polishedWhoAreYou.summary_text = {
-      ...polishedWhoAreYou.summary_text,
-      translations: {
-        ...polishedWhoAreYou.summary_text.translations,
-        en: staleEnglishNarratives,
-      },
-    };
+    const previousSummaryLine = JSON.parse(
+      polishedWhoAreYou.summary_text.translations?.en
+      || polishedWhoAreYou.summary_text.original
+    )[0];
 
     const created = await User.create({
-      email: 'who-are-you-stale-translation@example.com',
+      email: 'who-are-you-preserve-major@example.com',
       password: 'password123!',
       profile: {
         personalInfo: {},
@@ -499,23 +496,156 @@ describe('profileController narrative layer', () => {
     };
     const res = mockRes();
 
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+
     await profileController.updateUserIdentity(req, res);
 
     expect(res.status).not.toHaveBeenCalledWith(400);
     expect(res.status).not.toHaveBeenCalledWith(500);
     const payload = res.json.mock.calls[0][0];
     expect(payload.userIdentity.workEnjoyMost).toBe(updatedBody.workEnjoyMost);
-    expect(payload.who_are_you.raw_answers[0]).toBe(updatedBody.workEnjoyMost);
+    expect(payload.who_are_you.raw_answers[0]).toBe(identityBody.workEnjoyMost);
     expect(payload.identityEditMagnitude).toBe('major');
-    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativesReady).toBe(true);
+    expect(scheduleDeferredProfileNarrativesForUser).not.toHaveBeenCalled();
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
 
     const parsedSummary = JSON.parse(payload.who_are_you.summary_text);
-    expect(parsedSummary[0]).toBe('No personal profile information available yet.');
+    expect(parsedSummary[0]).toBe(previousSummaryLine);
 
     const persisted = await User.findById(created._id).lean();
     expect(persisted.profile.userIdentityAnswers.workEnjoyMost).toBe(updatedBody.workEnjoyMost);
     const persistedEnSummary = persisted.profile.who_are_you.summary_text.translations.en;
-    expect(JSON.parse(persistedEnSummary)[0]).toBe('No personal profile information available yet.');
+    expect(JSON.parse(persistedEnSummary)[0]).toBe(previousSummaryLine);
+  });
+
+  test('updateUserIdentity forceRegenerateWhoAreYou invalidates and schedules narrative regeneration', async () => {
+    const identityBody = {
+      workEnjoyMost: 'Solving practical product problems',
+      topicsIndustriesInterest: 'Health tech and education',
+      naturallyGoodAt: 'Turning ambiguity into clear plans',
+      workEnvironmentFit: 'Calm teams with shared ownership',
+      workingLifeAchievement: 'Build products that improve access',
+    };
+    const updatedBody = {
+      ...identityBody,
+      workEnjoyMost: 'I lead platform strategy for growth-stage SaaS companies and mentor product teams.',
+    };
+    const created = await User.create({
+      email: 'who-are-you-force-regen@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        userIdentityAnswers: updatedBody,
+        who_are_you: {
+          ...buildPolishedWhoAreYou(Object.values(identityBody)),
+          raw_answers: Object.values(identityBody),
+        },
+        structuredUserInfo: {},
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [],
+      },
+    });
+
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+
+    const req = {
+      user: { userId: String(created._id) },
+      language: 'en',
+      body: {
+        ...updatedBody,
+        forceRegenerateWhoAreYou: true,
+      },
+    };
+    const res = mockRes();
+
+    await profileController.updateUserIdentity(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.who_are_you.raw_answers[0]).toBe(updatedBody.workEnjoyMost);
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativePending).toEqual(['who_are_you']);
+    expect(generateWhoAreYouNarratives).not.toHaveBeenCalled();
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({
+        deferWhoAreYou: true,
+        language: 'en',
+      })
+    );
+    expect(JSON.parse(payload.who_are_you.summary_text)[0]).toBe(
+      'No personal profile information available yet.'
+    );
+  });
+
+  test('updateUserIdentity forceRegenerateWhoAreYouField invalidates only that sub-section', async () => {
+    const identityBody = {
+      workEnjoyMost: 'Solving practical product problems',
+      topicsIndustriesInterest: 'Health tech and education',
+      naturallyGoodAt: 'Turning ambiguity into clear plans',
+      workEnvironmentFit: 'Calm teams with shared ownership',
+      workingLifeAchievement: 'Build products that improve access',
+    };
+    const updatedBody = {
+      ...identityBody,
+      workEnjoyMost: 'I lead platform strategy for growth-stage SaaS companies and mentor product teams.',
+    };
+    const polished = buildPolishedWhoAreYou(Object.values(identityBody));
+    const previousSummary = JSON.parse(
+      polished.summary_text.translations?.en || polished.summary_text.original
+    );
+
+    const created = await User.create({
+      email: 'who-are-you-force-regen-field@example.com',
+      password: 'password123!',
+      profile: {
+        personalInfo: {},
+        userIdentityAnswers: updatedBody,
+        who_are_you: {
+          ...polished,
+          raw_answers: Object.values(identityBody),
+        },
+        structuredUserInfo: {},
+        careerSimulationInputs: { structuredUserInfo: {} },
+        documents: [],
+      },
+    });
+
+    scheduleDeferredProfileNarrativesForUser.mockClear();
+    generateWhoAreYouNarratives.mockClear();
+
+    const req = {
+      user: { userId: String(created._id) },
+      language: 'en',
+      body: {
+        ...updatedBody,
+        forceRegenerateWhoAreYouField: 'workEnjoyMost',
+      },
+    };
+    const res = mockRes();
+
+    await profileController.updateUserIdentity(req, res);
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.who_are_you.raw_answers[0]).toBe(updatedBody.workEnjoyMost);
+    expect(payload.who_are_you.raw_answers[1]).toBe(identityBody.topicsIndustriesInterest);
+    expect(payload.narrativesReady).toBe(false);
+    expect(payload.narrativePending).toEqual(['who_are_you']);
+    expect(scheduleDeferredProfileNarrativesForUser).toHaveBeenCalledWith(
+      String(created._id),
+      expect.objectContaining({ deferWhoAreYou: true })
+    );
+
+    const parsedSummary = JSON.parse(payload.who_are_you.summary_text);
+    expect(parsedSummary[0]).toBe('No personal profile information available yet.');
+    expect(parsedSummary[1]).toBe(previousSummary[1]);
+    expect(parsedSummary[2]).toBe(previousSummary[2]);
+    expect(parsedSummary[3]).toBe(previousSummary[3]);
+    expect(parsedSummary[4]).toBe(previousSummary[4]);
   });
 
   test('updateUserIdentity skips narrative LLM when answers are unchanged', async () => {

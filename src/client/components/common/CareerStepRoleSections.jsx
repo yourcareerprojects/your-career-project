@@ -17,6 +17,8 @@ import { mergeResponsibilityTranslations } from '../../utils/mergeResponsibility
 import localizedContentService from '../../utils/localizedContentService';
 import { useFullProfileQuery } from '../../hooks/useProfileQueries';
 import { WRAP_CHIP_LABEL_SX } from '../../constants/iconChipStyles';
+import { getLocalizedAltTitles, getLocalizedHiddenTitles } from '../../utils/roleTitleDisplay';
+import { splitDescriptionIntoParagraphs } from '../../utils/splitDescriptionIntoParagraphs';
 
 export const MAX_VISIBLE_REQUIRED_SKILLS = 5;
 export const MAX_VISIBLE_ALT_TITLES = 5;
@@ -34,7 +36,7 @@ export const getSeniorityColor = (level) => {
 };
 
 /**
- * Role Insights card — same structure as SavedCareerStepDetails / SavedSimulationCareerStepDetails.
+ * Role Insights card shared by role and simulation detail pages.
  * @param {object} props
  * @param {object} props.stepDetails — career step / result payload (seniority, keyResponsibilities, skillDomains)
  * @param {number|null} [props.maxVisibleSkillDomains] — if set, collapse skill domains with show more (simulation results)
@@ -161,7 +163,7 @@ export function CareerStepRoleInsightsCard({ stepDetails, maxVisibleSkillDomains
 }
 
 /**
- * Role Details card — same structure as SavedCareerStepDetails / SavedSimulationCareerStepDetails.
+ * Role Details card shared by role and simulation detail pages.
  */
 export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
   const { t, i18n } = useTranslation('dashboard');
@@ -177,16 +179,12 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
   }, [stepDetails, activeLang]);
 
   const altTitles = useMemo(() => {
-    const raw = stepDetails?.altTitles;
-    if (!Array.isArray(raw)) return [];
-    return Array.from(new Set(raw.map((s) => String(s || '').trim()).filter(Boolean)));
-  }, [stepDetails]);
+    return getLocalizedAltTitles(stepDetails, activeLang);
+  }, [stepDetails, activeLang]);
 
   const hiddenTitles = useMemo(() => {
-    const raw = stepDetails?.hiddenTitles;
-    if (!Array.isArray(raw)) return [];
-    return Array.from(new Set(raw.map((s) => String(s || '').trim()).filter(Boolean)));
-  }, [stepDetails]);
+    return getLocalizedHiddenTitles(stepDetails, activeLang);
+  }, [stepDetails, activeLang]);
 
   const optionalSkills = useMemo(() => {
     return getOptionalSkillLabels(stepDetails, activeLang);
@@ -310,7 +308,7 @@ export function CareerStepRoleFitCard({
   profileLoading = false,
 }) {
   const { t, i18n } = useTranslation('dashboard');
-  const [explanation, setExplanation] = useState('');
+  const [bullets, setBullets] = useState([]);
   const [explanationBusy, setExplanationBusy] = useState(false);
 
   useEffect(() => {
@@ -318,7 +316,7 @@ export function CareerStepRoleFitCard({
       return undefined;
     }
 
-    setExplanation('');
+    setBullets([]);
     setExplanationBusy(true);
 
     let cancelled = false;
@@ -330,7 +328,7 @@ export function CareerStepRoleFitCard({
           const token =
             typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
           if (!token) {
-            if (!cancelled) setExplanation('');
+            if (!cancelled) setBullets([]);
           } else {
             const { data } = await axios.post(
               '/api/profile/role-fit-explanation',
@@ -343,18 +341,17 @@ export function CareerStepRoleFitCard({
                 headers: { Authorization: `Bearer ${token}` },
               }
             );
-            if (
-              !cancelled &&
-              data?.success &&
-              typeof data.text === 'string'
-            ) {
-              setExplanation(data.text || '');
+            if (!cancelled && data?.success) {
+              const nextBullets = Array.isArray(data.bullets)
+                ? data.bullets.map((b) => String(b || '').trim()).filter(Boolean)
+                : [];
+              setBullets(nextBullets);
             } else if (!cancelled) {
-              setExplanation('');
+              setBullets([]);
             }
           }
         } catch {
-          if (!cancelled) setExplanation('');
+          if (!cancelled) setBullets([]);
         } finally {
           if (!cancelled) setExplanationBusy(false);
         }
@@ -375,7 +372,7 @@ export function CareerStepRoleFitCard({
   ]);
 
   const showLoading = profileLoading || explanationBusy;
-  if (!showLoading && !explanation) return null;
+  if (!showLoading && bullets.length === 0) return null;
 
   const loadingLabel = t('details.actions.loading');
 
@@ -412,35 +409,20 @@ export function CareerStepRoleFitCard({
             </Typography>
           </Box>
         ) : (
-          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-            {explanation}
-          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.25, '& li': { mb: 1 } }}>
+            {bullets.map((bullet, index) => (
+              <Box component="li" key={`${index}-${bullet.slice(0, 24)}`}>
+                <Typography variant="body2" sx={{ lineHeight: 1.55, fontWeight: 500 }}>
+                  {bullet}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
         )}
       </CardContent>
     </Card>
   );
 }
-
-const splitDescriptionIntoParagraphs = (text) => {
-  const normalizedText = String(text || '').replace(/\r\n/g, '\n').trim();
-  if (!normalizedText) return [];
-
-  const lineParagraphs = normalizedText
-    .split(/\n\s*\n|\n+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (lineParagraphs.length > 1) return lineParagraphs;
-
-  const sentences = normalizedText.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
-  if (!sentences || sentences.length <= 2) return [normalizedText];
-
-  const paragraphs = [];
-  const sentenceBatchSize = 3;
-  for (let i = 0; i < sentences.length; i += sentenceBatchSize) {
-    paragraphs.push(sentences.slice(i, i + sentenceBatchSize).join(' ').trim());
-  }
-  return paragraphs.filter(Boolean);
-};
 
 const NESTED_SECTION_CARD_SX = {
   mb: 2,
@@ -450,10 +432,114 @@ const NESTED_SECTION_CARD_SX = {
 };
 
 /**
+ * Role description body with first paragraph visible and optional expand for the rest.
+ */
+export function RoleDescriptionContent({
+  description,
+  defaultExpanded = false,
+  variant = 'body1',
+  emphasizeFirstParagraph = true,
+  firstParagraphWeight,
+  color,
+  paragraphSx,
+}) {
+  const { t } = useTranslation('dashboard');
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const paragraphs = useMemo(() => splitDescriptionIntoParagraphs(description), [description]);
+
+  useEffect(() => {
+    setExpanded(defaultExpanded);
+  }, [description, defaultExpanded]);
+
+  if (paragraphs.length === 0) {
+    return (
+      <Typography variant={variant} color={color} sx={{ mb: 2, ...paragraphSx }}>
+        {t('details.labels.noDetailedDescription')}
+      </Typography>
+    );
+  }
+
+  const resolvedFirstWeight = firstParagraphWeight ?? (emphasizeFirstParagraph ? 700 : 400);
+  const visibleParagraphs = expanded ? paragraphs : paragraphs.slice(0, 1);
+  const canToggle = paragraphs.length > 1;
+
+  return (
+    <>
+      {visibleParagraphs.map((paragraph, index) => (
+        <Typography
+          key={index}
+          variant={variant}
+          color={color}
+          paragraph={variant === 'body1' && !emphasizeFirstParagraph}
+          sx={{
+            mb: variant === 'body2' ? 1.5 : 2,
+            fontWeight: index === 0 ? resolvedFirstWeight : 400,
+            lineHeight: variant === 'body1' && !emphasizeFirstParagraph ? 1.7 : undefined,
+            ...paragraphSx,
+          }}
+        >
+          {paragraph}
+        </Typography>
+      ))}
+      {canToggle && (
+        <Button
+          size="small"
+          onClick={() => setExpanded((value) => !value)}
+          sx={{ mt: -0.5, mb: 1, textTransform: 'none', px: 0, minWidth: 0 }}
+        >
+          {expanded ? t('details.roleSections.showLess') : t('details.roleSections.more')}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/**
+ * Role Description card — shared across career step detail pages.
+ */
+export function CareerStepRoleDescriptionCard({
+  description,
+  title,
+  unfolded = false,
+  sx,
+  showWorkIcon = true,
+  variant = 'body1',
+  emphasizeFirstParagraph = true,
+  firstParagraphWeight,
+  color,
+  paragraphSx,
+  nested = false,
+  children,
+}) {
+  const { t } = useTranslation('dashboard');
+
+  return (
+    <Card sx={{ ...(nested ? NESTED_SECTION_CARD_SX : { mb: 3 }), ...sx }}>
+      <CardContent>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+          {showWorkIcon ? <Work sx={{ mr: 1, verticalAlign: 'middle' }} /> : null}
+          {title ?? t('details.labels.roleDescription')}
+        </Typography>
+        <RoleDescriptionContent
+          description={description}
+          defaultExpanded={unfolded}
+          variant={variant}
+          emphasizeFirstParagraph={emphasizeFirstParagraph}
+          firstParagraphWeight={firstParagraphWeight}
+          color={color}
+          paragraphSx={paragraphSx}
+        />
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Full role detail sections stacked for inline scroll in the simulation ranking wizard.
  */
 export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null }) {
-  const { t, i18n } = useTranslation('dashboard');
+  const { i18n } = useTranslation('dashboard');
   const { isLoading: profileLoading } = useFullProfileQuery();
   const uiLang = i18n.resolvedLanguage || i18n.language || 'en';
   const description = localizedContentService.getLocalizedWithFallback(
@@ -461,7 +547,6 @@ export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null
     uiLang,
     ''
   );
-  const paragraphs = splitDescriptionIntoParagraphs(description);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0, mt: 1 }}>
@@ -473,30 +558,13 @@ export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null
         />
       </Box>
 
-      <Card sx={NESTED_SECTION_CARD_SX}>
-        <CardContent>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-            <Work sx={{ mr: 1, verticalAlign: 'middle' }} />
-            {t('details.labels.roleDescription')}
-          </Typography>
-          {paragraphs.length > 0 ? (
-            paragraphs.map((paragraph, index) => (
-              <Typography
-                key={index}
-                variant="body2"
-                color="text.secondary"
-                sx={{ mb: 1.5, fontWeight: index === 0 ? 600 : 400 }}
-              >
-                {paragraph}
-              </Typography>
-            ))
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {t('details.labels.noDetailedDescription')}
-            </Typography>
-          )}
-        </CardContent>
-      </Card>
+      <CareerStepRoleDescriptionCard
+        description={description}
+        nested
+        variant="body2"
+        firstParagraphWeight={600}
+        color="text.secondary"
+      />
 
       <Box sx={{ '& .MuiCard-root': NESTED_SECTION_CARD_SX }}>
         <CareerStepRoleInsightsCard stepDetails={stepDetails} unfolded />

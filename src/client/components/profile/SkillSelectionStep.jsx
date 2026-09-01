@@ -325,7 +325,7 @@ const SkillSelectionStep = ({
       </Typography>
       {selectedLabels.length > 0 && showSelectedOnMobile ? (
         <Box sx={{ mb: 1.25 }}>
-          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+          <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
             {t(tk('selectedTitle'))}
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
@@ -342,11 +342,6 @@ const SkillSelectionStep = ({
         </Box>
       ) : null}
       <Box sx={resultsPanelSx}>
-        {showRecommendations && !loading ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {t(tk('searchHint'))}
-          </Typography>
-        ) : null}
         {error ? (
           <Alert severity="error" sx={{ mb: 1.25 }} onClose={() => setError('')}>
             {error}
@@ -369,7 +364,7 @@ const SkillSelectionStep = ({
                 </Typography>
               </Box>
             ) : null}
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
               {resultsTitle}
             </Typography>
             {!hasResults || (isMobileSearchMode && !hasSearchResultsReady) ? (
@@ -386,11 +381,6 @@ const SkillSelectionStep = ({
                 maxSelected={maxSelected}
               />
             )}
-            {showRecommendations && resultMode === 'recommendations' && hasResults ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                {t(tk('recommendationsHint'))}
-              </Typography>
-            ) : null}
           </>
         )}
       </Box>

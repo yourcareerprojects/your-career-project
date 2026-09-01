@@ -163,6 +163,10 @@
       "description": "Durchlaufe die geführte Profilbearbeitung erneut. Du kannst optional einen neuen Lebenslauf hochladen, um die Coaching-Fragen zu personalisieren, bevor bestehende Daten ersetzt werden."
     }
   },
+  "coachingFallback": {
+    "enterManually": "Manuell eingeben",
+    "manualIntro": "Das Coaching ist gerade nicht verfügbar. Bitte gib deine Antworten selbst ein oder versuche es später erneut."
+  },
   "workEnjoyCoaching": {
     "chat": {
       "intro": "Ein kurzes Coaching hilft dir, passende Arbeitstätigkeiten zu finden. Beantworte drei einfache Fragen in deinen eigenen Worten.",
@@ -225,6 +229,7 @@
       "searchResultsTitle": "Suchergebnisse",
       "recommendationsTitle": "Vorschläge für dich",
       "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
+      "dialogSelectionHint": "Deine Auswahl",
       "noSearchResults": "Keine passenden Stärken. Versuche einen anderen Suchbegriff.",
       "noRecommendations": "Noch keine Vorschläge verfügbar. Nutze die Suche, um Stärken zu finden.",
       "selectedCount": "{{count}} von {{max}} ausgewählt",
@@ -295,6 +300,7 @@
     "recommendationsTitle": "Vorschläge für dich",
     "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
     "selectedTitle": "Deine Auswahl",
+    "dialogSelectionHint": "Deine Auswahl",
     "requiredSkillsTitle": "Notwendige Fähigkeiten",
     "optionalSkillsTitle": "Optionale Fähigkeiten",
     "noOptionalSkills": "Keine rein optionalen Fähigkeiten in diesen Vorschlägen.",
@@ -318,6 +324,7 @@
     "recommendationsTitle": "Vorschläge für dich",
     "recommendationsHint": "Die Vorschläge basieren auf deinem Profil und deinen Coaching-Antworten.",
     "selectedTitle": "Deine Auswahl",
+    "dialogSelectionHint": "Deine Auswahl",
     "noSearchResults": "Keine Fähigkeiten passen zu deiner Suche.",
     "noRecommendations": "Noch keine Vorschläge verfügbar. Nutze die Suche, um Fähigkeiten zu finden.",
     "selectedCount": "{{count}} von {{max}} ausgewählt",
@@ -535,6 +542,7 @@
       "cancel": "Abbrechen",
       "edit": "Bearbeiten",
       "restartCoachingChat": "Chat neu starten",
+      "regenerateAiSummary": "KI-Zusammenfassung neu erzeugen",
       "close": "Schließen"
     },
     "identityCoaching": {
@@ -646,8 +654,8 @@
         "addButton": "Branche hinzufügen",
         "changeButton": "Branche ändern",
         "dialogTitle": "Branche auswählen",
-        "dialogSelectionHint": "Deine Auswahl (mit Speichern bestätigen)",
-        "empty": "Noch keine Branchen (z. B. MedTech, Life Sciences, Fertigung). Nutze Branchen, keine Jobfunktionen wie Marketing.",
+        "dialogSelectionHint": "Deine Auswahl",
+        "empty": "Noch keine Branchen (z. B. Gesundheitswesen, Pharma, Fertigung). Nutze Branchen, keine Jobfunktionen wie Produktmanagement.",
         "groups": {
           "healthLife": "Gesundheit & Life Sciences",
           "sciences": "Naturwissenschaften & Forschung",
@@ -763,7 +771,7 @@
       "lastAutoCalculated": "Zuletzt automatisch berechnet: {{date}}",
       "empty": {
         "strengths": "Noch keine Stärken. Bearbeite die Berufssimulations-Eingaben, um Kompetenzbereiche hinzuzufügen.",
-        "industrySectors": "Noch keine Branchen hinzugefügt. Bearbeite, um Branchen hinzuzufügen (z. B. MedTech, Fertigung).",
+        "industrySectors": "Noch keine Branchen hinzugefügt. Bearbeite, um Branchen hinzuzufügen (z. B. Gesundheitswesen, Fertigung).",
         "responsibilities": "Noch keine Verantwortungen hinzugefügt. Bearbeite, um Verantwortungen hinzuzufügen.",
         "skills": "Noch keine Fähigkeiten hinzugefügt. Bearbeite, um deine Fähigkeiten hinzuzufügen.",
         "learningGoals": "Noch keine Lernziele. Bearbeite, um hinzuzufügen, was du lernst.",
@@ -772,7 +780,7 @@
       },
       "editablePlaceholders": {
         "strengths": "Übergeordnete Fähigkeit eingeben und Enter drücken",
-        "industrySectors": "Nur Bereiche: MedTech, Life Sciences, Fertigung, Bildung",
+        "industrySectors": "Nur Bereiche: Gesundheitswesen, Pharma, Fertigung, Bildung",
         "responsibilities": "Verantwortung eingeben und Enter drücken",
         "skills": "Fähigkeit eingeben und Enter drücken oder auf Hinzufügen klicken",
         "learningGoals": "Fähigkeit in Entwicklung eingeben und Enter drücken"

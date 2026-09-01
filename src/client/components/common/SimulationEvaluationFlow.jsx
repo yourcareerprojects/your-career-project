@@ -15,6 +15,8 @@ import {
   getMobileEvaluationView,
   isOutsideTheBoxDeferred,
   MOBILE_EVAL_VIEWS,
+  getEvalQueue,
+  getRankedBoard,
 } from '../../utils/simulationRoleRanking';
 
 function OutsideTheBoxPhaseTransition({ onContinue, onSkip }) {
@@ -134,15 +136,13 @@ export default function SimulationEvaluationFlow({
   onSeeRanking,
   onReorderRankedRoles,
   onReorderCombinedRankedRoles,
-  isStepSaved,
-  isStepSaving,
-  onToggleSave,
   guardedNavigate,
   isViewingSavedSimulation,
   savedSimulationId,
   simulationIdForCards,
   nextStepsProfileRecommendation = null,
   outsideTheBoxProfileRecommendation = null,
+  onPlanPath,
 }) {
   const phaseView = getMobileEvaluationView(evaluationFlow);
   const showCombinedRanking = areBothSimulationRankingsComplete(evaluationFlow);
@@ -152,13 +152,11 @@ export default function SimulationEvaluationFlow({
       <SimulationCombinedRanking
         evaluationFlow={evaluationFlow}
         onReorderCombinedRankedRoles={onReorderCombinedRankedRoles}
-        isStepSaved={isStepSaved}
-        isStepSaving={isStepSaving}
-        onToggleSave={onToggleSave}
         guardedNavigate={guardedNavigate}
         isViewingSavedSimulation={isViewingSavedSimulation}
         savedSimulationId={savedSimulationId}
         simulationIdForCards={simulationIdForCards}
+        onPlanPath={onPlanPath}
       />
     );
   }
@@ -182,26 +180,24 @@ export default function SimulationEvaluationFlow({
           <SimulationCategoryEvaluation
             title={nextStepsTitle}
             categoryKey="nextSteps"
-            roles={evaluationFlow.nextSteps}
+            roles={getEvalQueue(evaluationFlow, 'nextSteps')}
             phase={evaluationFlow.phases?.nextSteps || 'eval'}
-            rankedRows={evaluationFlow.ranked?.nextSteps}
+            rankedRows={getRankedBoard(evaluationFlow, 'nextSteps')}
             hasStarted={!!evaluationFlow.hasStarted?.nextSteps}
             onEvaluate={(stepId, evaluation) => onEvaluate('nextSteps', stepId, evaluation)}
             onSeeRanking={() => onSeeRanking('nextSteps')}
             onReorderRankedRoles={(rows) => onReorderRankedRoles('nextSteps', rows)}
-            isStepSaved={isStepSaved}
-            isStepSaving={isStepSaving}
-            onToggleSave={onToggleSave}
             guardedNavigate={guardedNavigate}
             isViewingSavedSimulation={isViewingSavedSimulation}
             savedSimulationId={savedSimulationId}
             simulationIdForCards={simulationIdForCards}
+            onPlanPath={onPlanPath}
           />
         </>
       ) : null}
       {showDeferredOotbPrompt ? (
         <OutsideTheBoxDeferredPrompt
-          roleCount={evaluationFlow.outsideTheBox?.length || EVALUATION_ROLES_TARGET}
+          roleCount={getEvalQueue(evaluationFlow, 'outsideTheBox').length || EVALUATION_ROLES_TARGET}
           onResume={onResumeOutsideTheBox}
         />
       ) : null}
@@ -217,20 +213,18 @@ export default function SimulationEvaluationFlow({
           <SimulationCategoryEvaluation
             title={outsideTheBoxTitle}
             categoryKey="outsideTheBox"
-            roles={evaluationFlow.outsideTheBox}
+            roles={getEvalQueue(evaluationFlow, 'outsideTheBox')}
             phase={evaluationFlow.phases?.outsideTheBox || 'eval'}
-            rankedRows={evaluationFlow.ranked?.outsideTheBox}
+            rankedRows={getRankedBoard(evaluationFlow, 'outsideTheBox')}
             hasStarted={!!evaluationFlow.hasStarted?.outsideTheBox}
             onEvaluate={(stepId, evaluation) => onEvaluate('outsideTheBox', stepId, evaluation)}
             onSeeRanking={() => onSeeRanking('outsideTheBox')}
             onReorderRankedRoles={(rows) => onReorderRankedRoles('outsideTheBox', rows)}
-            isStepSaved={isStepSaved}
-            isStepSaving={isStepSaving}
-            onToggleSave={onToggleSave}
             guardedNavigate={guardedNavigate}
             isViewingSavedSimulation={isViewingSavedSimulation}
             savedSimulationId={savedSimulationId}
             simulationIdForCards={simulationIdForCards}
+            onPlanPath={onPlanPath}
           />
         </>
       ) : null}

@@ -4,6 +4,7 @@ const CareerPath = require('../models/CareerPath');
 const { attachSkillsToCareerPaths } = require('./careerPathSkillService');
 const { resolveEscoSkillTitles, canonicalEscoUri } = require('./escoSkillLookupService');
 const { mergeSimulationPoolFilter } = require('./simulation/simulationCareerPathPoolFilter');
+const { UNASSIGNED_ROLE_DOMAIN } = require('../../constants/industries');
 
 const ESCO_API_BASE = 'https://ec.europa.eu/esco/api/v1';
 const ESCO_RESOURCE_BASE = 'https://ec.europa.eu/esco/api/resource';
@@ -75,6 +76,8 @@ async function fetchESCOOccupationsPage(options = {}) {
 
 /**
  * Maps an ESCO occupation object to the CareerPath model structure.
+ * Does not set `domain` here — inserts use UNASSIGNED via $setOnInsert so
+ * later classification is never overwritten by ESCO sync.
  * @param {Object} escoOccupation
  * @returns {Object} CareerPath-compatible object
  */
@@ -263,8 +266,12 @@ async function cacheESCOOccupations(options = {}) {
 
       const doc = await CareerPath.findOneAndUpdate(
         { escoId: mapped.escoId },
-        { $set: { ...mapped, lastUpdated: new Date() } },
-        { upsert: true, new: true }
+        {
+          $set: { ...mapped, lastUpdated: new Date() },
+          // New occupations only — never reset a classified domain on sync
+          $setOnInsert: { domain: UNASSIGNED_ROLE_DOMAIN },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       results.push(doc);
 

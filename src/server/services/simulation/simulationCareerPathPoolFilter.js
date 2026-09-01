@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * Mongo filter helpers: exclude career paths archived from simulation pools.
+ * Mongo filter helpers: omit career paths marked simulationExcluded.
+ * Used by simulation/identity/puzzle pools and catalog occupation APIs.
  * Uses `$ne: true` so legacy documents without the field remain eligible.
  */
 

@@ -87,7 +87,6 @@ function SkillDomainPickerDialog({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [results, setResults] = useState([]);
-  const [resultMode, setResultMode] = useState('recommendations');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -160,7 +159,6 @@ function SkillDomainPickerDialog({
       .then((data) => {
         if (fetchGenerationRef.current !== fetchGeneration) return;
         setResults(dedupeCatalogByLabel(data.skillDomains));
-        setResultMode(data.mode);
       })
       .catch((err) => {
         if (fetchGenerationRef.current !== fetchGeneration) return;
@@ -174,15 +172,6 @@ function SkillDomainPickerDialog({
       });
     return undefined;
   }, [open, debouncedSearch, contextKey, t]);
-
-  const displayResults = useMemo(() => {
-    const fromApi = results;
-    const apiLabels = new Set(fromApi.map((item) => String(item.label || '').toLowerCase()));
-    const selectedExtras = draftValues
-      .filter((label) => !apiLabels.has(label.toLowerCase()))
-      .map((label) => ({ key: label, label }));
-    return [...selectedExtras, ...fromApi];
-  }, [results, draftValues]);
 
   const toggleDomain = useCallback((label) => {
     const trimmed = String(label || '').trim();
@@ -201,7 +190,7 @@ function SkillDomainPickerDialog({
     : t('naturallyGoodAtCoaching.skillDomainPicker.recommendationsTitle');
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" scroll="paper">
       <DialogTitle sx={{ pr: 6 }}>
         {t('naturallyGoodAtCoaching.skillDomainPicker.dialogTitle')}
         <IconButton
@@ -213,6 +202,24 @@ function SkillDomainPickerDialog({
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
+        {draftValues.length > 0 ? (
+          <Box sx={{ mb: 2.5 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
+              {t('naturallyGoodAtCoaching.skillDomainPicker.dialogSelectionHint')}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+              {draftValues.map((label) => (
+                <SkillDomainChip
+                  key={label}
+                  label={label}
+                  domainKey={label}
+                  selected
+                  onClick={() => toggleDomain(label)}
+                />
+              ))}
+            </Box>
+          </Box>
+        ) : null}
         <TextField
           fullWidth
           size="small"
@@ -228,11 +235,6 @@ function SkillDomainPickerDialog({
             max: maxItems,
           })}
         </Typography>
-        {!isSearchActive && !loading ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {t('naturallyGoodAtCoaching.skillDomainPicker.searchHint')}
-          </Typography>
-        ) : null}
         {error ? (
           <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError('')}>
             {error}
@@ -246,11 +248,11 @@ function SkillDomainPickerDialog({
             </Typography>
           </Box>
         ) : (
-          <>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
               {resultsTitle}
             </Typography>
-            {displayResults.length === 0 ? (
+            {results.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 {isSearchActive
                   ? t('naturallyGoodAtCoaching.skillDomainPicker.noSearchResults')
@@ -258,7 +260,7 @@ function SkillDomainPickerDialog({
               </Typography>
             ) : (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
-                {displayResults.map((item) => {
+                {results.map((item) => {
                   const label = String(item.label || '').trim();
                   if (!label) return null;
                   const key = String(item.key || label).trim();
@@ -277,16 +279,11 @@ function SkillDomainPickerDialog({
                 })}
               </Box>
             )}
-            {!isSearchActive && resultMode === 'recommendations' && displayResults.length > 0 ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-                {t('naturallyGoodAtCoaching.skillDomainPicker.recommendationsHint')}
-              </Typography>
-            ) : null}
-          </>
+          </Box>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{t('profilePage.actions.cancel', { ns: 'onboarding' })}</Button>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} color="inherit">{t('profilePage.actions.cancel', { ns: 'onboarding' })}</Button>
         <Button
           variant="contained"
           onClick={() => onSave?.(draftValues)}
@@ -310,18 +307,28 @@ export default function SkillDomainPicker({
   disabled = false,
   maxItems = 5,
   recommendationContextTexts = [],
+  defaultDialogOpen = false,
+  onDialogSave,
+  onDialogCancel,
 }) {
   const { t } = useTranslation('onboarding');
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
 
   const selectedValues = useMemo(() => normalizeSelectedLabels(value), [value]);
 
   const emitValues = (nextValues) => {
-    onChange?.(normalizeSelectedLabels(nextValues).slice(0, maxItems));
+    const next = normalizeSelectedLabels(nextValues).slice(0, maxItems);
+    onChange?.(next);
+    return next;
   };
 
   const handleRemove = (index) => {
     emitValues(selectedValues.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const handleClose = () => {
+    setDialogOpen(false);
+    onDialogCancel?.();
   };
 
   return (
@@ -360,10 +367,11 @@ export default function SkillDomainPicker({
       ) : null}
       <SkillDomainPickerDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={handleClose}
         onSave={(next) => {
-          emitValues(next);
+          const saved = emitValues(next);
           setDialogOpen(false);
+          onDialogSave?.(saved);
         }}
         initialValues={selectedValues}
         maxItems={maxItems}

@@ -1,7 +1,25 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 
-export const PAGE_TITLE_SX = { mb: 3, fontWeight: 700, textAlign: 'center' };
+/** Shared green → red title gradient (viewport-centered, sharp mid blend). */
+export const PAGE_TITLE_GRADIENT_SX = {
+  background: (theme) =>
+    `linear-gradient(120deg, ${theme.palette.primary.main} 42%, ${theme.palette.secondary.main} 58%)`,
+  backgroundSize: '100vw 100%',
+  backgroundPosition: 'center center',
+  backgroundRepeat: 'no-repeat',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  backgroundClip: 'text',
+};
+
+export const PAGE_TITLE_SX = {
+  mb: 3,
+  fontWeight: 700,
+  textAlign: 'center',
+  ...PAGE_TITLE_GRADIENT_SX,
+};
+
 export const PAGE_DESCRIPTION_SX = { mb: 4, textAlign: 'center' };
 
 /**

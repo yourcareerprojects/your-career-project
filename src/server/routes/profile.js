@@ -243,6 +243,7 @@ const reviewSaveValidation = [
 // Routes
 router.get('/', auth, profileController.getProfile);
 router.get('/completion', auth, profileController.getProfileCompletion);
+router.get('/history', auth, profileController.getUserHistory);
 
 router.post('/input-quality-diagnosis', auth, ...requireVerifiedProfile, profileController.diagnoseProfileInputQuality);
 router.post('/work-enjoy-coaching', auth, ...requireVerifiedProfile, profileController.postWorkEnjoyCoaching);
@@ -256,6 +257,11 @@ router.post('/role-skills/resolve', auth, ...requireVerifiedProfile, profileCont
 router.get('/role-skill-domains', auth, ...requireVerifiedProfile, profileController.getRoleSkillDomainsForSelection);
 router.post('/role-skill-domains/search', auth, ...requireVerifiedProfile, profileController.searchRoleSkillDomainsForSelection);
 router.post('/role-fit-explanation', auth, ...requireSimulationAccess, profileController.postRoleFitExplanation);
+router.post('/career-path-coaching', auth, ...requireSimulationAccess, profileController.postCareerPathCoaching);
+router.post('/career-path-coaching/prefetch', auth, ...requireSimulationAccess, profileController.postCareerPathCoachingPrefetch);
+router.get('/career-path-plans', auth, ...requireSimulationAccess, profileController.listCareerPathPlans);
+router.put('/career-path-plans/:escoId', auth, ...requireSimulationAccess, profileController.upsertCareerPathPlan);
+router.delete('/career-path-plans/:escoId', auth, ...requireSimulationAccess, profileController.deleteCareerPathPlan);
 
 router.put('/name',
   auth,
@@ -347,6 +353,8 @@ router.get(
 router.get('/simulation/jobs/:jobId/result', auth, ...requireSimulationAccess, profileController.getSimulationJobResult);
 // Get last simulation result endpoint
 router.get('/simulation/last', auth, ...requireSimulationAccess, profileController.getLastSimulationResult);
+// Persist ranking progress on the latest (unsaved) simulation run
+router.put('/simulation/last', auth, ...requireSimulationAccess, profileController.updateLastSimulationResult);
 
 // Migration endpoint (should be protected by admin auth in production)
 router.post('/migrate-career-inputs', profileController.recalculateAllCareerSimulationInputs);
@@ -373,14 +381,6 @@ router.delete('/simulation/saved/:id', auth, ...requireSimulationAccess, profile
 
 // Archive simulation
 router.put('/simulation/saved/:id/archive', auth, ...requireSimulationAccess, profileController.archiveSavedSimulation);
-
-// === SAVE CAREER STEP ROUTES ===
-router.post('/saved-career-steps', auth, ...requireSimulationAccess, profileController.saveCareerStep);
-router.patch('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.patchSavedCareerStep);
-router.post('/saved-career-steps/bulk-delete', auth, ...requireSimulationAccess, profileController.bulkDeleteSavedCareerSteps);
-router.delete('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.removeCareerStep);
-router.get('/saved-career-steps', auth, ...requireSimulationAccess, profileController.getSavedCareerSteps);
-router.get('/saved-career-steps/:stepId', auth, ...requireSimulationAccess, profileController.getSavedCareerStep);
 
 // === REMOVE CAREER STEP FROM SIMULATION RESULTS ===
 router.delete('/simulation-results/:simulationId/career-steps/:stepId', auth, ...requireSimulationAccess, profileController.removeCareerStepFromSimulation);

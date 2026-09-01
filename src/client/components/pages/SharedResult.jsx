@@ -17,29 +17,8 @@ import {
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CareerStepRoleInsightsCard, CareerStepRoleDetailsCard } from '../common/CareerStepRoleSections';
+import { CareerStepRoleInsightsCard, CareerStepRoleDetailsCard, CareerStepRoleDescriptionCard } from '../common/CareerStepRoleSections';
 import PageHeader from '../common/PageHeader';
-
-const splitDescriptionIntoParagraphs = (text) => {
-  const normalizedText = String(text || '').replace(/\r\n/g, '\n').trim();
-  if (!normalizedText) return [];
-
-  const lineParagraphs = normalizedText
-    .split(/\n\s*\n|\n+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (lineParagraphs.length > 1) return lineParagraphs;
-
-  const sentences = normalizedText.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
-  if (!sentences || sentences.length <= 2) return [normalizedText];
-
-  const paragraphs = [];
-  const sentenceBatchSize = 3;
-  for (let i = 0; i < sentences.length; i += sentenceBatchSize) {
-    paragraphs.push(sentences.slice(i, i + sentenceBatchSize).join(' ').trim());
-  }
-  return paragraphs.filter(Boolean);
-};
 
 const SharedResult = () => {
   const { t } = useTranslation(['common', 'dashboard']);
@@ -180,26 +159,7 @@ const SharedResult = () => {
       <Grid container spacing={3}>
         {/* Main Content */}
         <Grid item xs={12} lg={8}>
-          {/* Detailed Description */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                <Work sx={{ mr: 1, verticalAlign: 'middle' }} />
-                {t('details.labels.roleDescription', { ns: 'dashboard' })}
-              </Typography>
-              {splitDescriptionIntoParagraphs(sharedContent.description).length > 0 ? (
-                splitDescriptionIntoParagraphs(sharedContent.description).map((paragraph, index) => (
-                  <Typography key={index} variant="body1" sx={{ mb: 2, fontWeight: index === 0 ? 700 : 400 }}>
-                    {paragraph}
-                  </Typography>
-                ))
-              ) : (
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  {t('details.labels.noDetailedDescription', { ns: 'dashboard' })}
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
+          <CareerStepRoleDescriptionCard description={sharedContent.description} />
 
           <CareerStepRoleInsightsCard stepDetails={sharedContent} key="shared-role-insights" />
 

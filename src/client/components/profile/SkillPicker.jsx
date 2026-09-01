@@ -93,7 +93,6 @@ function SkillPickerDialog({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [rawResults, setRawResults] = useState([]);
-  const [resultMode, setResultMode] = useState('recommendations');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -171,7 +170,6 @@ function SkillPickerDialog({
         ...cached.optionalSkills,
       ]);
       setRawResults(merged);
-      setResultMode(cached.mode);
       setLoading(false);
       setError('');
     } else {
@@ -192,7 +190,6 @@ function SkillPickerDialog({
           ...data.optionalSkills,
         ]);
         setRawResults(merged);
-        setResultMode(data.mode);
       })
       .catch((err) => {
         if (fetchGenerationRef.current !== fetchGeneration) return;
@@ -206,14 +203,6 @@ function SkillPickerDialog({
       });
     return undefined;
   }, [open, debouncedSearch, contextKey, t, tk]);
-
-  const displayResults = useMemo(() => {
-    const apiLabels = new Set(results.map((item) => String(item.label || '').toLowerCase()));
-    const selectedExtras = draftValues
-      .filter((label) => !apiLabels.has(label.toLowerCase()))
-      .map((label) => ({ key: label, label }));
-    return [...selectedExtras, ...results];
-  }, [results, draftValues]);
 
   const toggleSkill = useCallback((label) => {
     const trimmed = String(label || '').trim();
@@ -232,7 +221,7 @@ function SkillPickerDialog({
     : t(tk('recommendationsTitle'));
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" scroll="paper">
       <DialogTitle sx={{ pr: 6 }}>
         {t(tk('dialogTitle'))}
         <IconButton
@@ -244,6 +233,24 @@ function SkillPickerDialog({
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
+        {draftValues.length > 0 ? (
+          <Box sx={{ mb: 2.5 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
+              {t(tk('dialogSelectionHint'))}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+              {draftValues.map((label) => (
+                <SkillChip
+                  key={label}
+                  label={label}
+                  skillKey={label}
+                  selected
+                  onClick={() => toggleSkill(label)}
+                />
+              ))}
+            </Box>
+          </Box>
+        ) : null}
         <TextField
           fullWidth
           size="small"
@@ -259,11 +266,6 @@ function SkillPickerDialog({
             max: maxItems,
           })}
         </Typography>
-        {!isSearchActive && !loading ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {t(tk('searchHint'))}
-          </Typography>
-        ) : null}
         {error ? (
           <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError('')}>
             {error}
@@ -277,11 +279,11 @@ function SkillPickerDialog({
             </Typography>
           </Box>
         ) : (
-          <>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
               {resultsTitle}
             </Typography>
-            {displayResults.length === 0 ? (
+            {results.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 {isSearchActive
                   ? t(tk('noSearchResults'))
@@ -289,7 +291,7 @@ function SkillPickerDialog({
               </Typography>
             ) : (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
-                {displayResults.map((item) => {
+                {results.map((item) => {
                   const label = String(item.label || item.key || '').trim();
                   if (!label) return null;
                   const key = String(item.key || label).trim();
@@ -308,16 +310,11 @@ function SkillPickerDialog({
                 })}
               </Box>
             )}
-            {!isSearchActive && resultMode === 'recommendations' && displayResults.length > 0 ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-                {t(tk('recommendationsHint'))}
-              </Typography>
-            ) : null}
-          </>
+          </Box>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{t('profilePage.actions.cancel', { ns: 'onboarding' })}</Button>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} color="inherit">{t('profilePage.actions.cancel', { ns: 'onboarding' })}</Button>
         <Button
           variant="contained"
           onClick={() => onSave?.(draftValues)}
@@ -343,19 +340,29 @@ export default function SkillPicker({
   recommendationContextTexts = [],
   excludeLabels = EMPTY_EXCLUDE_LABELS,
   translationKeyPrefix = 'skillSelection',
+  defaultDialogOpen = false,
+  onDialogSave,
+  onDialogCancel,
 }) {
   const { t } = useTranslation('onboarding');
   const tk = useCallback((suffix) => `${translationKeyPrefix}.${suffix}`, [translationKeyPrefix]);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
 
   const selectedValues = useMemo(() => normalizeSelectedSkills(value), [value]);
 
   const emitValues = (nextValues) => {
-    onChange?.(normalizeSelectedSkills(nextValues).slice(0, maxItems));
+    const next = normalizeSelectedSkills(nextValues).slice(0, maxItems);
+    onChange?.(next);
+    return next;
   };
 
   const handleRemove = (index) => {
     emitValues(selectedValues.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const handleClose = () => {
+    setDialogOpen(false);
+    onDialogCancel?.();
   };
 
   return (
@@ -394,10 +401,11 @@ export default function SkillPicker({
       ) : null}
       <SkillPickerDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={handleClose}
         onSave={(next) => {
-          emitValues(next);
+          const saved = emitValues(next);
           setDialogOpen(false);
+          onDialogSave?.(saved);
         }}
         initialValues={selectedValues}
         maxItems={maxItems}

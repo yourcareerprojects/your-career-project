@@ -112,6 +112,33 @@ const documentController = {
         userId: String(user._id),
       });
 
+      try {
+        const {
+          logUserActivity,
+          maybeRecordProfileFilled,
+          ACTIVITY_TYPES,
+        } = require('../services/userHistory/logUserActivity');
+        const {
+          computeProfileCompletion,
+        } = require('./profileController').__careerSimulationDepsForEngine;
+        logUserActivity(user._id, {
+          type: ACTIVITY_TYPES.DOCUMENT_UPLOADED,
+          meta: {
+            documentName: savedDoc.name || null,
+            documentType: savedDoc.type || null,
+            documentId: String(savedDoc._id),
+          },
+        });
+        void maybeRecordProfileFilled(
+          user._id,
+          computeProfileCompletion(user.profile).overall
+        );
+      } catch (historyErr) {
+        logger.warn('document upload history log failed', {
+          error: historyErr?.message || String(historyErr),
+        });
+      }
+
       const isCvUpload = isCvDocumentType(rawDocumentType);
       let extractionJob = null;
 

@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { CURRENT_EMPLOYMENT_STATUS_ENUM_WITH_EMPTY } = require('../../constants/currentEmploymentStatus');
 const { HIGHEST_DEGREE_ENUM_WITH_EMPTY } = require('../../constants/highestDegree');
-const { MAX_SAVED_CAREER_STEP_DESCRIPTION_LENGTH } = require('../../constants/savedCareerStepLimits');
 const { DOCUMENT_TYPE_SCHEMA_ENUM } = require('../../constants/documentTypes');
 
 const securityEventSchema = new mongoose.Schema({
@@ -15,16 +14,6 @@ const securityEventSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-}, { _id: false });
-
-const localisedStepStringSchema = new mongoose.Schema({
-  en: { type: String, required: true, maxlength: 200 },
-  de: { type: String, default: null, maxlength: 200 },
-}, { _id: false });
-
-const localisedDescriptionSchema = new mongoose.Schema({
-  en: { type: String, required: true, maxlength: MAX_SAVED_CAREER_STEP_DESCRIPTION_LENGTH },
-  de: { type: String, default: null, maxlength: MAX_SAVED_CAREER_STEP_DESCRIPTION_LENGTH },
 }, { _id: false });
 
 const localizedAiContentSchema = new mongoose.Schema({
@@ -172,6 +161,14 @@ const userSchema = new mongoose.Schema({
       /** success | partial | failed — outcome of CV extraction (distinct from extractionStatus pipeline). */
       extractionOutcomeStatus: { type: String, default: null },
     }],
+    /**
+     * One-shot History timeline milestones (set when first achieved).
+     * Used to avoid duplicate profile_filled / first_simulation events.
+     */
+    historyMilestones: {
+      filledAt: { type: Date, default: null },
+      firstSimulationAt: { type: Date, default: null },
+    },
     socialMedia: {
       linkedin: {
         profileId: String,
@@ -471,108 +468,9 @@ const userSchema = new mongoose.Schema({
       enum: ['active', 'archived', 'deleted'],
       default: 'active'
     }
-  }],
-  // --- Save Career Step Feature ---
-  savedCareerSteps: [
-    {
-      stepId: {
-        type: String,
-        required: true,
-        index: true
-      },
-      title: {
-        type: localisedStepStringSchema,
-        required: true,
-      },
-      description: {
-        type: localisedDescriptionSchema,
-        required: false,
-        default: undefined,
-      },
-      matchedProfileInputs: {
-        type: [String],
-        default: []
-      },
-      savedAt: {
-        type: Date,
-        default: Date.now
-      },
-      simulationResultId: {
-        type: String,
-        index: true
-      },
-      savedKey: {
-        type: String,
-        index: true,
-      },
-      escoId: {
-        type: String,
-        default: undefined,
-      },
-      careerPathId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: undefined,
-      },
-      // Enrichment fields (optional — may be absent for pre-enrichment data)
-      requiredSkills: {
-        type: [String],
-        default: undefined
-      },
-      altTitles: {
-        type: [String],
-        default: undefined
-      },
-      hiddenTitles: {
-        type: [String],
-        default: undefined
-      },
-      seniority: {
-        type: Object,
-        default: null
-      },
-      keyResponsibilities: {
-        type: Object,
-        default: null
-      },
-      skillDomains: {
-        type: Object,
-        default: null
-      },
-      skillModel: {
-        type: Object,
-        default: null
-      },
-      listCategory: { type: String },
-      hybridScoreNextRole: { type: Number },
-      hybridScoreOutOfTheBox: { type: Number },
-      /** Ranking choice at save time: keep | skip | dislike; omitted if not rated */
-      userEvaluation: {
-        type: String,
-        enum: ['keep', 'skip', 'dislike'],
-        required: false,
-      },
-    }
-  ]
+  }]
 }, {
   timestamps: true
-});
-
-// Add compound index for duplicate prevention
-userSchema.index({ 
-  'savedCareerSteps.stepId': 1, 
-  'savedCareerSteps.simulationResultId': 1 
-}, { 
-  name: 'savedCareerSteps_duplicate_prevention',
-  sparse: true 
-});
-
-// Add index for efficient duplicate detection queries
-userSchema.index({ 
-  'savedCareerSteps.title.en': 1, 
-  'savedCareerSteps.simulationResultId': 1 
-}, { 
-  name: 'savedCareerSteps_content_lookup',
-  sparse: true 
 });
 
 // Hash password before saving

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -26,6 +25,7 @@ import {
   useCoachingChatAutoScroll,
 } from '../../hooks/useCoachingChatAutoScroll';
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
+import CoachingChatFailureAlert from './CoachingChatFailureAlert';
 
 async function postWorkEnjoyCoaching({ seniority, messages, lang, token, cvContext }) {
   const res = await fetch(`/api/profile/work-enjoy-coaching?${getProfileApiLangQuery()}`, {
@@ -79,6 +79,7 @@ function normalizeActivityDrafts(drafts, targetCount = WORK_ENJOY_ACTIVITY_COUNT
  *   showConfirm?: boolean,
  *   confirmCta?: string,
  *   onConfirm?: () => void,
+ *   initialEditing?: boolean,
  * }} props
  */
 export function WorkEnjoyActivitiesPanel({
@@ -91,10 +92,15 @@ export function WorkEnjoyActivitiesPanel({
   confirmCta,
   onConfirm,
   onRestartChat,
+  initialEditing = false,
 }) {
   const { t } = useTranslation('onboarding');
-  const [editing, setEditing] = useState(false);
-  const [editDrafts, setEditDrafts] = useState([]);
+  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [editDrafts, setEditDrafts] = useState(() => (
+    initialEditing
+      ? normalizeActivityDrafts(activities.length > 0 ? activities : [])
+      : []
+  ));
 
   useEffect(() => {
     onEditingChange?.(editing);
@@ -215,6 +221,7 @@ export function WorkEnjoyActivitiesPanel({
  *   onComplete: (activities: string[], workEnjoyMostText: string, meta?: { userEdited?: boolean }) => void,
  *   initialActivities?: string[],
  *   initialMessages?: { role: string, content: string }[],
+ *   initialManualEntry?: boolean,
  *   onChatPersist?: (snapshot: object) => void,
  *   confirmInFooter?: boolean,
  *   onSummaryFooterStateChange?: (state: { canConfirm: boolean, isEditing: boolean, hasActivities: boolean }) => void,
@@ -227,6 +234,7 @@ const WorkEnjoyMostCoaching = ({
   onComplete,
   initialActivities = [],
   initialMessages = [],
+  initialManualEntry = false,
   onChatPersist,
   confirmInFooter = false,
   onSummaryFooterStateChange,
@@ -238,15 +246,18 @@ const WorkEnjoyMostCoaching = ({
   const coachingLang = baseUILanguage() || String(i18n.language || 'de').toLowerCase().split('-')[0];
   const hasInitialSummary = initialActivities.length > 0;
   const hasInitialChat = initialMessages.length > 0;
-  const [phase, setPhase] = useState(hasInitialSummary ? 'summary' : 'chat');
+  const startInManualEntry = Boolean(initialManualEntry) && !hasInitialSummary;
+  const [phase, setPhase] = useState(hasInitialSummary || startInManualEntry ? 'summary' : 'chat');
   const [messages, setMessages] = useState(initialMessages);
   const [activities, setActivities] = useState(initialActivities);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat);
-  const [userEdited, setUserEdited] = useState(false);
-  const [summaryEditing, setSummaryEditing] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat || startInManualEntry);
+  const [userEdited, setUserEdited] = useState(Boolean(initialManualEntry));
+  const [manualEntry, setManualEntry] = useState(Boolean(initialManualEntry));
+  const [summaryEditing, setSummaryEditing] = useState(startInManualEntry);
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const messagesRef = useRef(messages);
   const bootstrapStartedRef = useRef(false);
   const requestNextRef = useRef(null);
@@ -274,6 +285,7 @@ const WorkEnjoyMostCoaching = ({
     messages,
     activities,
     userEdited,
+    manualEntry,
   });
 
   const requestNext = useCallback(async (history) => {
@@ -329,7 +341,7 @@ const WorkEnjoyMostCoaching = ({
       bootstrapStartedRef.current = false;
       setLoading(false);
     };
-  }, [bootstrapped, phase]);
+  }, [bootstrapped, phase, bootstrapNonce]);
 
   const handleSend = async () => {
     const answer = draft.trim();
@@ -350,6 +362,27 @@ const WorkEnjoyMostCoaching = ({
     }
   };
 
+  const handleRetryCoaching = useCallback(() => {
+    setError('');
+    if (!bootstrapped && messagesRef.current.length === 0) {
+      bootstrapStartedRef.current = false;
+      setBootstrapNonce((n) => n + 1);
+    }
+  }, [bootstrapped]);
+
+  const handleEnterManually = useCallback(() => {
+    setError('');
+    setLoading(false);
+    setDraft('');
+    setMessages([]);
+    setActivities([]);
+    setUserEdited(true);
+    setManualEntry(true);
+    setSummaryEditing(true);
+    setBootstrapped(true);
+    setPhase('summary');
+  }, []);
+
   const handleConfirmSummary = useCallback(() => {
     const cleaned = activities.map((item) => String(item || '').trim()).filter(Boolean);
     if (cleaned.length === 0) return;
@@ -364,8 +397,10 @@ const WorkEnjoyMostCoaching = ({
     setDraft('');
     setError('');
     setUserEdited(false);
+    setManualEntry(false);
     setSummaryEditing(false);
     setBootstrapped(false);
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -400,11 +435,14 @@ const WorkEnjoyMostCoaching = ({
         onActivitiesChange={setActivities}
         onUserEdited={() => setUserEdited(true)}
         onEditingChange={setSummaryEditing}
-        introText={t('workEnjoyCoaching.summary.intro')}
+        introText={manualEntry
+          ? t('coachingFallback.manualIntro')
+          : t('workEnjoyCoaching.summary.intro')}
         showConfirm={!confirmInFooter}
         confirmCta={t('workEnjoyCoaching.summary.confirmCta')}
         onConfirm={handleConfirmSummary}
         onRestartChat={handleRestartChat}
+        initialEditing={startInManualEntry || (manualEntry && activities.length === 0)}
       />
     );
   }
@@ -414,11 +452,13 @@ const WorkEnjoyMostCoaching = ({
       ...coachingChatRootSx,
       ...(layout === 'page' ? coachingChatPageRootSx : coachingChatDialogRootSx),
     }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <CoachingChatFailureAlert
+        error={error}
+        loading={loading}
+        onDismiss={() => setError('')}
+        onRetry={!bootstrapped ? handleRetryCoaching : undefined}
+        onEnterManually={handleEnterManually}
+      />
       <Box ref={messagesScrollRef} sx={messagesScrollSx}>
         {messages.length === 0 && loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

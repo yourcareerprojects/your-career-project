@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const {
+  OCCUPATION_DOMAIN_VALUES,
+  UNASSIGNED_ROLE_DOMAIN,
+} = require('../../constants/industries');
 
 /** Embedded UI copy: English required; German optional (null if not translated). */
 const LocalizedStringSchema = new mongoose.Schema({
@@ -108,11 +112,67 @@ const RoleVectorsSchema = new mongoose.Schema({
   dims: { type: Number, default: 3072 }
 }, { _id: false });
 
+/**
+ * Shared labour-market facts for AI career coaching.
+ * Cached once per profession + language; never holds user-specific recommendations.
+ */
+const CareerKnowledgeEnrichmentPayloadSchema = new mongoose.Schema({
+  applicationTimeline: { type: String, default: '' },
+  apprenticeshipDuration: { type: String, default: '' },
+  schoolSubjects: [{ type: String }],
+  recommendedExperience: [{ type: String }],
+  commonEmployers: [{ type: String }],
+  workingEnvironments: [{ type: String }],
+  furtherEducation: [{ type: String }],
+  studyOptions: [{ type: String }],
+  certifications: [{ type: String }],
+  careerProgression: [{ type: String }],
+  specializationOptions: [{ type: String }],
+  industryInsights: [{ type: String }],
+  softSkills: [{ type: String }],
+  firstCareerSteps: [{ type: String }],
+  alternativePathways: [{ type: String }],
+  extraction_confidence: { type: Number, default: 0 },
+  built_at: { type: Date },
+  built_with: { type: String, default: 'llm' },
+  sourceVersion: { type: String, default: 'v1' },
+  lang: { type: String, default: 'de' },
+  sources: [{ type: String }],
+}, { _id: false });
+
+const CareerKnowledgeEnrichmentSchema = new mongoose.Schema({
+  de: { type: CareerKnowledgeEnrichmentPayloadSchema, default: null },
+  en: { type: CareerKnowledgeEnrichmentPayloadSchema, default: null },
+}, { _id: false });
+
+/**
+ * Provenance for AI (or manual) industry-domain classification on CareerPath.domain.
+ */
+const DomainClassificationSchema = new mongoose.Schema({
+  confidence: { type: Number, min: 0, max: 1, default: null },
+  classifiedAt: { type: Date, default: null },
+  model: { type: String, default: null },
+  reason: { type: String, default: '' },
+  needsManualReview: { type: Boolean, default: false },
+}, { _id: false });
+
 const CareerPathSchema = new mongoose.Schema({
   escoId: { type: String, required: true, unique: true }, // ESCO occupation URI or code
   // ESCO occupation metadata (from CSV)
   code: { type: String }, // ESCO "code" column (if present)
   iscoGroup: { type: String }, // ESCO iscoGroup code (e.g. "2654")
+  /**
+   * Exactly one industry domain per occupation (English taxonomy label).
+   * Uses INDUSTRY_TAXONOMY labels; UNASSIGNED until classified.
+   */
+  domain: {
+    type: String,
+    required: true,
+    enum: OCCUPATION_DOMAIN_VALUES,
+    default: UNASSIGNED_ROLE_DOMAIN,
+  },
+  /** AI classification metadata for `domain` (confidence, model, review flag). */
+  domainClassification: { type: DomainClassificationSchema, default: null },
   title: { type: LocalizedStringSchema, required: true },
   altTitles: [{ type: String }], // ESCO altLabels split into array
   hiddenTitles: [{ type: String }], // ESCO hiddenLabels split into array
@@ -139,6 +199,8 @@ const CareerPathSchema = new mongoose.Schema({
   roleIdentity: { type: RoleIdentitySchema, default: null },
   // --- Hybrid role vectors for matching (structured + identity fusion) ---
   roleVectors: { type: RoleVectorsSchema, default: null },
+  // --- Labour-market knowledge cache for AI career coaching (per language) ---
+  careerKnowledgeEnrichment: { type: CareerKnowledgeEnrichmentSchema, default: null },
   // Provenance (helps data quality / audits)
   source: { type: String, default: 'ESCO' },
   sourceVersion: { type: String, default: 'v1.2.0' },
@@ -158,6 +220,8 @@ CareerPathSchema.index({ requiredSkills: 1 });
 CareerPathSchema.index({ requiredSkillUris: 1 });
 CareerPathSchema.index({ requiredSkillKeys: 1 });
 CareerPathSchema.index({ iscoGroup: 1 });
+CareerPathSchema.index({ domain: 1 });
+CareerPathSchema.index({ 'domainClassification.needsManualReview': 1 });
 CareerPathSchema.index({ 'skillModel.core_skills': 1 });
 CareerPathSchema.index({ 'seniority.seniority_level': 1 });
 CareerPathSchema.index(

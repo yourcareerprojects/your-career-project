@@ -385,7 +385,7 @@ async function buildLocalizedSkillsResponse(
 
 /**
  * Localize title/description (strings) and skill/domain labels for one career-path-shaped step
- * (simulation result row or saved step). Preserves all other step fields.
+ * (for example a simulation result row). Preserves all other step fields.
  */
 async function mergeLocalizedCareerPathStep(step, lang = FALLBACK_LANGUAGE, logger = console) {
   if (!step || typeof step !== 'object') return step;

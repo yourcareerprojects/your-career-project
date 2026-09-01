@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -28,6 +27,7 @@ import {
 import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import SkillDomainPicker from './SkillDomainPicker';
 import SkillDomainChip from './SkillDomainChip';
+import CoachingChatFailureAlert from './CoachingChatFailureAlert';
 
 const STRENGTH_COUNT = 5;
 const SKILL_DOMAIN_MAX = 5;
@@ -106,11 +106,20 @@ export function NaturallyGoodAtSummaryPanel({
   onConfirm,
   recommendationContextTexts = [],
   onRestartChat,
+  initialEditing = false,
 }) {
   const { t } = useTranslation('onboarding');
-  const [editing, setEditing] = useState(false);
-  const [strengthDrafts, setStrengthDrafts] = useState([]);
-  const [skillDomainDrafts, setSkillDomainDrafts] = useState([]);
+  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [strengthDrafts, setStrengthDrafts] = useState(() => (
+    initialEditing
+      ? normalizeListDrafts(strengths.length > 0 ? strengths : [], STRENGTH_COUNT)
+      : []
+  ));
+  const [skillDomainDrafts, setSkillDomainDrafts] = useState(() => (
+    initialEditing
+      ? (skillDomains.length > 0 ? [...skillDomains] : [])
+      : []
+  ));
 
   useEffect(() => {
     onEditingChange?.(editing);
@@ -285,6 +294,7 @@ const NaturallyGoodAtCoaching = ({
   initialStrengths = [],
   initialSkillDomains = [],
   initialMessages = [],
+  initialManualEntry = false,
   onChatPersist,
   confirmInFooter = false,
   onSummaryFooterStateChange,
@@ -297,16 +307,19 @@ const NaturallyGoodAtCoaching = ({
   const coachingLang = baseUILanguage() || String(i18n.language || 'de').toLowerCase().split('-')[0];
   const hasInitialSummary = initialStrengths.length > 0 || initialSkillDomains.length > 0;
   const hasInitialChat = initialMessages.length > 0;
-  const [phase, setPhase] = useState(hasInitialSummary ? 'summary' : 'chat');
+  const startInManualEntry = Boolean(initialManualEntry) && !hasInitialSummary;
+  const [phase, setPhase] = useState(hasInitialSummary || startInManualEntry ? 'summary' : 'chat');
   const [messages, setMessages] = useState(initialMessages);
   const [strengths, setStrengths] = useState(initialStrengths);
   const [skillDomains, setSkillDomains] = useState(initialSkillDomains);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat);
-  const [userEdited, setUserEdited] = useState(false);
-  const [summaryEditing, setSummaryEditing] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat || startInManualEntry);
+  const [userEdited, setUserEdited] = useState(Boolean(initialManualEntry));
+  const [manualEntry, setManualEntry] = useState(Boolean(initialManualEntry));
+  const [summaryEditing, setSummaryEditing] = useState(startInManualEntry);
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const profileContextKey = useMemo(
     () => JSON.stringify(
       (Array.isArray(recommendationContextTexts) ? recommendationContextTexts : [])
@@ -357,6 +370,7 @@ const NaturallyGoodAtCoaching = ({
     strengths,
     skillDomains,
     userEdited,
+    manualEntry,
   });
 
   const requestNext = useCallback(async (history) => {
@@ -414,7 +428,7 @@ const NaturallyGoodAtCoaching = ({
       bootstrapStartedRef.current = false;
       setLoading(false);
     };
-  }, [bootstrapped, phase]);
+  }, [bootstrapped, phase, bootstrapNonce]);
 
   const handleSend = async () => {
     const answer = draft.trim();
@@ -435,6 +449,28 @@ const NaturallyGoodAtCoaching = ({
     }
   };
 
+  const handleRetryCoaching = useCallback(() => {
+    setError('');
+    if (!bootstrapped && messagesRef.current.length === 0) {
+      bootstrapStartedRef.current = false;
+      setBootstrapNonce((n) => n + 1);
+    }
+  }, [bootstrapped]);
+
+  const handleEnterManually = useCallback(() => {
+    setError('');
+    setLoading(false);
+    setDraft('');
+    setMessages([]);
+    setStrengths([]);
+    setSkillDomains([]);
+    setUserEdited(true);
+    setManualEntry(true);
+    setSummaryEditing(true);
+    setBootstrapped(true);
+    setPhase('summary');
+  }, []);
+
   const handleConfirmSummary = useCallback(() => {
     const cleanedStrengths = strengths.map((item) => String(item || '').trim()).filter(Boolean);
     const cleanedDomains = skillDomains.map((item) => String(item || '').trim()).filter(Boolean);
@@ -452,8 +488,10 @@ const NaturallyGoodAtCoaching = ({
     setDraft('');
     setError('');
     setUserEdited(false);
+    setManualEntry(false);
     setSummaryEditing(false);
     setBootstrapped(false);
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -493,12 +531,15 @@ const NaturallyGoodAtCoaching = ({
         }}
         onUserEdited={() => setUserEdited(true)}
         onEditingChange={setSummaryEditing}
-        introText={t('naturallyGoodAtCoaching.summary.intro')}
+        introText={manualEntry
+          ? t('coachingFallback.manualIntro')
+          : t('naturallyGoodAtCoaching.summary.intro')}
         showConfirm={!confirmInFooter}
         confirmCta={t('naturallyGoodAtCoaching.summary.confirmCta')}
         onConfirm={handleConfirmSummary}
         recommendationContextTexts={skillDomainRecommendationContext}
         onRestartChat={handleRestartChat}
+        initialEditing={manualEntry && strengths.length === 0 && skillDomains.length === 0}
       />
     );
   }
@@ -508,11 +549,13 @@ const NaturallyGoodAtCoaching = ({
       ...coachingChatRootSx,
       ...(layout === 'page' ? coachingChatPageRootSx : coachingChatDialogRootSx),
     }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <CoachingChatFailureAlert
+        error={error}
+        loading={loading}
+        onDismiss={() => setError('')}
+        onRetry={!bootstrapped ? handleRetryCoaching : undefined}
+        onEnterManually={handleEnterManually}
+      />
       <Box ref={messagesScrollRef} sx={messagesScrollSx}>
         {messages.length === 0 && loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

@@ -163,6 +163,10 @@
       "description": "Walk through the guided profile setup again. You can optionally upload a new CV to personalize coaching questions before replacing your existing data."
     }
   },
+  "coachingFallback": {
+    "enterManually": "Enter manually",
+    "manualIntro": "Coaching is unavailable right now. Please enter your answers yourself, or try again later."
+  },
   "workEnjoyCoaching": {
     "chat": {
       "intro": "A short coaching chat will help identify work activities you enjoy. Answer three simple questions in your own words.",
@@ -223,6 +227,7 @@
       "searchResultsTitle": "Search results",
       "recommendationsTitle": "Suggested for you",
       "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
+      "dialogSelectionHint": "Your selection",
       "noSearchResults": "No matching strength domains. Try a different search term.",
       "noRecommendations": "No suggestions available yet. Use search to find strength domains.",
       "selectedCount": "{{count}} of {{max}} selected",
@@ -293,6 +298,7 @@
     "recommendationsTitle": "Suggested for you",
     "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
     "selectedTitle": "Your selection",
+    "dialogSelectionHint": "Your selection",
     "requiredSkillsTitle": "Required skills",
     "optionalSkillsTitle": "Optional skills",
     "noOptionalSkills": "No optional-only skills in these suggestions.",
@@ -316,6 +322,7 @@
     "recommendationsTitle": "Suggested for you",
     "recommendationsHint": "Suggestions are based on your profile and coaching answers.",
     "selectedTitle": "Your selection",
+    "dialogSelectionHint": "Your selection",
     "noSearchResults": "No skills match your search.",
     "noRecommendations": "No suggestions available yet. Use search to find skills.",
     "selectedCount": "{{count}} of {{max}} selected",
@@ -533,6 +540,7 @@
       "cancel": "Cancel",
       "edit": "Edit",
       "restartCoachingChat": "Restart chat",
+      "regenerateAiSummary": "Re-generate AI summary",
       "close": "Close"
     },
     "identityCoaching": {
@@ -644,8 +652,8 @@
         "addButton": "Add industry",
         "changeButton": "Change industry",
         "dialogTitle": "Choose an industry",
-        "dialogSelectionHint": "Your selection (click Save to confirm)",
-        "empty": "No industry sectors yet (e.g. MedTech, Life Sciences, Manufacturing). Use sectors, not job functions like Marketing.",
+        "dialogSelectionHint": "Your selection",
+        "empty": "No industry sectors yet (e.g. Healthcare, Pharmaceuticals, Manufacturing). Use sectors, not job functions like Product Management.",
         "groups": {
           "healthLife": "Health & life sciences",
           "sciences": "Sciences & research",
@@ -761,7 +769,7 @@
       "lastAutoCalculated": "Last auto-calculated: {{date}}",
       "empty": {
         "strengths": "No strengths yet. Edit career simulation inputs to add skill domains.",
-        "industrySectors": "No industry sectors added yet. Edit to add sectors (e.g. MedTech, Manufacturing), not job functions.",
+        "industrySectors": "No industry sectors added yet. Edit to add sectors (e.g. Healthcare, Manufacturing), not job functions.",
         "responsibilities": "No responsibilities added yet. Edit to add responsibilities.",
         "skills": "No skills added yet. Edit to add your skills.",
         "learningGoals": "No learning goals yet. Edit to add what you're learning.",
@@ -770,7 +778,7 @@
       },
       "editablePlaceholders": {
         "strengths": "Enter an overarching skill and press Enter",
-        "industrySectors": "Sector only: MedTech, Life Sciences, Manufacturing, Education — not Marketing or Social Media",
+        "industrySectors": "Sector only: Healthcare, Pharmaceuticals, Manufacturing, Education, Marketing — not Product Management or Social Media",
         "responsibilities": "Enter a responsibility and press Enter",
         "skills": "Enter a skill and press Enter or click Add",
         "learningGoals": "Enter a skill you're learning and press Enter"

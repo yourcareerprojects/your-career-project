@@ -6,7 +6,114 @@
 
 import { generateStepId } from './stepIdUtils';
 import { getHybridRawForStep } from './careerStepMatchScore';
-import { getRoleTitleEnglishForMatch } from './roleTitleDisplay';
+import { getSimulationRoleKey } from './simulationRoleKey';
+import {
+  normalizeEvaluationFlow,
+  withFlowRoles,
+  getFlowRoles,
+  getEvalQueue,
+  getRankedBoard,
+  getRankedColumns,
+  groupRolesByEvaluation,
+  flattenEvaluationColumns,
+  assignRankedOrderByPreference,
+  setFlowRoleEvaluation,
+  reorderFlowCategory,
+  toCanonicalRole,
+  toPersistedEvaluationFlow,
+  toPersistedSimulationResults,
+  withMaterializedEvaluationFlow,
+  stripDerivedEvaluationViews,
+} from './evaluationFlowModel';
+
+export {
+  normalizeEvaluationFlow,
+  getEvalQueue,
+  getRankedBoard,
+  getRankedColumns,
+  groupRolesByEvaluation,
+  flattenEvaluationColumns,
+  getFlowRoles,
+  setFlowRoleEvaluation,
+  reorderFlowCategory,
+  toPersistedEvaluationFlow,
+  toPersistedSimulationResults,
+  withMaterializedEvaluationFlow,
+  stripDerivedEvaluationViews,
+};
+
+const FLOW_ROLE_PROTECTED_KEYS = new Set([
+  'userEvaluation',
+  'id',
+  'instanceId',
+  'stepId',
+  'explorationSessionId',
+  'category',
+  'listCategory',
+  'preferredCategory',
+]);
+
+/**
+ * Index source roles for patching localized/display fields onto an existing flow list.
+ * @param {object} results
+ * @param {'nextSteps' | 'outsideTheBox'} categoryKey
+ * @returns {Map<string, object>}
+ */
+export function buildEvaluationSourceRoleIndex(results, categoryKey) {
+  const map = new Map();
+  const add = (role) => {
+    if (!role || typeof role !== 'object') return;
+    const key = getSimulationRoleKey(role);
+    if (!key) return;
+    map.set(key, role);
+  };
+
+  takeEvaluationSourceRoles(results, categoryKey).forEach(add);
+
+  const efList = results?.evaluationFlow?.[categoryKey];
+  if (Array.isArray(efList)) efList.forEach(add);
+
+  const ranked = results?.evaluationFlow?.ranked?.[categoryKey];
+  if (Array.isArray(ranked)) {
+    ranked.forEach((row) => add(row?.step || row));
+  }
+
+  return map;
+}
+
+/**
+ * Patch display/score fields from a localized source onto a flow role.
+ * Membership, ratings, and exploration metadata stay on the flow role.
+ * @param {object} flowRole
+ * @param {object} source
+ * @param {'nextSteps' | 'outsideTheBox'} categoryKey
+ * @returns {object}
+ */
+export function patchFlowRoleFromSource(flowRole, source, categoryKey) {
+  if (!flowRole || typeof flowRole !== 'object') return flowRole;
+  if (!source || typeof source !== 'object') return flowRole;
+
+  const next = { ...flowRole };
+  for (const [key, value] of Object.entries(source)) {
+    if (FLOW_ROLE_PROTECTED_KEYS.has(key)) continue;
+    if (value !== undefined) next[key] = value;
+  }
+
+  next.userEvaluation = flowRole.userEvaluation;
+  next.id = flowRole.id;
+  next.instanceId = flowRole.instanceId || flowRole.id;
+  next.stepId = flowRole.stepId || flowRole.id;
+  if (flowRole.explorationSessionId != null) {
+    next.explorationSessionId = flowRole.explorationSessionId;
+  }
+  if (flowRole.category != null) next.category = flowRole.category;
+  if (flowRole.listCategory != null) next.listCategory = flowRole.listCategory;
+  if (flowRole.preferredCategory != null) next.preferredCategory = flowRole.preferredCategory;
+
+  next.matchScore = getNumericMatchScoreForSimulationCategory(next, categoryKey);
+
+  return next;
+}
 
 export const EVALUATION_ROLES_TARGET = 10;
 export const EVALUATION_VISIBLE_SLOTS_DESKTOP = 3;
@@ -82,12 +189,7 @@ export function takeEvaluationSourceRoles(results, categoryKey) {
           : [];
   const pool = Array.isArray(results.prioritizedLists?.[listKey]) ? results.prioritizedLists[listKey] : [];
 
-  const keyFn = (item) => {
-    const byId = item?.stepId || item?.id;
-    if (byId) return String(byId).trim() || null;
-    const t = getRoleTitleEnglishForMatch(item?.title);
-    return t ? t.trim() : null;
-  };
+  const keyFn = (item) => getSimulationRoleKey(item);
 
   const merged = takeUniqueRolesInOrder(
     [...primary, ...pool],
@@ -106,8 +208,12 @@ export function buildEvaluationRolesList(results, categoryKey, existingEvaluated
   const simId = results?.simulationId || 'local';
   const raw = takeEvaluationSourceRoles(results, categoryKey);
   const prevById = new Map();
+  const prevByKey = new Map();
   (existingEvaluatedRoles || []).forEach((r) => {
-    if (r && r.id) prevById.set(r.id, r.userEvaluation);
+    if (!r || typeof r !== 'object') return;
+    if (r.id) prevById.set(String(r.id), r);
+    const key = getSimulationRoleKey(r);
+    if (key) prevByKey.set(key, r);
   });
 
   return raw.map((step, idx) => {
@@ -115,6 +221,8 @@ export function buildEvaluationRolesList(results, categoryKey, existingEvaluated
       step.stepId ||
       step.id ||
       generateStepId(step.title, simId, categoryKey, idx);
+    const key = getSimulationRoleKey({ ...step, id, stepId: step.stepId || id });
+    const prev = prevById.get(String(id)) || (key ? prevByKey.get(key) : null);
     return {
       ...step,
       id,
@@ -122,9 +230,12 @@ export function buildEvaluationRolesList(results, categoryKey, existingEvaluated
       stepId: step.stepId || id,
       title: step.title,
       matchScore: getNumericMatchScoreForSimulationCategory(step, categoryKey),
-      userEvaluation: prevById.has(id) ? prevById.get(id) : null,
+      userEvaluation: prev?.userEvaluation ?? null,
       listCategory: categoryKey === 'nextSteps' ? 'nextCareerRoles' : 'outsideTheBoxRoles',
       category: categoryKey === 'nextSteps' ? 'nextSteps' : 'outsideTheBox',
+      ...(prev?.explorationSessionId != null
+        ? { explorationSessionId: prev.explorationSessionId }
+        : {}),
     };
   });
 }
@@ -241,8 +352,8 @@ export function markCategoryRankingSeen(flow, categoryKey) {
 export function getMobileEvaluationView(evaluationFlow) {
   if (!evaluationFlow) return MOBILE_EVAL_VIEWS.NEXT_ONLY;
 
-  const nextComplete = isEvaluationComplete(evaluationFlow.nextSteps);
-  const ootbComplete = isEvaluationComplete(evaluationFlow.outsideTheBox);
+  const nextComplete = isEvaluationComplete(getEvalQueue(evaluationFlow, 'nextSteps'));
+  const ootbComplete = isEvaluationComplete(getEvalQueue(evaluationFlow, 'outsideTheBox'));
   const nextRanked = evaluationFlow.phases?.nextSteps === 'ranked';
   const ootbRanked = evaluationFlow.phases?.outsideTheBox === 'ranked';
   const ootbUnlocked = isMobileOutsideTheBoxUnlocked(evaluationFlow);
@@ -259,28 +370,37 @@ export function getMobileEvaluationView(evaluationFlow) {
 }
 
 export function promoteCategoryToRanked(flow, categoryKey) {
-  if (!flow || !Array.isArray(flow[categoryKey])) return flow;
-  const roles = flow[categoryKey];
-  if (!isEvaluationComplete(roles)) return flow;
-  if (
-    flow.phases?.[categoryKey] === 'ranked'
-    && Array.isArray(flow.ranked?.[categoryKey])
-    && flow.ranked[categoryKey].length
-  ) {
-    return flow;
+  if (!flow) return flow;
+  if (flow.phases?.[categoryKey] === 'ranked') {
+    const existingBoard = getRankedBoard(flow, categoryKey);
+    if (Array.isArray(existingBoard) && existingBoard.length) {
+      // Already ranked — keep the same reference so callers can skip no-op state updates.
+      return flow;
+    }
   }
-  const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
-  const ranked = buildRankedRows(roles, rankSlug);
-  const nextFlow = markCategoryRankingSeen(
-    {
-      ...flow,
-      phases: { ...flow.phases, [categoryKey]: 'ranked' },
-      ranked: { ...flow.ranked, [categoryKey]: ranked },
-    },
-    categoryKey
+
+  const normalized = normalizeEvaluationFlow(flow);
+  const roles = getEvalQueue(normalized, categoryKey);
+  if (!isEvaluationComplete(roles)) return flow;
+  if (normalized.phases?.[categoryKey] === 'ranked') {
+    const board = getRankedBoard(normalized, categoryKey);
+    if (Array.isArray(board) && board.length) return normalized;
+  }
+
+  const catRoles = assignRankedOrderByPreference(
+    getFlowRoles(normalized).filter((role) => role.category === categoryKey)
   );
+  const others = getFlowRoles(normalized).filter((role) => role.category !== categoryKey);
+  let nextFlow = withFlowRoles(
+    {
+      ...normalized,
+      phases: { ...normalized.phases, [categoryKey]: 'ranked' },
+    },
+    [...others, ...catRoles]
+  );
+  nextFlow = markCategoryRankingSeen(nextFlow, categoryKey);
   if (categoryKey === 'outsideTheBox' && nextFlow.outsideTheBoxDeferred) {
-    return { ...nextFlow, outsideTheBoxDeferred: false };
+    nextFlow = { ...nextFlow, outsideTheBoxDeferred: false };
   }
   return nextFlow;
 }
@@ -292,6 +412,9 @@ export function promoteCategoryToRanked(flow, categoryKey) {
 export function applyAutoRankingRevealWhenBothComplete(flow) {
   if (!flow) return flow;
   if (!isEvaluationComplete(flow.nextSteps) || !isEvaluationComplete(flow.outsideTheBox)) {
+    return flow;
+  }
+  if (flow.phases?.nextSteps === 'ranked' && flow.phases?.outsideTheBox === 'ranked') {
     return flow;
   }
   let next = flow;
@@ -333,10 +456,12 @@ export function resumeOutsideTheBoxEvaluation(flow) {
 
 export function createInitialEvaluationFlow(results) {
   const simulationId = results.simulationId || 'local';
-  return {
+  const nextSteps = buildEvaluationRolesList(results, 'nextSteps');
+  const outsideTheBox = buildEvaluationRolesList(results, 'outsideTheBox');
+  return normalizeEvaluationFlow({
     simulationId,
-    nextSteps: buildEvaluationRolesList(results, 'nextSteps'),
-    outsideTheBox: buildEvaluationRolesList(results, 'outsideTheBox'),
+    nextSteps,
+    outsideTheBox,
     hasStarted: { nextSteps: false, outsideTheBox: false },
     phases: { nextSteps: 'eval', outsideTheBox: 'eval' },
     ranked: { nextSteps: null, outsideTheBox: null },
@@ -344,7 +469,7 @@ export function createInitialEvaluationFlow(results) {
     hasSeenRanking: { nextSteps: false, outsideTheBox: false },
     outsideTheBoxDeferred: false,
     wizardPaused: false,
-  };
+  });
 }
 
 /** Mark the step wizard as paused so the user can return later (session-persisted). */
@@ -360,7 +485,9 @@ export function resumeSimulationWizard(flow) {
 }
 
 /**
- * Merge / refresh lists from `results` while preserving completed evaluations when step ids match.
+ * Merge / refresh flow display fields from `results` while preserving membership,
+ * ratings, ranked order, and exploration inserts. Does not rebuild role lists from pools
+ * after the flow has been materialized.
  *
  * @param {object} results
  * @param {object | null | undefined} currentFlow
@@ -369,18 +496,26 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
   if (!results || typeof results !== 'object') return null;
   const resultsKey = results.simulationId ?? 'local';
   const flowKey = currentFlow?.simulationId ?? 'local';
-  // Flow may have been created with simulationId "local" before results.simulationId existed; treat as same run.
+  // Keep an existing membership when ids disagree only because the envelope
+  // omitted simulationId (or still says "local") — never rebuild from pools and
+  // drop exploration / later inserts. A real id change (sim-1 → sim-2) still rebuilds.
   const sameSimulationRun =
-    currentFlow &&
-    (flowKey === resultsKey ||
-      (flowKey === 'local' && resultsKey && resultsKey !== 'local'));
+    Boolean(currentFlow)
+    && (
+      flowKey === resultsKey
+      || (flowKey === 'local' && resultsKey && resultsKey !== 'local')
+      || (resultsKey === 'local' && flowKey && flowKey !== 'local')
+    );
   if (sameSimulationRun) {
+    const resolvedSimId =
+      (resultsKey && resultsKey !== 'local' ? resultsKey : null)
+      || (flowKey && flowKey !== 'local' ? flowKey : null)
+      || resultsKey
+      || 'local';
     const ootbAlreadyStarted = Boolean(currentFlow.hasStarted?.outsideTheBox);
-    let merged = {
+    const normalized = normalizeEvaluationFlow({
       ...currentFlow,
-      simulationId: resultsKey,
-      nextSteps: buildEvaluationRolesList(results, 'nextSteps', currentFlow.nextSteps),
-      outsideTheBox: buildEvaluationRolesList(results, 'outsideTheBox', currentFlow.outsideTheBox),
+      simulationId: resolvedSimId,
       mobilePhaseGate: currentFlow.mobilePhaseGate ?? {
         outsideTheBox: ootbAlreadyStarted ? 'unlocked' : 'locked',
       },
@@ -390,7 +525,48 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
       },
       outsideTheBoxDeferred: currentFlow.outsideTheBoxDeferred ?? false,
       wizardPaused: currentFlow.wizardPaused ?? false,
-    };
+    });
+
+    let roles = getFlowRoles(normalized);
+    if (!roles.length) {
+      const nextSteps = buildEvaluationRolesList(results, 'nextSteps');
+      const outsideTheBox = buildEvaluationRolesList(results, 'outsideTheBox');
+      let merged = normalizeEvaluationFlow({
+        ...normalized,
+        nextSteps,
+        outsideTheBox,
+        roles: undefined,
+      });
+      if (merged.suppressAutoRankingReveal || merged.reEditPhase) {
+        const { suppressAutoRankingReveal, reEditPhase, ...rest } = merged;
+        merged = applyAutoRankingRevealWhenBothComplete(rest);
+      }
+      return merged;
+    }
+
+    const sourceNext = buildEvaluationSourceRoleIndex(results, 'nextSteps');
+    const sourceOotb = buildEvaluationSourceRoleIndex(results, 'outsideTheBox');
+    roles = roles.map((role) => {
+      const source =
+        role.category === 'outsideTheBox'
+          ? sourceOotb.get(role.key)
+          : sourceNext.get(role.key);
+      if (!source) return role;
+      return toCanonicalRole(
+        patchFlowRoleFromSource(role, source, role.category),
+        role.category,
+        role.order
+      );
+    });
+
+    let merged = withFlowRoles(normalized, roles);
+    if (Array.isArray(currentFlow.mergedExplorationSessionIds)) {
+      merged = {
+        ...merged,
+        mergedExplorationSessionIds: currentFlow.mergedExplorationSessionIds,
+      };
+    }
+
     if (merged.suppressAutoRankingReveal || merged.reEditPhase) {
       const { suppressAutoRankingReveal, reEditPhase, ...rest } = merged;
       merged = applyAutoRankingRevealWhenBothComplete(rest);
@@ -407,16 +583,22 @@ export function mergeEvaluationFlowFromResults(results, currentFlow) {
  */
 export function ensureEvaluationFlow(results) {
   const merged = mergeEvaluationFlowFromResults(results, results?.evaluationFlow);
-  return applyAutoRankingRevealWhenBothComplete(merged);
+  return applyAutoRankingRevealWhenBothComplete(normalizeEvaluationFlow(merged));
 }
 
 export function flowItemMatchesStep(step, flowItem) {
   if (!step || !flowItem || typeof flowItem !== 'object') return false;
+  const stepKey = getSimulationRoleKey(step);
+  const flowKey = getSimulationRoleKey(flowItem);
+  if (stepKey && flowKey && stepKey === flowKey) return true;
   const sid = step.stepId || step.id || step.instanceId;
   const fid = flowItem.stepId || flowItem.id || flowItem.instanceId;
   if (sid && fid && sid === fid) return true;
   if (step.stepId && (flowItem.id === step.stepId || flowItem.stepId === step.stepId)) return true;
   if (step.id && (flowItem.id === step.id || flowItem.stepId === step.id)) return true;
+  // Title fallback only for legacy rows that lack a strong identity key.
+  const isWeakKey = (key) => !key || key.startsWith('title:');
+  if (!isWeakKey(stepKey) || !isWeakKey(flowKey)) return false;
   const nt = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g, ' ');
   const t1 = step.title;
   const t2 = flowItem.title;
@@ -425,7 +607,7 @@ export function flowItemMatchesStep(step, flowItem) {
 }
 
 /**
- * Ratings (Keep / Skip / Dislike) live on `results.evaluationFlow`, not on raw `nextSteps` rows.
+ * Ratings (Keep / Skip / Dislike) live on `results.evaluationFlow.roles[]`.
  * Resolve the evaluation for a result step when opening a detail view from a saved simulation.
  *
  * @param {object} results — simulation `results` payload
@@ -437,6 +619,14 @@ export function resolveUserEvaluationFromEvaluationFlow(results, step) {
   const flow = results.evaluationFlow;
   if (!flow || typeof flow !== 'object') return [false, undefined];
 
+  const roles = getFlowRoles(normalizeEvaluationFlow(flow));
+  for (const role of roles) {
+    if (flowItemMatchesStep(step, role)) {
+      return [true, role.userEvaluation ?? null];
+    }
+  }
+
+  // Legacy dual-list / ranked fallback when roles[] could not be built.
   const tryList = (list) => {
     if (!Array.isArray(list)) return undefined;
     for (const item of list) {
@@ -485,33 +675,29 @@ export function applyUserEvaluationToEvaluationFlow(flow, step, nextEval) {
   if (!flow || typeof flow !== 'object' || !step) {
     return { nextFlow: flow, matched: false };
   }
-  const next = JSON.parse(JSON.stringify(flow));
+  const normalized = normalizeEvaluationFlow(flow);
+  const stepId = step.stepId || step.id || step.instanceId;
+  if (!stepId) return { nextFlow: normalized, matched: false };
+
   let matched = false;
+  let matchedCategory = null;
+  const roles = getFlowRoles(normalized).map((role) => {
+    if (!flowItemMatchesStep(step, role)) return role;
+    matched = true;
+    matchedCategory = role.category;
+    return { ...role, userEvaluation: nextEval };
+  });
+  if (!matched) return { nextFlow: normalized, matched: false };
 
-  const patchList = (list) => {
-    if (!Array.isArray(list)) return;
-    for (let i = 0; i < list.length; i++) {
-      if (flowItemMatchesStep(step, list[i])) {
-        list[i] = { ...list[i], userEvaluation: nextEval };
-        matched = true;
-      }
-    }
-  };
-
-  patchList(next.nextSteps);
-  patchList(next.outsideTheBox);
-
-  if (next.phases?.nextSteps === 'ranked' && Array.isArray(next.nextSteps)) {
-    next.ranked = { ...next.ranked, nextSteps: buildRankedRows(next.nextSteps, 'next') };
+  let nextFlow = withFlowRoles(normalized, roles);
+  if (matchedCategory && nextFlow.phases?.[matchedCategory] === 'ranked') {
+    const catRoles = assignRankedOrderByPreference(
+      getFlowRoles(nextFlow).filter((role) => role.category === matchedCategory)
+    );
+    const others = getFlowRoles(nextFlow).filter((role) => role.category !== matchedCategory);
+    nextFlow = withFlowRoles(nextFlow, [...others, ...catRoles]);
   }
-  if (next.phases?.outsideTheBox === 'ranked' && Array.isArray(next.outsideTheBox)) {
-    next.ranked = {
-      ...next.ranked,
-      outsideTheBox: buildRankedRows(next.outsideTheBox, 'out_of_the_box'),
-    };
-  }
-
-  return { nextFlow: next, matched };
+  return { nextFlow, matched: true };
 }
 
 /**
@@ -520,22 +706,37 @@ export function applyUserEvaluationToEvaluationFlow(flow, step, nextEval) {
  */
 export function areBothSimulationRankingsComplete(evaluationFlow) {
   if (!evaluationFlow) return false;
-  return (
-    evaluationFlow.phases?.nextSteps === 'ranked'
-    && evaluationFlow.phases?.outsideTheBox === 'ranked'
-    && Array.isArray(evaluationFlow.ranked?.nextSteps)
-    && evaluationFlow.ranked.nextSteps.length > 0
-    && Array.isArray(evaluationFlow.ranked?.outsideTheBox)
-    && evaluationFlow.ranked.outsideTheBox.length > 0
-  );
+  if (
+    evaluationFlow.phases?.nextSteps !== 'ranked'
+    || evaluationFlow.phases?.outsideTheBox !== 'ranked'
+  ) {
+    return false;
+  }
+  const next = getRankedBoard(evaluationFlow, 'nextSteps');
+  const ootb = getRankedBoard(evaluationFlow, 'outsideTheBox');
+  return Array.isArray(next) && next.length > 0 && Array.isArray(ootb) && ootb.length > 0;
+}
+
+/**
+ * True when the user has started, paused, or completed role ranking on the latest run.
+ * Used to restore session state after logout/login or server reload.
+ */
+export function hasSimulationEvaluationProgress(evaluationFlow) {
+  if (!evaluationFlow) return false;
+  if (evaluationFlow.wizardPaused) return true;
+  if (evaluationFlow.hasStarted?.nextSteps || evaluationFlow.hasStarted?.outsideTheBox) return true;
+  if (evaluationFlow.phases?.nextSteps === 'ranked' || evaluationFlow.phases?.outsideTheBox === 'ranked') {
+    return true;
+  }
+  if (evaluationFlow.outsideTheBoxDeferred) return true;
+  if (isMobileOutsideTheBoxUnlocked(evaluationFlow)) return true;
+  return areBothSimulationRankingsComplete(evaluationFlow);
 }
 
 function hasNextStepsRankedOverview(evaluationFlow) {
-  return (
-    evaluationFlow.phases?.nextSteps === 'ranked'
-    && Array.isArray(evaluationFlow.ranked?.nextSteps)
-    && evaluationFlow.ranked.nextSteps.length > 0
-  );
+  if (evaluationFlow.phases?.nextSteps !== 'ranked') return false;
+  const board = getRankedBoard(evaluationFlow, 'nextSteps');
+  return Array.isArray(board) && board.length > 0;
 }
 
 /**
@@ -579,8 +780,8 @@ export function resolveRankedRowSourceCategoryKey(row) {
  */
 export function buildCombinedRankedRows(flow) {
   if (!flow) return [];
-  const next = Array.isArray(flow.ranked?.nextSteps) ? flow.ranked.nextSteps : [];
-  const ootb = Array.isArray(flow.ranked?.outsideTheBox) ? flow.ranked.outsideTheBox : [];
+  const next = getRankedBoard(flow, 'nextSteps') || [];
+  const ootb = getRankedBoard(flow, 'outsideTheBox') || [];
   const tag = (row, sourceCategoryKey) => ({
     ...row,
     sourceCategoryKey,
@@ -602,38 +803,50 @@ export function buildCombinedRankedRows(flow) {
  */
 export function applyCombinedRankedReorder(flow, flattenedRows) {
   if (!flow || !Array.isArray(flattenedRows) || !flattenedRows.length) return flow;
+  const normalized = normalizeEvaluationFlow(flow);
 
-  const applyForCategory = (categoryKey, rankSlug) => {
-    const categoryIds = new Set((flow[categoryKey] || []).map((role) => role.id));
-    const relevant = flattenedRows.filter((row) => categoryIds.has(row.id));
+  const applyForCategory = (categoryKey) => {
+    const categoryIds = new Set(
+      getFlowRoles(normalized)
+        .filter((role) => role.category === categoryKey)
+        .map((role) => String(role.id))
+    );
+    const relevant = flattenedRows.filter((row) => categoryIds.has(String(row.id)));
     if (!relevant.length) return null;
-    const byId = new Map((flow[categoryKey] || []).map((role) => [role.id, role]));
-    const nextRoles = relevant
-      .map((row) => {
-        const existing = byId.get(row.id);
-        if (!existing) return null;
-        return { ...existing, userEvaluation: row.userEvaluation };
-      })
-      .filter(Boolean);
-    if (!nextRoles.length) return null;
-    return {
-      roles: nextRoles,
-      ranked: buildRankedRowsFromOrderedRoles(nextRoles, rankSlug),
-    };
+    return relevant.map((row) => String(row.id));
   };
 
-  let nextFlow = { ...flow, ranked: { ...flow.ranked } };
+  let nextFlow = normalized;
   let changed = false;
-  const nextUpdate = applyForCategory('nextSteps', 'next');
-  const ootbUpdate = applyForCategory('outsideTheBox', 'out_of_the_box');
-  if (nextUpdate) {
-    nextFlow.nextSteps = nextUpdate.roles;
-    nextFlow.ranked.nextSteps = nextUpdate.ranked;
+  const nextIds = applyForCategory('nextSteps');
+  const ootbIds = applyForCategory('outsideTheBox');
+  if (nextIds) {
+    nextFlow = reorderFlowCategory(nextFlow, 'nextSteps', nextIds);
+    // Preserve evaluations from the combined board rows.
+    const evalById = new Map(
+      flattenedRows.map((row) => [String(row.id), row.userEvaluation])
+    );
+    nextFlow = withFlowRoles(
+      nextFlow,
+      getFlowRoles(nextFlow).map((role) => {
+        if (role.category !== 'nextSteps' || !evalById.has(String(role.id))) return role;
+        return { ...role, userEvaluation: evalById.get(String(role.id)) };
+      })
+    );
     changed = true;
   }
-  if (ootbUpdate) {
-    nextFlow.outsideTheBox = ootbUpdate.roles;
-    nextFlow.ranked.outsideTheBox = ootbUpdate.ranked;
+  if (ootbIds) {
+    nextFlow = reorderFlowCategory(nextFlow, 'outsideTheBox', ootbIds);
+    const evalById = new Map(
+      flattenedRows.map((row) => [String(row.id), row.userEvaluation])
+    );
+    nextFlow = withFlowRoles(
+      nextFlow,
+      getFlowRoles(nextFlow).map((role) => {
+        if (role.category !== 'outsideTheBox' || !evalById.has(String(role.id))) return role;
+        return { ...role, userEvaluation: evalById.get(String(role.id)) };
+      })
+    );
     changed = true;
   }
   return changed ? nextFlow : flow;

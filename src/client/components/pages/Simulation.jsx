@@ -16,7 +16,6 @@ import {
   FormControl,
   InputLabel,
   LinearProgress,
-  TextField,
   IconButton,
   List,
   ListItem,
@@ -32,19 +31,15 @@ import {
   DialogContentText
 } from '@mui/material';
 import ExtensionIcon from '@mui/icons-material/Extension';
-import SaveIcon from '@mui/icons-material/Save';
 import HistoryIcon from '@mui/icons-material/History';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import ViewListIcon from '@mui/icons-material/ViewList';
 import Autocomplete from '@mui/material/Autocomplete';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import SimulationEvaluationFlow from '../common/SimulationEvaluationFlow';
 import SimulationStartWizard from '../common/SimulationStartWizard';
 import SimulationWizardPausedPrompt from '../common/SimulationWizardPausedPrompt';
@@ -53,28 +48,22 @@ import {
   isSimulationWizardActive,
   canResumeSimulationWizard,
 } from '../../utils/simulationWizardSteps';
+import { navigateToCareerPathPlanning } from '../../utils/careerPathPlanningSession';
 import {
   ensureEvaluationFlow,
-  buildRankedRowsFromOrderedRoles,
   areBothSimulationRankingsComplete,
-  isEvaluationComplete,
   mergeEvaluationFlowFromResults,
-  unlockMobileOutsideTheBox,
-  promoteCategoryToRanked,
-  skipOutsideTheBoxForNow,
-  resumeOutsideTheBoxEvaluation,
   applyAutoRankingRevealWhenBothComplete,
-  applyCombinedRankedReorder,
   pauseSimulationWizard,
-  resumeSimulationWizard,
+  hasSimulationEvaluationProgress,
+  withMaterializedEvaluationFlow,
+  toPersistedSimulationResults,
 } from '../../utils/simulationRoleRanking';
+import { useEvaluationFlowWrites } from '../../hooks/useEvaluationFlowWrites';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
 import SaveChangesButton from '../common/SaveChangesButton';
 import SaveChangesDialog from '../common/SaveChangesDialog';
 import UnsavedChangesIndicator from '../common/UnsavedChangesIndicator';
-import { generateStepId } from '../../utils/stepIdUtils';
-import { getMatchScoreFieldsForSave } from '../../utils/careerStepMatchScore';
-import { pickUserEvaluationForSave } from '../../utils/savedCareerStepUserEvaluation';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
 import { queryClient } from '../../queryClient';
 import {
@@ -85,15 +74,11 @@ import {
   fetchSavedSimulationsList,
   savedSimulationsListQueryKey,
   invalidateSavedSimulationsListQuery,
-  useSavedCareerStepsListQuery,
-  setSavedCareerStepsListQueryData,
-  invalidateSavedCareerStepsListQuery,
   baseUILanguage,
 } from '../../hooks/useProfileQueries';
+import { invalidateCareerIdentityQueries } from '../../hooks/useCareerIdentityQueries';
 import { normalizeTextForI18nMatch } from '../../utils/roleTitleDisplay';
-import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
-import { findMatchingSavedCareerStep } from '../../utils/savedCareerStepIdentity';
 import localizedContentService from '../../utils/localizedContentService';
 import { 
   saveSimulationToStorage, 
@@ -101,8 +86,14 @@ import {
   clearSimulationFromStorage,
   hasSimulationInStorage,
   getSimulationStateFromStorage,
-  updateSimulationStateInStorage
+  updateSimulationStateInStorage,
+  loadPreferredSimulationSnapshot,
+  saveSimulationDetailContext,
+  clearSimulationDetailContext,
 } from '../../utils/simulationPersistence';
+import {
+  schedulePersistLastSimulationProgress,
+} from '../../utils/persistLastSimulationProgress';
 import useUpdateSimulation from '../../hooks/useUpdateSimulation';
 import useChangeDetection from '../../hooks/useChangeDetection';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
@@ -111,8 +102,10 @@ import ProfileUpdateRecommendation from '../common/ProfileUpdateRecommendation';
 import { waitForSimulationJobCompletion } from '../../utils/simulationJobProgress';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import PageHeader from '../common/PageHeader';
+import IdentityExplorationDiscoverCta from '../careerIdentity/IdentityExplorationDiscoverCta';
+import { applyExplorationRankingToLastSimulation } from '../../utils/applyExplorationRankingToLastSimulation';
 
-/** Simulation UX: `/simulation` is the entry hub; `/simulation/results` loads the latest run when needed. */
+/** Simulation UX: `/simulation` is the entry hub; `/puzzle-job` loads the latest run when needed. */
 const Simulation = () => {
   const { t } = useTranslation(['dashboard', 'common', 'onboarding']);
   const { user } = useAuth();
@@ -133,6 +126,10 @@ const Simulation = () => {
   const [simulationDate, setSimulationDate] = useState(null);
 
   const simulationRunAbortRef = useRef(null);
+  /** Latest results for merge/persist races (also updated eagerly inside state updaters). */
+  const simResultsRef = useRef(null);
+  /** Bumped to cancel stale deferred session persists after exploration merges. */
+  const simulationPersistEpochRef = useRef(0);
   const [simulationWizardIntent, setSimulationWizardIntent] = useState(false);
 
   useEffect(() => {
@@ -143,10 +140,6 @@ const Simulation = () => {
 
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [selectedSimulation, setSelectedSimulation] = useState(null);
-  // State for save dialog
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [simulationName, setSimulationName] = useState('');
-  const [saving, setSaving] = useState(false);
 
   // State for notifications
   const [snackbar, setSnackbar] = useState({
@@ -162,6 +155,17 @@ const Simulation = () => {
   
   // State to track if current results are from a saved simulation
   const [isViewingSavedSimulation, setIsViewingSavedSimulation] = useState(false);
+  const isViewingSavedSimulationRef = useRef(false);
+  useEffect(() => {
+    isViewingSavedSimulationRef.current = isViewingSavedSimulation;
+  }, [isViewingSavedSimulation]);
+
+  /** Card/grid edits on a saved simulation still need the navigation guard; ranking on the latest run auto-persists. */
+  const markSavedSimulationDraftDirty = useCallback(() => {
+    if (!isViewingSavedSimulationRef.current) return;
+    setHasUnsavedChanges(true);
+    setSimulationState('modified');
+  }, []);
   
   // State for simulation persistence
   const [simulationState, setSimulationState] = useState('clean'); // 'clean' | 'modified' | 'saved'
@@ -172,28 +176,8 @@ const Simulation = () => {
   const [savingChanges, setSavingChanges] = useState(false);
 
   // State for confirmation dialogs
-  const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] = useState(false);
   const [deleteSimulationDialogOpen, setDeleteSimulationDialogOpen] = useState(false);
   const [simulationToDelete, setSimulationToDelete] = useState(null);
-  const getNextSimulationName = useCallback(() => {
-    const savedCount = Array.isArray(savedSimulations) ? savedSimulations.length : 0;
-    return t('simulation.defaultNameWithIndex', { ns: 'dashboard', index: savedCount + 1 });
-  }, [savedSimulations, t]);
-
-  const getNextSimulationNameFromServer = useCallback(async () => {
-    try {
-      const serverSimulations = await queryClient.fetchQuery(
-        savedSimulationsListQueryKey,
-        fetchSavedSimulationsList,
-        { staleTime: 5 * 60 * 1000 }
-      );
-      const list = Array.isArray(serverSimulations) ? serverSimulations : [];
-      return t('simulation.defaultNameWithIndex', { ns: 'dashboard', index: list.length + 1 });
-    } catch (error) {
-      console.warn('Failed to fetch saved simulation count for default name:', error);
-      return getNextSimulationName();
-    }
-  }, [getNextSimulationName, t]);
 
   // Hooks for save changes functionality
   const { updateSimulation, loading: updateLoading, error: updateError } = useUpdateSimulation();
@@ -204,6 +188,7 @@ const Simulation = () => {
 
   const persistSimResultsToSession = useCallback(
     (nextResults) => {
+      if (!nextResults) return;
       try {
         saveSimulationToStorage(
           {
@@ -216,89 +201,57 @@ const Simulation = () => {
       } catch (e) {
         console.warn('Session persistence failed:', e);
       }
+      if (!isViewingSavedSimulationRef.current) {
+        schedulePersistLastSimulationProgress(nextResults);
+      }
     },
     [simulationDate, profileCompletion]
   );
 
-  const handleEvaluationCommit = useCallback(
-    (categoryKey, stepId, evaluation) => {
-      setSimResults((prev) => {
-        if (!prev?.evaluationFlow) return prev;
-        const flow = prev.evaluationFlow;
-        const roles = flow[categoryKey].map((r) =>
-          r.id === stepId ? { ...r, userEvaluation: evaluation } : r
-        );
-        const hasStarted = { ...flow.hasStarted, [categoryKey]: true };
-        let nextFlow = {
-          ...flow,
-          [categoryKey]: roles,
-          hasStarted,
-        };
-        nextFlow = applyAutoRankingRevealWhenBothComplete(nextFlow);
-        const next = { ...prev, evaluationFlow: nextFlow };
-        setTimeout(() => persistSimResultsToSession(next), 0);
-        return next;
-      });
-      setHasUnsavedChanges(true);
-      setSimulationState('modified');
+  const getSimResultsFlow = useCallback((prev) => prev?.evaluationFlow, []);
+  const putSimResultsFlow = useCallback(
+    (prev, nextFlow) => ({ ...prev, evaluationFlow: nextFlow }),
+    []
+  );
+  const persistCommittedSimResults = useCallback(
+    (next) => {
+      // Persist latest ref at macrotask time so a later exploration merge cannot be
+      // overwritten by a stale closed-over snapshot from this commit.
+      if (next?.evaluationFlow) {
+        simResultsRef.current = next;
+      }
+      const epochAtSchedule = ++simulationPersistEpochRef.current;
+      setTimeout(() => {
+        if (epochAtSchedule !== simulationPersistEpochRef.current) return;
+        const latest = simResultsRef.current;
+        if (!latest?.evaluationFlow) return;
+        persistSimResultsToSession(latest);
+      }, 0);
     },
     [persistSimResultsToSession]
   );
 
-  const handleSeeRoleRanking = useCallback(
-    (categoryKey) => {
-      setSimResults((prev) => {
-        if (!prev?.evaluationFlow) return prev;
-        const flow = prev.evaluationFlow;
-        const nextFlow = promoteCategoryToRanked(flow, categoryKey);
-        if (nextFlow === flow) return prev;
-        const next = { ...prev, evaluationFlow: nextFlow };
-        setTimeout(() => persistSimResultsToSession(next), 0);
-        return next;
-      });
-      setHasUnsavedChanges(true);
-      setSimulationState('modified');
-    },
-    [persistSimResultsToSession]
-  );
-
-  const handleUnlockMobileOutsideTheBox = useCallback(() => {
-    setSimResults((prev) => {
-      if (!prev?.evaluationFlow) return prev;
-      const nextFlow = unlockMobileOutsideTheBox(prev.evaluationFlow);
-      const next = { ...prev, evaluationFlow: nextFlow };
-      setTimeout(() => persistSimResultsToSession(next), 0);
-      return next;
-    });
-    setHasUnsavedChanges(true);
-    setSimulationState('modified');
-  }, [persistSimResultsToSession]);
-
-  const handleSkipOutsideTheBox = useCallback(() => {
-    setSimResults((prev) => {
-      if (!prev?.evaluationFlow) return prev;
-      const nextFlow = skipOutsideTheBoxForNow(prev.evaluationFlow);
-      if (nextFlow === prev.evaluationFlow) return prev;
-      const next = { ...prev, evaluationFlow: nextFlow };
-      setTimeout(() => persistSimResultsToSession(next), 0);
-      return next;
-    });
-    setHasUnsavedChanges(true);
-    setSimulationState('modified');
-  }, [persistSimResultsToSession]);
+  const {
+    handleEvaluationCommit,
+    handleSeeRoleRanking,
+    handleUnlockMobileOutsideTheBox,
+    handleSkipOutsideTheBox,
+    handleResumeOutsideTheBox: resumeOutsideTheBoxFlow,
+    handleResumeWizard,
+    handleReorderCombinedRankedRoles,
+    handleReorderRankedRoles,
+  } = useEvaluationFlowWrites({
+    setState: setSimResults,
+    getFlow: getSimResultsFlow,
+    putFlow: putSimResultsFlow,
+    onCommitted: persistCommittedSimResults,
+    onWrite: markSavedSimulationDraftDirty,
+  });
 
   const handleResumeOutsideTheBox = useCallback(() => {
-    setSimResults((prev) => {
-      if (!prev?.evaluationFlow) return prev;
-      const nextFlow = resumeOutsideTheBoxEvaluation(prev.evaluationFlow);
-      const next = { ...prev, evaluationFlow: nextFlow };
-      setTimeout(() => persistSimResultsToSession(next), 0);
-      return next;
-    });
+    resumeOutsideTheBoxFlow();
     setSimulationWizardIntent(true);
-    setHasUnsavedChanges(true);
-    setSimulationState('modified');
-  }, [persistSimResultsToSession]);
+  }, [resumeOutsideTheBoxFlow]);
 
   const simulationWizardStep = useMemo(
     () =>
@@ -358,72 +311,10 @@ const Simulation = () => {
   );
 
   const handleWizardResume = useCallback(() => {
-    setSimResults((prev) => {
-      if (!prev?.evaluationFlow) return prev;
-      const nextFlow = resumeSimulationWizard(prev.evaluationFlow);
-      const next = { ...prev, evaluationFlow: nextFlow };
-      setTimeout(() => persistSimResultsToSession(next), 0);
-      return next;
-    });
+    handleResumeWizard();
     setSimulationWizardIntent(true);
-  }, [persistSimResultsToSession]);
+  }, [handleResumeWizard]);
 
-  const handleReorderCombinedRankedRoles = useCallback(
-    (reorderedRows) => {
-      setSimResults((prev) => {
-        if (!prev?.evaluationFlow || !Array.isArray(reorderedRows) || !reorderedRows.length) return prev;
-        const nextFlow = applyCombinedRankedReorder(prev.evaluationFlow, reorderedRows);
-        if (nextFlow === prev.evaluationFlow) return prev;
-        const next = { ...prev, evaluationFlow: nextFlow };
-        setTimeout(() => persistSimResultsToSession(next), 0);
-        return next;
-      });
-      setHasUnsavedChanges(true);
-      setSimulationState('modified');
-    },
-    [persistSimResultsToSession]
-  );
-
-  const handleReorderRankedRoles = useCallback(
-    (categoryKey, reorderedRows) => {
-      setSimResults((prev) => {
-        if (!prev?.evaluationFlow || !Array.isArray(reorderedRows) || !reorderedRows.length) return prev;
-        const flow = prev.evaluationFlow;
-        const currentRoles = Array.isArray(flow[categoryKey]) ? flow[categoryKey] : [];
-        const byId = new Map(currentRoles.map((role) => [role.id, role]));
-        const nextRoles = reorderedRows
-          .map((row) => {
-            const existing = byId.get(row.id);
-            if (!existing) return null;
-            return {
-              ...existing,
-              userEvaluation: row.userEvaluation,
-            };
-          })
-          .filter(Boolean);
-        if (!nextRoles.length) return prev;
-        const rankSlug = categoryKey === 'nextSteps' ? 'next' : 'out_of_the_box';
-        const nextFlow = {
-          ...flow,
-          [categoryKey]: nextRoles,
-          ranked: {
-            ...flow.ranked,
-            [categoryKey]: buildRankedRowsFromOrderedRoles(nextRoles, rankSlug),
-          },
-        };
-        const next = { ...prev, evaluationFlow: nextFlow };
-        setTimeout(() => persistSimResultsToSession(next), 0);
-        return next;
-      });
-      setHasUnsavedChanges(true);
-      setSimulationState('modified');
-    },
-    [persistSimResultsToSession]
-  );
-
-  // State to track if save was triggered by navigation guard
-  const [saveTriggeredByNavigationGuard, setSaveTriggeredByNavigationGuard] = useState(false);
-  
   // State for per-category display tracking
   const [categoryDisplayCounts, setCategoryDisplayCounts] = useState({
     nextSteps: 3,
@@ -441,31 +332,146 @@ const Simulation = () => {
   const [recommendationCategory, setRecommendationCategory] = useState(null);
   const [profileCompletion, setProfileCompletion] = useState(0);
 
-  /** Latest results for merging evaluationFlow when re-fetching localized payloads from the server */
-  const simResultsRef = useRef(null);
   /** Avoid redundant GET /simulation/last when `{simulationId, lang}` already synced */
   const localizationSyncedRef = useRef({ bundleKey: '' });
+  /** Prevent duplicate in-flight GET /simulation/last (e.g. StrictMode double-mount) */
+  const fetchLastInFlightRef = useRef(null);
+
+  const markLocalizationSyncedFromResults = useCallback(
+    (results, savedId = null) => {
+      if (savedId) {
+        localizationSyncedRef.current.bundleKey = `saved:${savedId}:${requestLang}`;
+      } else if (results?.simulationId) {
+        localizationSyncedRef.current.bundleKey = `${results.simulationId}:${requestLang}`;
+      }
+    },
+    [requestLang]
+  );
+
+  const applySessionSimulation = useCallback(
+    (storedData) => {
+      if (!storedData?.results) return false;
+      const results = withMaterializedEvaluationFlow(storedData.results);
+      setSimResults(results);
+      simResultsRef.current = results;
+      // Preserve session dirty state so a later localize refresh cannot overwrite
+      // exploration merges that are still flushing to the server.
+      setSimulationState(storedData.state || 'clean');
+      if (storedData.metadata) {
+        setSimulationDate(storedData.metadata.simulationDate || new Date());
+        setProfileCompletion(storedData.metadata.profileCompletion || 0);
+      }
+      if (results.categoryDisplayCounts) {
+        setCategoryDisplayCounts(results.categoryDisplayCounts);
+      }
+      markLocalizationSyncedFromResults(results);
+      setLoadingLast(false);
+      return true;
+    },
+    [markLocalizationSyncedFromResults]
+  );
 
   useEffect(() => {
     simResultsRef.current = simResults;
   }, [simResults]);
+
+  const handleExplorationRanked = useCallback(
+    async ({ sessionId, roles, rankedRows }) => {
+      const prev = withMaterializedEvaluationFlow(simResultsRef.current || simResults);
+      if (!prev) {
+        console.warn('Exploration ranking finished, but no simulation results were loaded to merge into.');
+        return { ok: false, reason: 'no-results' };
+      }
+
+      const wasWizardPaused = Boolean(prev.evaluationFlow?.wizardPaused);
+      const outcome = await applyExplorationRankingToLastSimulation({
+        sessionId,
+        roles,
+        rankedRows,
+        results: prev,
+        storageMetadata: {
+          simulationDate: simulationDate || new Date(),
+          profileCompletion,
+        },
+        persistToServer: !isViewingSavedSimulationRef.current,
+      });
+
+      if (!outcome.ok) {
+        if (outcome.reason === 'no-roles') {
+          console.warn(
+            'Exploration ranking finished, but no evaluated roles were available to merge into simulation results.'
+          );
+        } else if (outcome.reason === 'no-evaluation-flow') {
+          console.warn(
+            'Exploration ranking finished, but no simulation evaluationFlow was available to merge into.'
+          );
+        }
+        return outcome;
+      }
+
+      if (outcome.unchanged) {
+        console.warn(
+          'Exploration ranking finished, but merge did not change simulation evaluationFlow.',
+          {
+            sessionId,
+            nextRanked: prev.evaluationFlow?.phases?.nextSteps,
+            ootbRanked: prev.evaluationFlow?.phases?.outsideTheBox,
+          }
+        );
+        return outcome;
+      }
+
+      const resultsToApply = withMaterializedEvaluationFlow(outcome.results);
+      // Invalidate any deferred persist scheduled before this merge landed.
+      simulationPersistEpochRef.current += 1;
+      const next = {
+        ...(simResultsRef.current || prev || resultsToApply),
+        ...resultsToApply,
+        evaluationFlow: resultsToApply.evaluationFlow,
+      };
+      simResultsRef.current = next;
+      setSimResults(next);
+      setSimulationState('modified');
+      markLocalizationSyncedFromResults(next);
+      markSavedSimulationDraftDirty();
+
+      // Mid-eval: reopen the ranking wizard so exploration ratings count toward progress.
+      if (
+        wasWizardPaused
+        && next?.evaluationFlow
+        && !areBothSimulationRankingsComplete(next.evaluationFlow)
+      ) {
+        setSimulationWizardIntent(true);
+      }
+
+      return { ...outcome, results: next };
+    },
+    [
+      simResults,
+      simulationDate,
+      profileCompletion,
+      markSavedSimulationDraftDirty,
+      markLocalizationSyncedFromResults,
+      selectedSimulation?.id,
+    ]
+  );
+
   const [profileSimulationGate, setProfileSimulationGate] = useState({
     ready: false,
-    needsVerification: false,
     belowMin: false,
   });
-  const canRunSimulation = profileSimulationGate.ready
-    && !profileSimulationGate.needsVerification
-    && !profileSimulationGate.belowMin;
+  const canRunSimulation = profileSimulationGate.ready && !profileSimulationGate.belowMin;
 
   const { data: savedSimulations = [] } = useSavedSimulationsListQuery({ enabled: canRunSimulation });
 
   // Global navigation guard context
   const { registerGuard, unregisterGuard, guardedNavigate } = useNavigationGuardContext();
   
-  // Navigation guard for unsaved changes or in-flight simulation loading
+  // Navigation guard: block while a run is in flight, or when a saved simulation has unsaved card edits.
   const isSimulationLoadingGuardActive = simLoading;
-  const shouldGuardNavigation = simulationState === 'modified' || isSimulationLoadingGuardActive;
+  const shouldGuardNavigation =
+    isSimulationLoadingGuardActive
+    || (isViewingSavedSimulation && (hasChanges || simulationState === 'modified'));
   const changeSummary = useMemo(
     () => getChangeSummary(),
     [getChangeSummary, hasChanges, originalSimulationData, selectedSimulation]
@@ -486,27 +492,9 @@ const Simulation = () => {
         confirmText: t('simulation.navigationGuard.leaveAnyway', { ns: 'dashboard' }),
         cancelText: t('simulation.navigationGuard.stayOnPage', { ns: 'dashboard' }),
         saveText: t('simulation.navigationGuard.saveChanges', { ns: 'dashboard' }),
-        showSaveOption: !isSimulationLoadingGuardActive,
-        loading: saving || savingChanges,
-        onSave: async () => {
-          if (isSimulationLoadingGuardActive) return;
-          return new Promise((resolve, reject) => {
-            // Set flag to track that save was triggered by navigation guard
-            setSaveTriggeredByNavigationGuard(true);
-
-            (async () => {
-              const nextName = await getNextSimulationNameFromServer();
-              setSimulationName(nextName);
-
-              // Store resolve/reject functions globally for the save dialog
-              window.navigationGuardSaveResolve = resolve;
-              window.navigationGuardSaveReject = reject;
-
-              // Open save dialog
-              setSaveDialogOpen(true);
-            })();
-          });
-        },
+        showSaveOption: false,
+        loading: savingChanges,
+        onSave: async () => {},
         onConfirmLeave: () => {
           if (isSimulationLoadingGuardActive) return;
           // Clear simulation results when user chooses "Leave Anyway"
@@ -525,9 +513,9 @@ const Simulation = () => {
           
           // Clear any unsaved results from session storage
           try {
-            sessionStorage.removeItem('currentUnsavedResults');
+            clearSimulationDetailContext();
           } catch (error) {
-            console.warn('Failed to clear currentUnsavedResults:', error);
+            console.warn('Failed to clear simulation detail context:', error);
           }
         }
       });
@@ -542,12 +530,13 @@ const Simulation = () => {
   }, [
     shouldGuardNavigation,
     isSimulationLoadingGuardActive,
+    isViewingSavedSimulation,
+    hasChanges,
+    simulationState,
     changeSummary,
-    saving,
     savingChanges,
     registerGuard,
     unregisterGuard,
-    getNextSimulationNameFromServer,
   ]);
 
   // Browser-level guard for refresh/tab-close while simulation is loading.
@@ -566,73 +555,35 @@ const Simulation = () => {
     };
   }, [simLoading]);
 
-  // Load simulation data from session storage on component mount
-  useEffect(() => {
-    const loadStoredSimulation = () => {
-      const storedData = loadSimulationFromStorage();
-      
-      if (storedData && storedData.results && storedData.state !== 'saved') {
-        console.log('📂 Loading simulation from session storage:', {
-          state: storedData.state,
-          hasResults: !!storedData.results,
-          timestamp: storedData.metadata?.timestamp
-        });
-        
-        // Set simulation results
-        setSimResults(storedData.results);
-        setSimulationState(storedData.state);
-        
-        // Set metadata if available
-        if (storedData.metadata) {
-          setSimulationDate(storedData.metadata.simulationDate || new Date());
-          setProfileCompletion(storedData.metadata.profileCompletion || 0);
-        }
-        
-        // Initialize category display counts if available
-        if (storedData.results.categoryDisplayCounts) {
-          setCategoryDisplayCounts(storedData.results.categoryDisplayCounts);
-        }
-        
-        // Clear loading state
-        setLoadingLast(false);
-      } else {
-        console.log('📭 No stored simulation found or simulation was saved, starting fresh');
-        setLoadingLast(false);
-      }
-    };
-
-    loadStoredSimulation();
-  }, []); // Only run on mount
-
-  const { data: savedCareerSteps = [] } = useSavedCareerStepsListQuery({ enabled: canRunSimulation });
-  const savedCareerStepsRef = useRef([]);
-  useEffect(() => {
-    savedCareerStepsRef.current = savedCareerSteps;
-  }, [savedCareerSteps]);
-
-  // State to track which career steps are being saved/unsaved
-  const [savingSteps, setSavingSteps] = useState(new Set());
   const [canonicalEscoByKey, setCanonicalEscoByKey] = useState({});
 
   const navigate = useNavigate();
   // Note: navigate will be replaced by navigationGuard.navigate below
   const location = useLocation();
 
-  useSimulationRankingsCompleteCelebration(simResults?.evaluationFlow);
+  const handlePlanPath = useCallback(
+    (role) => {
+      navigateToCareerPathPlanning({
+        role,
+        savedSimulationId: isViewingSavedSimulation ? selectedSimulation?.id : null,
+        navigate,
+        guardedNavigate,
+      });
+    },
+    [isViewingSavedSimulation, selectedSimulation?.id, navigate, guardedNavigate]
+  );
 
-  // State update queue to prevent conflicts
-  const stateUpdateQueueRef = useRef([]);
-  const isProcessingQueueRef = useRef(false);
-  
-  // State update lock to prevent re-rendering during updates
-  const isUpdatingStateRef = useRef(false);
-  
-  // Complete render lock to prevent any rendering during state updates
-  const isRenderingLockedRef = useRef(false);
-  
-  // Additional state update tracking
-  const pendingStateUpdatesRef = useRef(0);
-  const isStateUpdatingRef = useRef(false);
+  useEffect(() => {
+    if (location.pathname !== '/simulation' || loadingLast || simLoading) return;
+    const hasResults =
+      (Array.isArray(simResults?.nextSteps) && simResults.nextSteps.length > 0)
+      || (Array.isArray(simResults?.outsideTheBox) && simResults.outsideTheBox.length > 0);
+    if (hasResults) {
+      navigate('/puzzle-job', { replace: true });
+    }
+  }, [location.pathname, loadingLast, simLoading, simResults, navigate]);
+
+  useSimulationRankingsCompleteCelebration(simResults?.evaluationFlow);
 
   // Comprehensive state validation function
   const validateAndSanitizeState = () => {
@@ -696,16 +647,9 @@ const Simulation = () => {
     (async () => {
       try {
         const token = localStorage.getItem('token');
-        const isVerified = Boolean(user?.isVerified || user?.emailVerified);
         if (!token) {
           if (!cancelled) {
-            setProfileSimulationGate({ ready: true, needsVerification: false, belowMin: false });
-          }
-          return;
-        }
-        if (!isVerified) {
-          if (!cancelled) {
-            setProfileSimulationGate({ ready: true, needsVerification: true, belowMin: false });
+            setProfileSimulationGate({ ready: true, belowMin: false });
           }
           return;
         }
@@ -715,14 +659,13 @@ const Simulation = () => {
           setProfileCompletion(overall);
           setProfileSimulationGate({
             ready: true,
-            needsVerification: false,
             belowMin: overall < MIN_PROFILE_COMPLETION_REQUIRED,
           });
         }
       } catch (err) {
         console.error('Profile completion gate fetch failed:', err);
         if (!cancelled) {
-          setProfileSimulationGate({ ready: true, needsVerification: false, belowMin: false });
+          setProfileSimulationGate({ ready: true, belowMin: false });
         }
       }
     })();
@@ -749,85 +692,136 @@ const Simulation = () => {
     return sanitizedResults;
   };
 
-  // Safe setter function that ensures arrays are never undefined
+  // Safe setter that normalizes result arrays before updating React state.
   const safeSetSimResults = (newResults) => {
     if (!newResults) {
       setSimResults(null);
       return;
     }
 
-    // Set update lock to prevent re-rendering
-    isUpdatingStateRef.current = true;
+    const sanitizedResults = withMaterializedEvaluationFlow(
+      sanitizeSimulationResultsPayload(newResults)
+    );
+    if (!sanitizedResults) return;
 
-    const sanitizedResults = sanitizeSimulationResultsPayload(newResults);
-    if (!sanitizedResults) {
-      isUpdatingStateRef.current = false;
-      return;
-    }
-
-    // Store current results in sessionStorage for replacement tracking
     try {
-      sessionStorage.setItem('currentSimResults', JSON.stringify(sanitizedResults));
+      sessionStorage.setItem(
+        'currentSimResults',
+        JSON.stringify(toPersistedSimulationResults(sanitizedResults))
+      );
     } catch (error) {
       console.warn('Failed to store current results in sessionStorage:', error);
     }
-    
-    // Queue the state update to prevent conflicts
-    queueStateUpdate(() => {
-      setSimResults(sanitizedResults);
-      
-      // Release lock after state update
-      setTimeout(() => {
-        isUpdatingStateRef.current = false;
-      }, 100);
+
+    setSimResults(sanitizedResults);
+    simResultsRef.current = sanitizedResults;
+  };
+
+  // Ensure simResults arrays are always properly initialized
+  useEffect(() => {
+    if (!simResults) return;
+
+    const needsSanitize =
+      !Array.isArray(simResults.nextSteps)
+      || !Array.isArray(simResults.outsideTheBox)
+      || !Array.isArray(simResults.outsideComfortZone)
+      || !Array.isArray(simResults.furtherAdvice)
+      || !Array.isArray(simResults.resources)
+      || simResults.nextSteps.some((item) => !item || typeof item !== 'object')
+      || simResults.outsideTheBox.some((item) => !item || typeof item !== 'object')
+      || simResults.outsideComfortZone.some((item) => !item || typeof item !== 'object')
+      || simResults.furtherAdvice.some((item) => !item || typeof item !== 'object')
+      || simResults.resources.some((item) => !item || typeof item !== 'object');
+
+    if (!needsSanitize) return;
+
+    setSimResults((prev) => {
+      if (!prev) return prev;
+      const sanitizedResults = {
+        ...prev,
+        nextSteps: Array.isArray(prev.nextSteps) ? [...prev.nextSteps] : [],
+        outsideTheBox: Array.isArray(prev.outsideTheBox) ? [...prev.outsideTheBox] : [],
+        outsideComfortZone: Array.isArray(prev.outsideComfortZone) ? [...prev.outsideComfortZone] : [],
+        furtherAdvice: Array.isArray(prev.furtherAdvice) ? [...prev.furtherAdvice] : [],
+        resources: Array.isArray(prev.resources) ? [...prev.resources] : [],
+      };
+      sanitizedResults.nextSteps = sanitizedResults.nextSteps.filter((item) => item && typeof item === 'object');
+      sanitizedResults.outsideTheBox = sanitizedResults.outsideTheBox.filter((item) => item && typeof item === 'object');
+      sanitizedResults.outsideComfortZone = sanitizedResults.outsideComfortZone.filter((item) => item && typeof item === 'object');
+      sanitizedResults.furtherAdvice = sanitizedResults.furtherAdvice.filter((item) => item && typeof item === 'object');
+      sanitizedResults.resources = sanitizedResults.resources.filter((item) => item && typeof item === 'object');
+      return sanitizedResults;
     });
-    
-    // Fallback: ensure lock is released even if queue fails
-    setTimeout(() => {
-      if (isUpdatingStateRef.current) {
-        isUpdatingStateRef.current = false;
-      }
-    }, 500);
-  };
-  
-  // Queue state updates to prevent conflicts
-  const queueStateUpdate = (updateFunction) => {
-    stateUpdateQueueRef.current.push(updateFunction);
-    
-    if (!isProcessingQueueRef.current) {
-      processStateUpdateQueue();
-    }
-  };
-  
-  // Process the state update queue
-  const processStateUpdateQueue = () => {
-    if (isProcessingQueueRef.current || stateUpdateQueueRef.current.length === 0) {
+  }, [simResults]);
+
+  useEffect(() => {
+    if (!simResults) return;
+    const resultsKey = simResults.simulationId ?? 'local';
+    const flowSimId = simResults.evaluationFlow?.simulationId ?? 'local';
+    if (simResults.evaluationFlow && flowSimId === resultsKey) {
+      const maybeReveal = applyAutoRankingRevealWhenBothComplete(simResults.evaluationFlow);
+      if (maybeReveal === simResults.evaluationFlow) return;
+      setSimResults((prev) => {
+        if (!prev?.evaluationFlow) return prev;
+        const revealed = applyAutoRankingRevealWhenBothComplete(prev.evaluationFlow);
+        if (revealed === prev.evaluationFlow) return prev;
+        const next = { ...prev, evaluationFlow: revealed };
+        const epochAtSchedule = ++simulationPersistEpochRef.current;
+        setTimeout(() => {
+          if (epochAtSchedule !== simulationPersistEpochRef.current) return;
+          const latest = simResultsRef.current || next;
+          if (!latest?.evaluationFlow) return;
+          persistSimResultsToSession(latest);
+        }, 0);
+        return next;
+      });
       return;
     }
-    
-    isProcessingQueueRef.current = true;
-    
-    // Process updates one by one with delays
-    const processNext = () => {
-      if (stateUpdateQueueRef.current.length === 0) {
-        isProcessingQueueRef.current = false;
-        return;
+    setSimResults((prev) => {
+      if (!prev) return prev;
+      const key = prev.simulationId ?? 'local';
+      const prevFlowId = prev.evaluationFlow?.simulationId ?? 'local';
+      if (prev.evaluationFlow && prevFlowId === key) {
+        return prev;
       }
-      
-      const updateFunction = stateUpdateQueueRef.current.shift();
-      
-      try {
-        updateFunction();
-      } catch (error) {
-        console.error('Error processing state update:', error);
+      // Id mismatch with an already-ranked membership: align ids, do not rebuild
+      // from pools (that drops exploration / later OOTB inserts).
+      const flowRoles = prev.evaluationFlow?.roles;
+      if (prev.evaluationFlow && Array.isArray(flowRoles) && flowRoles.length > 0) {
+        const resolvedId =
+          (key && key !== 'local' ? key : null)
+          || (prevFlowId && prevFlowId !== 'local' ? prevFlowId : null)
+          || key;
+        const next = {
+          ...prev,
+          simulationId: resolvedId,
+          evaluationFlow: {
+            ...prev.evaluationFlow,
+            simulationId: resolvedId,
+          },
+        };
+        const epochAtSchedule = ++simulationPersistEpochRef.current;
+        setTimeout(() => {
+          if (epochAtSchedule !== simulationPersistEpochRef.current) return;
+          const latest = simResultsRef.current || next;
+          if (!latest?.evaluationFlow) return;
+          persistSimResultsToSession(latest);
+        }, 0);
+        return next;
       }
-      
-      // Process next update after a short delay
-      setTimeout(processNext, 10);
-    };
-    
-    processNext();
-  };
+      const evaluationFlow = ensureEvaluationFlow(prev);
+      if (!evaluationFlow) return prev;
+      const next = { ...prev, evaluationFlow };
+      const epochAtSchedule = ++simulationPersistEpochRef.current;
+        setTimeout(() => {
+          if (epochAtSchedule !== simulationPersistEpochRef.current) return;
+          const latest = simResultsRef.current || next;
+          if (!latest?.evaluationFlow) return;
+          persistSimResultsToSession(latest);
+        }, 0);
+      return next;
+    });
+  }, [simResults, persistSimResultsToSession]);
 
   useEffect(() => {
     // Handle navigation state changes
@@ -835,57 +829,34 @@ const Simulation = () => {
       if (location.state.simulationId) {
         // Load a specific saved simulation
         fetchSimulationById(location.state.simulationId);
-      } else if (location.state.showUnsavedResults) {
-        // Return from unsaved simulation details - restore unsaved results
-        setSelectedSimulation(null);
-        setIsViewingSavedSimulation(false);
-
-        // Check if simulation was saved - if so, don't restore unsaved results
-        const storedData = loadSimulationFromStorage();
-        if (storedData && storedData.state === 'saved') {
-          console.log('Simulation was saved, not restoring unsaved results');
-          invalidateSavedCareerStepsListQuery();
-          guardedNavigate(location.pathname, { replace: true });
-          return;
-        }
-
-        // Restore the unsaved simulation results from sessionStorage
-        const storedUnsavedResults = sessionStorage.getItem('currentUnsavedResults');
-        if (storedUnsavedResults) {
-          try {
-            const parsedResults = JSON.parse(storedUnsavedResults);
-            setSimResults(parsedResults.results);
-            setSimulationDate(parsedResults.date);
-            setHasUnsavedChanges(true);
-          } catch (err) {
-            console.error('Error parsing stored unsaved results:', err);
-            fetchLastSimulation();
-          }
-        } else {
-          fetchLastSimulation();
-        }
-
-        invalidateSavedCareerStepsListQuery();
-        guardedNavigate(location.pathname, { replace: true });
-        return;
       } else if (location.state.refresh) {
-        invalidateSavedCareerStepsListQuery();
+        const storedData = loadSimulationFromStorage();
+        if (storedData?.results && storedData.state !== 'saved') {
+          applySessionSimulation(storedData);
+        } else if (location.pathname === '/puzzle-job') {
+          fetchLastSimulation();
+        } else {
+          setLoadingLast(false);
+        }
         guardedNavigate(location.pathname, { replace: true });
         return;
       }
     }
 
     // Default behavior: load last simulation if no special navigation state
-    if (!location.state || (!location.state.simulationId && !location.state.showUnsavedResults && !location.state.refresh)) {
+    if (!location.state || (!location.state.simulationId && !location.state.refresh)) {
       const storedData = loadSimulationFromStorage();
       console.log('Navigation check - session storage state:', {
         storedData,
         locationState: location.state,
-        currentUnsavedResults: sessionStorage.getItem('currentUnsavedResults')
+        detailContextPresent: Boolean(
+          typeof sessionStorage !== 'undefined'
+          && sessionStorage.getItem('currentSimulationDetailContext')
+        ),
       });
 
       if (storedData && storedData.state === 'saved') {
-        if (location.pathname === '/simulation/results') {
+        if (location.pathname === '/puzzle-job') {
           fetchLastSimulation();
         } else {
           console.log('Simulation was saved, not fetching last simulation to prevent restoration', {
@@ -895,111 +866,30 @@ const Simulation = () => {
           });
         }
       } else if (!storedData) {
-        if (location.pathname === '/simulation/results') {
-          fetchLastSimulation();
-        } else {
-          console.log('No session storage data found (likely cleared after save), keeping page cleared');
-        }
+        fetchLastSimulation();
       } else if (storedData.results && storedData.state !== 'saved') {
         // Session already holds the current run (e.g. clean/modified after POST /simulation). Do not
         // overwrite with GET /simulation/last — that races with mount load and can drop evaluationFlow.
         console.log('Session has simulation results; skipping fetchLastSimulation on mount');
+        applySessionSimulation(storedData);
       } else {
         console.log('Fetching last simulation from server');
         fetchLastSimulation();
       }
     }
 
-    invalidateSavedCareerStepsListQuery();
     // eslint-disable-next-line
   }, [location.state, location.pathname]);
 
-  // Refresh saved career steps when the page becomes visible (e.g., when returning from details page)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        invalidateSavedCareerStepsListQuery();
-      }
-    };
-
-    const handleFocus = () => {
-      invalidateSavedCareerStepsListQuery();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
-
-  // Ensure simResults arrays are always properly initialized
-  useEffect(() => {
-    if (isProcessingQueueRef.current || isUpdatingStateRef.current) {
-      return;
-    }
-    
-    if (simResults) {
-      const sanitizedResults = {
-        ...simResults,
-        nextSteps: Array.isArray(simResults.nextSteps) ? [...simResults.nextSteps] : [],
-        outsideTheBox: Array.isArray(simResults.outsideTheBox) ? [...simResults.outsideTheBox] : [],
-        outsideComfortZone: Array.isArray(simResults.outsideComfortZone) ? [...simResults.outsideComfortZone] : [],
-        furtherAdvice: Array.isArray(simResults.furtherAdvice) ? [...simResults.furtherAdvice] : [],
-        resources: Array.isArray(simResults.resources) ? [...simResults.resources] : []
-      };
-      
-      // Additional validation - ensure all arrays have valid items
-      sanitizedResults.nextSteps = sanitizedResults.nextSteps.filter(item => item && typeof item === 'object');
-      sanitizedResults.outsideTheBox = sanitizedResults.outsideTheBox.filter(item => item && typeof item === 'object');
-      sanitizedResults.outsideComfortZone = sanitizedResults.outsideComfortZone.filter(item => item && typeof item === 'object');
-      sanitizedResults.furtherAdvice = sanitizedResults.furtherAdvice.filter(item => item && typeof item === 'object');
-      sanitizedResults.resources = sanitizedResults.resources.filter(item => item && typeof item === 'object');
-      
-      // Only update if there's a meaningful difference to avoid infinite loops
-      const currentString = JSON.stringify(simResults);
-      const sanitizedString = JSON.stringify(sanitizedResults);
-      
-      if (currentString !== sanitizedString) {
-        queueStateUpdate(() => setSimResults(sanitizedResults));
-      }
-    }
-  }, [simResults]);
-
-  useEffect(() => {
-    if (!simResults) return;
-    const resultsKey = simResults.simulationId ?? 'local';
-    if (
-      simResults.evaluationFlow &&
-      simResults.evaluationFlow.simulationId === resultsKey
-    ) {
-      const revealed = applyAutoRankingRevealWhenBothComplete(simResults.evaluationFlow);
-      if (revealed !== simResults.evaluationFlow) {
-        queueStateUpdate(() => {
-          setSimResults((prev) => (prev ? { ...prev, evaluationFlow: revealed } : prev));
-        });
-      }
-      return;
-    }
-    queueStateUpdate(() => {
-      setSimResults((prev) => {
-        if (!prev) return prev;
-        const key = prev.simulationId ?? 'local';
-        if (prev.evaluationFlow && prev.evaluationFlow.simulationId === key) {
-          return prev;
-        }
-        const evaluationFlow = ensureEvaluationFlow(prev);
-        if (!evaluationFlow) return prev;
-        return { ...prev, evaluationFlow };
-      });
-    });
-  }, [simResults]);
-
   // Fetch last simulation result on mount
   const fetchLastSimulation = async (options = {}) => {
-    const { forceLocalizationRefresh = false } = options;
+    const { forceLocalizationRefresh = false, background = false } = options;
+    const fetchKey = `${forceLocalizationRefresh ? 'force' : 'normal'}:${requestLang}`;
+    if (fetchLastInFlightRef.current?.key === fetchKey) {
+      return fetchLastInFlightRef.current.promise;
+    }
+
+    const runFetch = async () => {
     // Clear used replacements when starting fresh
     try {
       sessionStorage.removeItem('usedReplacements');
@@ -1007,36 +897,90 @@ const Simulation = () => {
       console.warn('Failed to clear used replacements:', error);
     }
     
-    // Check if we have unsaved results that should be preserved
-    const storedUnsavedResults = sessionStorage.getItem('currentUnsavedResults');
+    // Prefer active session / reconciled unsaved snapshot over a server fetch.
     // Plain strings in sessionStorage cannot change locale — bypass when syncing language so GET ?lang= runs.
-    if (storedUnsavedResults && !isViewingSavedSimulation && !forceLocalizationRefresh) {
-      try {
-        const parsedResults = JSON.parse(storedUnsavedResults);
-        safeSetSimResults(parsedResults.results);
-        setSimulationDate(parsedResults.date);
-        setHasUnsavedChanges(true);
-        setLoadingLast(false);
-        return; // Don't fetch from server if we have unsaved results
-      } catch (err) {
-        console.error('Error parsing stored unsaved results:', err);
-        // Continue with normal fetch if parsing fails
+    if (!isViewingSavedSimulation && !forceLocalizationRefresh) {
+      const preferred = loadPreferredSimulationSnapshot();
+      if (preferred?.results) {
+        if (preferred.source === 'session') {
+          applySessionSimulation({
+            results: preferred.results,
+            metadata: preferred.metadata || { simulationDate: preferred.date },
+            state: preferred.state,
+          });
+        } else {
+          safeSetSimResults(preferred.results);
+          setSimulationDate(preferred.date);
+          setHasUnsavedChanges(true);
+          setSimulationState(preferred.state || 'modified');
+          markLocalizationSyncedFromResults(preferred.results);
+          setLoadingLast(false);
+        }
+        return;
       }
     }
-    
-    const onResultsRoute = location.pathname === '/simulation/results';
+
+    const onResultsRoute = location.pathname === '/puzzle-job';
     const storedData = loadSimulationFromStorage();
     console.log('fetchLastSimulation - session storage check:', {
       storedData,
       state: storedData?.state,
       hasResults: !!storedData?.results,
       onResultsRoute,
-      forceLocalizationRefresh
+      forceLocalizationRefresh,
+      background
     });
 
     if (!forceLocalizationRefresh && storedData?.results && storedData.state !== 'saved') {
       console.log('Active session simulation; skip server fetch in fetchLastSimulation');
-      setLoadingLast(false);
+      applySessionSimulation(storedData);
+      return;
+    }
+
+    // Never replace a locally modified ranking (incl. exploration merges) with a stale server snapshot.
+    if (
+      forceLocalizationRefresh
+      && storedData?.results
+      && storedData.state === 'modified'
+      && !isViewingSavedSimulation
+    ) {
+      const localFlow = storedData.results.evaluationFlow || simResultsRef.current?.evaluationFlow;
+      try {
+        const res = await fetch(`/api/profile/simulation/last?lang=${encodeURIComponent(requestLang)}`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+        const data = await res.json();
+        if (data?.results) {
+          const sanitized = sanitizeSimulationResultsPayload(data.results);
+          if (sanitized) {
+            const flow = mergeEvaluationFlowFromResults(sanitized, localFlow || sanitized.evaluationFlow);
+            const merged = flow ? { ...sanitized, evaluationFlow: flow } : sanitized;
+            safeSetSimResults(merged);
+            setSimulationDate(data.date || storedData.metadata?.simulationDate);
+            setSimulationState('modified');
+            markLocalizationSyncedFromResults(merged);
+            try {
+              saveSimulationToStorage(
+                {
+                  results: merged,
+                  simulationDate: data.date ? new Date(data.date) : new Date(),
+                  profileCompletion,
+                },
+                'modified'
+              );
+            } catch (e) {
+              console.warn('Failed to persist localized simulation to session storage:', e);
+            }
+            setLoadingLast(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Localization refresh with local merge failed; keeping session results:', err);
+      }
+      applySessionSimulation(storedData);
       return;
     }
 
@@ -1046,19 +990,10 @@ const Simulation = () => {
       return;
     }
 
-    if (!storedData && !onResultsRoute) {
-      console.log('No session storage data; skip server fetch off results route');
-      setLoadingLast(false);
-      return;
+    if (!background) {
+      setLoadingLast(true);
     }
-
-        setLoadingLast(true);
     try {
-      const isVerified = Boolean(user?.isVerified || user?.emailVerified);
-      if (!isVerified) {
-        setLoadingLast(false);
-        return;
-      }
       const overall = await calculateProfileCompletion();
       if (overall < MIN_PROFILE_COMPLETION_REQUIRED) {
         setLoadingLast(false);
@@ -1074,26 +1009,36 @@ const Simulation = () => {
       if (data && data.results) {
         const sanitized = sanitizeSimulationResultsPayload(data.results);
         if (sanitized) {
-          const flow = mergeEvaluationFlowFromResults(sanitized, simResultsRef.current?.evaluationFlow);
+          const flow = mergeEvaluationFlowFromResults(
+            sanitized,
+            // Prefer in-memory flow, then session, so a cold remount does not
+            // discard exploration / later inserts that the server snapshot lacks.
+            simResultsRef.current?.evaluationFlow
+              || loadSimulationFromStorage()?.results?.evaluationFlow
+              || sanitized.evaluationFlow
+          );
           const merged = flow ? { ...sanitized, evaluationFlow: flow } : sanitized;
           safeSetSimResults(merged);
           setSimulationDate(data.date); // Store the simulation date
           setHasUnsavedChanges(false);
+          setSimulationState('clean');
           setIsViewingSavedSimulation(false); // Last simulation is not from saved simulations
-          if (data.results.simulationId) {
-            localizationSyncedRef.current.bundleKey = `${data.results.simulationId}:${requestLang}`;
-          }
+          markLocalizationSyncedFromResults(merged);
           try {
+            const hasProgress = hasSimulationEvaluationProgress(merged.evaluationFlow);
             saveSimulationToStorage(
               {
                 results: merged,
                 simulationDate: data.date ? new Date(data.date) : new Date(),
                 profileCompletion,
               },
-              simulationState
+              hasProgress ? 'modified' : 'clean'
             );
           } catch (e) {
             console.warn('Failed to persist localized simulation to session storage:', e);
+          }
+          if (location.pathname === '/simulation') {
+            navigate('/puzzle-job', { replace: true });
           }
         }
       }
@@ -1102,10 +1047,24 @@ const Simulation = () => {
     } finally {
       setLoadingLast(false);
     }
+    };
+
+    const promise = runFetch();
+    fetchLastInFlightRef.current = { key: fetchKey, promise };
+    try {
+      await promise;
+    } finally {
+      if (fetchLastInFlightRef.current?.promise === promise) {
+        fetchLastInFlightRef.current = null;
+      }
+    }
   };
 
-  const fetchSimulationById = async (simulationId) => {
-    setLoadingLast(true);
+  const fetchSimulationById = async (simulationId, options = {}) => {
+    const { background = false } = options;
+    if (!background) {
+      setLoadingLast(true);
+    }
     try {
       const res = await fetch(`/api/profile/simulation/saved/${simulationId}?lang=${encodeURIComponent(requestLang)}`, {
         headers: {
@@ -1119,7 +1078,7 @@ const Simulation = () => {
         setSimulationDate(data.simulation.timestamp); // Store the simulation timestamp
         setHasUnsavedChanges(false);
         setIsViewingSavedSimulation(true); // This is a saved simulation
-        localizationSyncedRef.current.bundleKey = `saved:${simulationId}:${requestLang}`;
+        markLocalizationSyncedFromResults(data.simulation.results, simulationId);
 
         // Initialize category display counts from saved simulation
         if (data.simulation.categoryDisplayCounts) {
@@ -1142,38 +1101,11 @@ const Simulation = () => {
   };
 
   const handleStartSimulation = () => {
-    const hasUnsavedLocalResults = Boolean(simResults) && !isViewingSavedSimulation;
-    if (hasUnsavedChanges || hasUnsavedLocalResults) {
-      setUnsavedChangesDialogOpen(true);
-    } else {
-      setSimulationWizardIntent(true);
-      handleSimulate();
-    }
-  };
-
-  const handleConfirmUnsavedChanges = () => {
-    setSimResults(null);
-    setHasUnsavedChanges(false);
-    setSimulationState('clean');
-    setIsViewingSavedSimulation(false);
-    setSelectedSimulation(null);
-    localizationSyncedRef.current.bundleKey = '';
-    clearSimulationFromStorage();
-    setUnsavedChangesDialogOpen(false);
     setSimulationWizardIntent(true);
     handleSimulate();
   };
 
-  const handleCancelUnsavedChanges = () => {
-    setUnsavedChangesDialogOpen(false);
-  };
-
   const handleSimulate = async () => {
-    if (profileSimulationGate.ready && profileSimulationGate.needsVerification) {
-      setSimError(t('simulation.messages.emailVerificationRequired', { ns: 'dashboard' }));
-      setSimulationWizardIntent(false);
-      return;
-    }
     if (profileSimulationGate.ready && profileSimulationGate.belowMin) {
       setSimError(
         t('simulation.messages.profileCompletionRequired', {
@@ -1348,7 +1280,7 @@ const Simulation = () => {
 
       if (data && data.results) {
         invalidateLastSimulationQuery();
-        setSimResults(data.results);
+        safeSetSimResults(data.results);
         setSimulationDate(new Date()); // Set current date for new simulation
         setSimulationState('clean'); // New simulation starts in clean state
         
@@ -1370,12 +1302,10 @@ const Simulation = () => {
           console.warn('⚠️ Failed to save simulation to session storage - persistence disabled');
         }
 
-        if (data.results.simulationId) {
-          localizationSyncedRef.current.bundleKey = `${data.results.simulationId}:${requestLang}`;
-        }
+        markLocalizationSyncedFromResults(data.results);
 
         // Show generated results on dedicated results screen.
-        navigate('/simulation/results');
+        navigate('/puzzle-job');
       } else {
         const errorMsg =
           (data && data.message) ||
@@ -1409,7 +1339,7 @@ const Simulation = () => {
     if (isViewingSavedSimulation && selectedSimulation?.id) {
       const bundleKey = `saved:${selectedSimulation.id}:${requestLang}`;
       if (localizationSyncedRef.current.bundleKey === bundleKey) return;
-      fetchSimulationById(selectedSimulation.id);
+      fetchSimulationById(selectedSimulation.id, { background: true });
       return;
     }
 
@@ -1418,139 +1348,9 @@ const Simulation = () => {
     const bundleKey = `${sid}:${requestLang}`;
     if (localizationSyncedRef.current.bundleKey === bundleKey) return;
 
-    fetchLastSimulation({ forceLocalizationRefresh: true });
+    fetchLastSimulation({ forceLocalizationRefresh: true, background: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestLang, simResults?.simulationId, simulationState, isViewingSavedSimulation, selectedSimulation?.id]);
-
-  const handleSaveDialogClose = () => {
-    setSaveDialogOpen(false);
-    setSaveTriggeredByNavigationGuard(false);
-    
-    // Reject navigation guard promise if user cancels save dialog
-    if (window.navigationGuardSaveReject) {
-      window.navigationGuardSaveReject(
-        new Error(t('simulation.messages.saveCancelledByUser', { ns: 'dashboard' }))
-      );
-      window.navigationGuardSaveResolve = null;
-      window.navigationGuardSaveReject = null;
-    }
-  };
-
-  const handleSaveSimulation = async () => {
-    if (!simResults) return;
-
-    const nextName = await getNextSimulationNameFromServer();
-    setSimulationName(nextName);
-    setSaveDialogOpen(true);
-  };
-
-  const handleSaveConfirm = async () => {
-    if (!simulationName.trim()) return;
-    const resultsPayload = simResultsRef.current;
-    if (!resultsPayload) return;
-
-    setSaving(true);
-    try {
-      const res = await fetch('/api/profile/simulation/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          name: simulationName,
-          results: resultsPayload,
-          profileCompletion: 100
-        })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        invalidateLastSimulationQuery();
-        setHasUnsavedChanges(false);
-        setSimulationState('saved');
-        setSaveDialogOpen(false);
-        setSaveTriggeredByNavigationGuard(false);
-        
-        // Clear simulation results after saving (simulation "moved" to saved list)
-        setSimResults(null);
-        setSimulationDate(null);
-        setSelectedSimulation(null);
-        setIsViewingSavedSimulation(false);
-        
-        // Clear ALL session storage to prevent any restoration
-        try {
-          clearSimulationFromStorage();
-          sessionStorage.removeItem('currentUnsavedResults');
-          console.log('🗑️ Cleared all session storage after saving');
-        } catch (error) {
-          console.warn('Failed to clear session storage:', error);
-        }
-        
-        // Additional debugging to verify session storage state
-        console.log('💾 After saving - session storage state:', {
-          storedData: loadSimulationFromStorage(),
-          currentUnsavedResults: sessionStorage.getItem('currentUnsavedResults')
-        });
-        
-        invalidateSavedSimulationsListQuery();
-        const savedSimulationId =
-          data.savedSimulation?.id ||
-          (typeof data.savedSimulation?._id === 'string' ? data.savedSimulation._id : data.savedSimulation?._id?.toString?.());
-
-        const postSaveSnackbar = {
-          message: t('simulation.messages.savedSuccessfully', { ns: 'dashboard' }),
-          severity: 'success',
-          ...(savedSimulationId
-            ? {
-                linkTo: `/simulation/${savedSimulationId}`,
-                linkLabel: t('simulation.actions.openSavedSimulation', { ns: 'dashboard' }),
-              }
-            : {}),
-        };
-
-        // Resolve navigation guard promise if save was triggered by navigation guard
-        if (saveTriggeredByNavigationGuard && window.navigationGuardSaveResolve) {
-          window.navigationGuardSaveResolve();
-          window.navigationGuardSaveResolve = null;
-          window.navigationGuardSaveReject = null;
-        }
-
-        // Use navigate (not guardedNavigate): guard still reads stale registration until the next
-        // render after setSimulationState('saved'), which would block leaving /simulation/results.
-        if (!saveTriggeredByNavigationGuard) {
-          navigate('/simulation', { replace: true, state: { postSaveSnackbar } });
-        } else {
-          showSnackbar(postSaveSnackbar.message, postSaveSnackbar.severity, {
-            linkTo: postSaveSnackbar.linkTo ?? null,
-            linkLabel: postSaveSnackbar.linkLabel ?? null,
-          });
-        }
-      } else {
-        showSnackbar(data.message || t('simulation.messages.saveFailed', { ns: 'dashboard' }), 'error');
-        
-        // Reject navigation guard promise if save failed
-        if (saveTriggeredByNavigationGuard && window.navigationGuardSaveReject) {
-          window.navigationGuardSaveReject(
-            new Error(data.message || t('simulation.messages.saveFailed', { ns: 'dashboard' }))
-          );
-          window.navigationGuardSaveResolve = null;
-          window.navigationGuardSaveReject = null;
-        }
-      }
-    } catch (err) {
-      showSnackbar(t('simulation.messages.saveFailed', { ns: 'dashboard' }), 'error');
-      
-      // Reject navigation guard promise if save failed
-      if (saveTriggeredByNavigationGuard && window.navigationGuardSaveReject) {
-        window.navigationGuardSaveReject(err);
-        window.navigationGuardSaveResolve = null;
-        window.navigationGuardSaveReject = null;
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Handle save changes for existing simulations
   const handleSaveChanges = () => {
@@ -1567,6 +1367,7 @@ const Simulation = () => {
       const result = await updateSimulation(selectedSimulation.id, selectedSimulation);
       
       if (result.success) {
+        invalidateCareerIdentityQueries();
         // Update the selected simulation with the returned data
         setSelectedSimulation(result.updatedSimulation);
         
@@ -1633,7 +1434,7 @@ const Simulation = () => {
           });
         }
         
-        localizationSyncedRef.current.bundleKey = `saved:${simulationId}:${requestLang}`;
+        markLocalizationSyncedFromResults(data.simulation.results, simulationId);
 
         showSnackbar(t('simulation.messages.loadedSuccessfully', { ns: 'dashboard' }), 'success');
       }
@@ -1659,6 +1460,7 @@ const Simulation = () => {
       });
       
       if (res.ok) {
+        invalidateCareerIdentityQueries();
         invalidateSavedSimulationsListQuery();
         showSnackbar(t('simulation.messages.deletedSuccessfully', { ns: 'dashboard' }), 'success');
       } else {
@@ -1687,14 +1489,19 @@ const Simulation = () => {
       if (!prev?.evaluationFlow) return prev;
       const nextFlow = pauseSimulationWizard(prev.evaluationFlow);
       const next = { ...prev, evaluationFlow: nextFlow };
-      setTimeout(() => persistSimResultsToSession(next), 0);
+      const epochAtSchedule = ++simulationPersistEpochRef.current;
+        setTimeout(() => {
+          if (epochAtSchedule !== simulationPersistEpochRef.current) return;
+          const latest = simResultsRef.current || next;
+          if (!latest?.evaluationFlow) return;
+          persistSimResultsToSession(latest);
+        }, 0);
       return next;
     });
     setSimulationWizardIntent(false);
-    setHasUnsavedChanges(true);
-    setSimulationState('modified');
+    markSavedSimulationDraftDirty();
     showSnackbar(t('simulation.wizard.pauseDialog.savedMessage', { ns: 'dashboard' }), 'success');
-  }, [persistSimResultsToSession, showSnackbar, t]);
+  }, [persistSimResultsToSession, markSavedSimulationDraftDirty, showSnackbar, t]);
 
   /**
    * Saving clears results and navigates to `/simulation`. That route swap remounts this
@@ -1734,60 +1541,23 @@ const Simulation = () => {
   };
 
   const handleUpdateProfile = () => {
-    if (profileSimulationGate.needsVerification) {
-      guardedNavigate('/check-email');
-      return;
-    }
-    guardedNavigate('/profile/fill?mode=full-update');
+    guardedNavigate('/profile/fill');
   };
 
   const simulationResultsPageActions = useMemo(() => {
     if (!simResults) return [];
 
     const actions = [];
-    const bothRankingsVisible = areBothSimulationRankingsComplete(simResults.evaluationFlow);
-
-    if (!isViewingSavedSimulation) {
-      actions.push({
-        key: 'save-results',
-        label: t('simulation.actions.saveResults', { ns: 'dashboard' }),
-        shortLabel: t('simulation.actions.saveResultsShort', { ns: 'dashboard' }),
-        variant: 'contained',
-        startIcon: <SaveIcon />,
-        onClick: handleSaveSimulation,
-        disabled: saving,
-        ariaLabel: t('simulation.aria.saveResults', { ns: 'dashboard' }),
-        compactOrder: 2,
-        nudge: bothRankingsVisible && !saving,
-      });
-    }
-
-    actions.push({
-      key: 'clear-restart',
-      label: t('simulation.actions.clearAndRestart', { ns: 'dashboard' }),
-      shortLabel: t('simulation.actions.clearAndRestartShort', { ns: 'dashboard' }),
-      variant: 'outlined',
-      startIcon: <ArrowForwardIcon />,
-      onClick: handleStartSimulation,
-      ariaLabel: t('simulation.aria.clearAndRestart', { ns: 'dashboard' }),
-      compactOrder: 1,
-    });
 
     if (!canRunSimulation) {
       actions.push({
         key: 'go-to-profile',
-        label: profileSimulationGate.needsVerification
-          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
-          : t('simulation.actions.goToProfile', { ns: 'dashboard' }),
-        shortLabel: profileSimulationGate.needsVerification
-          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
-          : t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
+        label: t('simulation.actions.goToProfile', { ns: 'dashboard' }),
+        shortLabel: t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
         variant: 'outlined',
         startIcon: <ArrowForwardIcon />,
-        onClick: () => guardedNavigate(profileSimulationGate.needsVerification ? '/check-email' : '/profile'),
-        ariaLabel: profileSimulationGate.needsVerification
-          ? t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })
-          : t('simulation.aria.goToProfile', { ns: 'dashboard' }),
+        onClick: () => guardedNavigate('/profile'),
+        ariaLabel: t('simulation.aria.goToProfile', { ns: 'dashboard' }),
         compactOrder: 0,
       });
     }
@@ -1796,12 +1566,11 @@ const Simulation = () => {
   }, [
     simResults,
     isViewingSavedSimulation,
-    saving,
     canRunSimulation,
-    profileSimulationGate.needsVerification,
     t,
     guardedNavigate,
   ]);
+  const hasSimulationResultsPageActions = simulationResultsPageActions.length > 0;
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString();
@@ -1835,17 +1604,12 @@ const Simulation = () => {
       new Date(simulationDate).getTime() === new Date(selectedSimulation.timestamp).getTime();
     
     
-    // Store the current simulation ID if we're viewing a saved simulation
+    // Detail pages should reuse the primary latest-run snapshot and only carry
+    // lightweight saved-simulation context when needed.
     if (currentResultsAreFromSavedSimulation) {
-      sessionStorage.setItem('currentSimulationId', selectedSimulation.id);
-      sessionStorage.removeItem('currentUnsavedResults');
+      saveSimulationDetailContext({ savedSimulationId: selectedSimulation.id });
     } else {
-      sessionStorage.removeItem('currentSimulationId');
-      // Store the current unsaved simulation results
-      sessionStorage.setItem('currentUnsavedResults', JSON.stringify({
-        results: simResults,
-        date: simulationDate
-      }));
+      clearSimulationDetailContext();
     }
     
     // Navigate to the details page with context information
@@ -1918,24 +1682,6 @@ const Simulation = () => {
     [canonicalEscoByKey, roleIdentityKey]
   );
 
-  const savedCanonicalEscoIds = useMemo(() => {
-    const next = new Set();
-    const currentSavedSteps = savedCareerStepsRef.current;
-    if (!Array.isArray(currentSavedSteps) || currentSavedSteps.length === 0) return next;
-    for (const step of currentSavedSteps) {
-      const direct = String(step?.escoId || '').trim().toLowerCase();
-      if (direct) {
-        next.add(direct);
-        continue;
-      }
-      const key = roleIdentityKey(step);
-      if (!key) continue;
-      const cached = String(canonicalEscoByKey[key] || '').trim().toLowerCase();
-      if (cached) next.add(cached);
-    }
-    return next;
-  }, [savedCareerSteps, canonicalEscoByKey, roleIdentityKey]);
-
   useEffect(() => {
     const rolesToWarm = [];
     const flow = simResults?.evaluationFlow;
@@ -1946,229 +1692,6 @@ const Simulation = () => {
       void resolveCanonicalEscoId(role);
     });
   }, [simResults, resolveCanonicalEscoId]);
-
-  const findMatchingSavedStep = (role, savedSteps) => {
-    return findMatchingSavedCareerStep(role, savedSteps);
-  };
-
-  const findMatchingSavedStepWithCanonical = (role, savedSteps) => {
-    const byDefault = findMatchingSavedStep(role, savedSteps);
-    if (byDefault) return byDefault;
-    const roleEsco = resolveCanonicalEscoIdFromCache(role);
-    if (!roleEsco) return null;
-    return (
-      savedSteps.find((step) => {
-        const stepEsco = resolveCanonicalEscoIdFromCache(step);
-        return !!stepEsco && stepEsco === roleEsco;
-      }) || null
-    );
-  };
-
-  const isStepSaved = (role) => {
-    const currentSavedSteps = savedCareerStepsRef.current;
-    if (!Array.isArray(currentSavedSteps) || currentSavedSteps.length === 0) return false;
-
-    const byDefault = findMatchingSavedStep(role, currentSavedSteps);
-    if (byDefault) return true;
-
-    const roleEsco = resolveCanonicalEscoIdFromCache(role);
-    if (roleEsco && savedCanonicalEscoIds.has(roleEsco)) return true;
-
-    return false;
-  };
-
-  // Helper function to check if a specific step is being saved/unsaved
-  const isStepSaving = (role) => {
-    const stepId = role.instanceId || generateStepId(
-      role.title, 
-      selectedSimulation?.id || 'local', 
-      'nextSteps', 
-      0
-    );
-    return savingSteps.has(stepId);
-  };
-
-  const handleToggleSaveStep = async (role, simulationResultId) => {
-    
-    // Use the instanceId if available, otherwise generate a consistent stepId
-    const stepId = role.instanceId || generateStepId(
-      role.title, 
-      selectedSimulation?.id || 'local', 
-      'nextSteps', 
-      0
-    );
-    
-    // Set loading state for this specific step
-    setSavingSteps(prev => new Set(prev).add(stepId));
-    
-    try {
-      if (isStepSaved(role)) {
-        // Remove - find the saved step to get its stepId
-        const currentSavedSteps = savedCareerStepsRef.current;
-        if (!currentSavedSteps || !Array.isArray(currentSavedSteps)) {
-          showSnackbar(t('simulation.messages.noSavedCareerSteps', { ns: 'dashboard' }), 'error');
-          return;
-        }
-        const savedStep = findMatchingSavedStepWithCanonical(role, currentSavedSteps);
-        
-        if (!savedStep) {
-          console.error('❌ Could not find saved step to delete:', {
-            role: {
-              title: role.title,
-              description: role.description,
-              instanceId: role.instanceId,
-              stepId: role.stepId
-            },
-            simulationId: simulationResultId || (selectedSimulation && selectedSimulation.id),
-            availableSteps: currentSavedSteps.map(step => ({
-              stepId: step.stepId,
-              title: step.title,
-              simulationResultId: step.simulationResultId
-            }))
-          });
-          showSnackbar(t('simulation.messages.careerStepNotFound', { ns: 'dashboard' }), 'error');
-          return {
-            success: false,
-            action: 'error',
-            error: t('simulation.messages.careerStepNotFound', { ns: 'dashboard' }),
-          };
-        }
-
-        console.log('✅ Found saved step to delete:', {
-          stepId: savedStep.stepId,
-          title: savedStep.title,
-          simulationResultId: savedStep.simulationResultId
-        });
-
-        const res = await fetch(`/api/profile/saved-career-steps/${encodeURIComponent(savedStep.stepId)}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        const data = await res.json();
-        if (data.success) {
-          const updatedSteps = data.savedCareerSteps || [];
-          setSavedCareerStepsListQueryData(updatedSteps);
-          savedCareerStepsRef.current = updatedSteps;
-          showSnackbar(t('simulation.messages.careerStepRemoved', { ns: 'dashboard' }), 'info');
-          return { success: true, action: 'unsaved' };
-        } else {
-          showSnackbar(data.message || t('simulation.messages.careerStepRemoveFailed', { ns: 'dashboard' }), 'error');
-          return {
-            success: false,
-            action: 'error',
-            error: data.message || t('simulation.messages.careerStepRemoveFailed', { ns: 'dashboard' }),
-          };
-        }
-      } else {
-        // Save - use the instanceId as stepId for consistency
-        const saveData = {
-          stepId: stepId,
-          title: role.title,
-          description: role.description,
-          escoId: role.escoId || null,
-          simulationResultId: simulationResultId || (selectedSimulation && selectedSimulation.id),
-          category: role.category || 'nextSteps',
-          industry: role.industry || 'Career Development',
-          savedAt: new Date().toISOString(),
-          requiredSkills: role.requiredSkills || [],
-          altTitles: role.altTitles || [],
-          hiddenTitles: role.hiddenTitles || [],
-          seniority: role.seniority || null,
-          keyResponsibilities: role.keyResponsibilities || null,
-          skillDomains: role.skillDomains || null,
-          skillModel: role.skillModel || null,
-          ...getMatchScoreFieldsForSave(role),
-          ...pickUserEvaluationForSave(role),
-        };
-
-        console.log('💾 Saving career step with data:', saveData);
-
-        const res = await fetch(`/api/profile/saved-career-steps?${getProfileApiLangQuery()}`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(saveData),
-        });
-
-        if (!res.ok) {
-          const errorData = await res.text();
-          console.error('❌ Save failed with response:', res.status, errorData);
-          if (res.status === 409) {
-            try {
-              const duplicateData = JSON.parse(errorData);
-              if (duplicateData.savedCareerSteps) {
-                setSavedCareerStepsListQueryData(duplicateData.savedCareerSteps);
-                savedCareerStepsRef.current = duplicateData.savedCareerSteps;
-              }
-              return {
-                success: false,
-                action: 'duplicate',
-                message: duplicateData.message || t('simulation.messages.alreadySaved', { ns: 'dashboard' }),
-              };
-            } catch {
-              return {
-                success: false,
-                action: 'duplicate',
-                message: t('simulation.messages.alreadySaved', { ns: 'dashboard' }),
-              };
-            }
-          }
-          throw new Error(t('simulation.messages.careerStepSaveFailed', { ns: 'dashboard' }));
-        }
-
-        const data = await res.json();
-        if (data.success) {
-          const updatedSteps = data.savedCareerSteps || [];
-          setSavedCareerStepsListQueryData(updatedSteps);
-          savedCareerStepsRef.current = updatedSteps;
-          showSnackbar(t('simulation.messages.careerStepSaved', { ns: 'dashboard' }), 'success');
-          return { success: true, action: 'saved' };
-        } else if (data.message === 'Career step already saved' || res.status === 409) {
-          // Handle duplicate detection response
-          if (data.duplicateType === 'semantic' && data.similarity < 1.0) {
-            showSnackbar(
-              `${data.message} ${t('simulation.messages.similaritySuffix', {
-                ns: 'dashboard',
-                percent: Math.round(data.similarity * 100),
-              })}`,
-              'warning'
-            );
-          } else {
-            showSnackbar(data.message || t('simulation.messages.alreadySaved', { ns: 'dashboard' }), 'info');
-          }
-          return {
-            success: false,
-            action: 'duplicate',
-            message: data.message || t('simulation.messages.alreadySaved', { ns: 'dashboard' }),
-          };
-        } else {
-          console.error('❌ Save failed with data:', data);
-          showSnackbar(data.message || t('simulation.messages.careerStepSaveFailed', { ns: 'dashboard' }), 'error');
-          return {
-            success: false,
-            action: 'error',
-            error: data.message || t('simulation.messages.careerStepSaveFailed', { ns: 'dashboard' }),
-          };
-        }
-      }
-    } catch (err) {
-      console.error('Error in handleToggleSaveStep:', err);
-      const errorMessage = err.message || t('simulation.messages.careerStepSaveFailed', { ns: 'dashboard' });
-      showSnackbar(errorMessage, 'error');
-      return { success: false, action: 'error', error: errorMessage };
-    } finally {
-      // Clear loading state for this specific step
-      setSavingSteps(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(stepId);
-        return newSet;
-      });
-    }
-  };
 
   // Add error boundary wrapper
   const renderWithErrorBoundary = () => {
@@ -2241,17 +1764,23 @@ const Simulation = () => {
             <>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
               {!(loadingLast || simLoading) && simResults && (
-                <Box sx={{ order: resultsHeaderOrder.actions }}>
-                  <ProfilePageActionBar
-                    actions={simulationResultsPageActions}
-                    sx={{ mb: { xs: 2, sm: 4 }, px: { xs: 0.5, sm: 0 } }}
+                <Box sx={{ order: resultsHeaderOrder.actions, mb: { xs: 2, sm: 4 } }}>
+                  {hasSimulationResultsPageActions && (
+                    <ProfilePageActionBar
+                      actions={simulationResultsPageActions}
+                      sx={{ mb: 2, px: { xs: 0.5, sm: 0 } }}
+                    />
+                  )}
+                  <IdentityExplorationDiscoverCta
+                    sx={{ mb: 0 }}
+                    onExplorationRanked={handleExplorationRanked}
                   />
                 </Box>
               )}
 
               <PageHeader
                 title={
-                  location.pathname === '/simulation/results'
+                  location.pathname === '/puzzle-job'
                     ? t('simulation.resultsTitle', { ns: 'dashboard' })
                     : t('simulation.pageTitle', { ns: 'dashboard' })
                 }
@@ -2264,32 +1793,7 @@ const Simulation = () => {
                 descriptionSx={{ order: resultsHeaderOrder.subtitle }}
               />
 
-              {profileSimulationGate.ready && profileSimulationGate.needsVerification && (
-                <Alert
-                  severity="info"
-                  variant="outlined"
-                  sx={{
-                    order: resultsHeaderOrder.profileGate,
-                    mb: 3,
-                    maxWidth: 680,
-                    mx: 'auto',
-                    borderRadius: 3,
-                    px: 2,
-                    py: 1.5,
-                    borderWidth: 1.5,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
-                    {t('simulation.emailVerificationGate.title', { ns: 'dashboard' })}
-                  </Typography>
-                  <Typography variant="body2">
-                    {t('simulation.emailVerificationGate.description', { ns: 'dashboard' })}
-                  </Typography>
-                </Alert>
-              )}
-
-              {profileSimulationGate.ready && !profileSimulationGate.needsVerification && profileSimulationGate.belowMin && (
+              {profileSimulationGate.ready && profileSimulationGate.belowMin && (
                 <Alert
                   severity="warning"
                   variant="outlined"
@@ -2342,9 +1846,7 @@ const Simulation = () => {
                 {!simResults && !simLoading && (
                   <Tooltip
                     title={
-                      profileSimulationGate.ready && profileSimulationGate.needsVerification
-                        ? t('simulation.tooltips.verifyEmailFirst', { ns: 'dashboard' })
-                        : profileSimulationGate.ready && profileSimulationGate.belowMin
+                      profileSimulationGate.ready && profileSimulationGate.belowMin
                         ? t('simulation.tooltips.completeProfileFirst', {
                             ns: 'dashboard',
                             min: MIN_PROFILE_COMPLETION_REQUIRED,
@@ -2369,7 +1871,7 @@ const Simulation = () => {
                         }}
                         disabled={
                           simLoading ||
-                          (profileSimulationGate.ready && (profileSimulationGate.needsVerification || profileSimulationGate.belowMin))
+                          (profileSimulationGate.ready && profileSimulationGate.belowMin)
                         }
                       >
                         {t('simulation.actions.start', { ns: 'dashboard' })}
@@ -2380,28 +1882,6 @@ const Simulation = () => {
                 {!simResults &&
                   !simLoading &&
                   profileSimulationGate.ready &&
-                  profileSimulationGate.needsVerification && (
-                    <Button
-                      component={RouterLink}
-                      to="/check-email"
-                      variant="contained"
-                      color="primary"
-                      size="medium"
-                      startIcon={<ArrowForwardIcon />}
-                      sx={{
-                        fontWeight: 600,
-                        px: 3,
-                        py: 1.5,
-                        fontSize: '1rem',
-                      }}
-                    >
-                      {t('simulation.emailVerificationGate.cta', { ns: 'dashboard' })}
-                    </Button>
-                  )}
-                {!simResults &&
-                  !simLoading &&
-                  profileSimulationGate.ready &&
-                  !profileSimulationGate.needsVerification &&
                   profileSimulationGate.belowMin && (
                     <Button
                       variant="contained"
@@ -2419,30 +1899,6 @@ const Simulation = () => {
                       {t('profilePagePrompts.incomplete.cta', { ns: 'onboarding' })}
                     </Button>
                   )}
-                {!simResults &&
-                  !simLoading &&
-                  canRunSimulation && (
-                  <Tooltip title={t('simulation.tooltips.savedSimulations', { ns: 'dashboard' })} arrow>
-                    <span>
-                      <Button
-                        aria-label={t('simulation.aria.savedSimulations', { ns: 'dashboard' })}
-                        variant="outlined"
-                        color="primary"
-                        size="medium"
-                        startIcon={<ViewListIcon />}
-                        onClick={() => guardedNavigate('/simulations')}
-                        sx={{
-                          fontWeight: 600,
-                          px: 3,
-                          py: 1.5,
-                          fontSize: '1rem',
-                        }}
-                      >
-                        {t('saved.simulations', { ns: 'dashboard' })}
-                      </Button>
-                    </span>
-                  </Tooltip>
-                )}
                 {canRunSimulation && (
                   <Tooltip title={t('simulation.tooltips.updateProfile', { ns: 'dashboard' })} arrow>
                     <span>
@@ -2468,71 +1924,6 @@ const Simulation = () => {
                 </Box>
               )}
               </Box>
-
-              {/* Save Dialog */}
-              <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose}>
-                <DialogTitle>{t('simulation.saveDialog.title', { ns: 'dashboard' })}</DialogTitle>
-                <DialogContent>
-                  <TextField
-                    autoFocus
-                    margin="dense"
-                    label={t('simulation.saveDialog.nameLabel', { ns: 'dashboard' })}
-                    fullWidth
-                    variant="outlined"
-                    value={simulationName}
-                    onChange={(e) => setSimulationName(e.target.value)}
-                    sx={{ mb: 1 }}
-                  />
-                </DialogContent>
-                <DialogActions>
-                  <Button onClick={handleSaveDialogClose}>{t('profilePage.actions.cancel', { ns: 'onboarding' })}</Button>
-                  <Button 
-                    onClick={handleSaveConfirm} 
-                    variant="contained" 
-                    color="primary"
-                    disabled={!simulationName.trim() || saving}
-                  >
-                    {saving ? <CircularProgress size={20} /> : t('profilePage.actions.save', { ns: 'onboarding' })}
-                  </Button>
-                </DialogActions>
-              </Dialog>
-
-              {/* Unsaved Changes Confirmation Dialog */}
-              <Dialog
-                open={unsavedChangesDialogOpen}
-                onClose={handleCancelUnsavedChanges}
-                aria-labelledby="unsaved-changes-dialog-title"
-                aria-describedby="unsaved-changes-dialog-description"
-              >
-                <DialogTitle id="unsaved-changes-dialog-title">
-                  {t('simulation.unsavedDialog.title', { ns: 'dashboard' })}
-                </DialogTitle>
-                <DialogContent>
-                  <DialogContentText id="unsaved-changes-dialog-description">
-                    {t('simulation.unsavedDialog.description', { ns: 'dashboard' })}
-                  </DialogContentText>
-                  <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 'bold' }}>
-                    {t('simulation.unsavedDialog.warning', { ns: 'dashboard' })}
-                  </Typography>
-                </DialogContent>
-                <DialogActions>
-                  <Button 
-                    onClick={handleCancelUnsavedChanges}
-                    variant="outlined"
-                    color="primary"
-                    autoFocus
-                  >
-                    {t('profilePage.actions.cancel', { ns: 'onboarding' })}
-                  </Button>
-                  <Button 
-                    onClick={handleConfirmUnsavedChanges}
-                    variant="contained"
-                    color="error"
-                  >
-                    {t('simulation.actions.startNew', { ns: 'dashboard' })}
-                  </Button>
-                </DialogActions>
-              </Dialog>
 
               {/* Delete Simulation Confirmation Dialog */}
               <Dialog
@@ -2689,6 +2080,16 @@ const Simulation = () => {
                   ) : (
                     <>
                       <SimulationEvaluationFlow
+                        key={[
+                          'eval-flow',
+                          safeSimResults?.simulationId || 'local',
+                          ...(Array.isArray(safeSimResults.evaluationFlow?.mergedExplorationSessionIds)
+                            ? safeSimResults.evaluationFlow.mergedExplorationSessionIds
+                            : []),
+                          Array.isArray(safeSimResults.evaluationFlow?.roles)
+                            ? safeSimResults.evaluationFlow.roles.length
+                            : 0,
+                        ].join(':')}
                         evaluationFlow={safeSimResults.evaluationFlow}
                         onUnlockMobileOutsideTheBox={handleUnlockMobileOutsideTheBox}
                         onSkipOutsideTheBox={handleSkipOutsideTheBox}
@@ -2699,15 +2100,13 @@ const Simulation = () => {
                         onSeeRanking={handleSeeRoleRanking}
                         onReorderRankedRoles={handleReorderRankedRoles}
                         onReorderCombinedRankedRoles={handleReorderCombinedRankedRoles}
-                        isStepSaved={(role) => isStepSaved(role)}
-                        isStepSaving={(role) => isStepSaving(role)}
-                        onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
                         guardedNavigate={guardedNavigate}
                         isViewingSavedSimulation={isViewingSavedSimulation}
                         savedSimulationId={selectedSimulation?.id}
                         simulationIdForCards={
                           selectedSimulation?.id || safeSimResults?.simulationId || 'local'
                         }
+                        onPlanPath={handlePlanPath}
                         nextStepsProfileRecommendation={
                           <ProfileUpdateRecommendation
                             category="nextSteps"
@@ -2814,9 +2213,6 @@ const Simulation = () => {
           onSkipOotb={handleWizardSkipOotb}
           onContinueOotb={handleWizardContinueOotb}
           onPauseAndExit={handleWizardPauseAndExit}
-          isStepSaved={(role) => isStepSaved(role)}
-          isStepSaving={(role) => isStepSaving(role)}
-          onToggleSave={(role) => handleToggleSaveStep(role, selectedSimulation?.id)}
           guardedNavigate={guardedNavigate}
           isViewingSavedSimulation={isViewingSavedSimulation}
           savedSimulationId={selectedSimulation?.id}

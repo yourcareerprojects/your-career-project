@@ -8,6 +8,7 @@ import {
   countEvaluatedRoles,
   isEvaluationComplete,
   isMobileOutsideTheBoxUnlocked,
+  getEvalQueue,
 } from '../../utils/simulationRoleRanking';
 import { NEXT_WIZARD_OOTB_CHOICE_STEP } from '../../utils/simulationWizardSteps';
 
@@ -17,10 +18,12 @@ import { NEXT_WIZARD_OOTB_CHOICE_STEP } from '../../utils/simulationWizardSteps'
 export default function SimulationWizardPausedPrompt({ evaluationFlow, onResume }) {
   const { t } = useTranslation('dashboard');
 
-  const nextComplete = isEvaluationComplete(evaluationFlow?.nextSteps);
+  const nextQueue = getEvalQueue(evaluationFlow, 'nextSteps');
+  const ootbQueue = getEvalQueue(evaluationFlow, 'outsideTheBox');
+  const nextComplete = isEvaluationComplete(nextQueue);
   const ootbUnlocked = isMobileOutsideTheBoxUnlocked(evaluationFlow);
-  const nextEvaluated = countEvaluatedRoles(evaluationFlow?.nextSteps);
-  const ootbEvaluated = countEvaluatedRoles(evaluationFlow?.outsideTheBox);
+  const nextEvaluated = countEvaluatedRoles(nextQueue);
+  const ootbEvaluated = countEvaluatedRoles(ootbQueue);
 
   let descriptionKey = 'simulation.wizard.pausedPrompt.descriptionNext';
   let descriptionValues = {

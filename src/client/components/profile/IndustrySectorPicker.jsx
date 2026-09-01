@@ -41,9 +41,12 @@ export default function IndustrySectorPicker({
   disabled = false,
   multiple = true,
   maxItems = 10,
+  defaultDialogOpen = false,
+  onDialogSave,
+  onDialogCancel,
 }) {
   const { t } = useTranslation('onboarding');
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
   const stableValue = value ?? EMPTY_INDUSTRY_VALUES;
 
   const selectedValues = useMemo(
@@ -58,14 +61,24 @@ export default function IndustrySectorPicker({
   const emitValues = (nextValues) => {
     const cleaned = nextValues.map((v) => resolveCanonicalIndustry(v) || String(v || '').trim()).filter(Boolean);
     if (!multiple) {
-      onChange?.(cleaned.length > 0 ? [cleaned[0]] : []);
-      return;
+      const next = cleaned.length > 0 ? [cleaned[0]] : [];
+      onChange?.(next);
+      return next;
     }
-    onChange?.(cleaned.slice(0, maxItems));
+    const next = cleaned.slice(0, maxItems);
+    onChange?.(next);
+    return next;
   };
 
   const handleSave = (draftValues) => {
-    emitValues(draftValues);
+    const next = emitValues(draftValues);
+    setDialogOpen(false);
+    onDialogSave?.(next);
+  };
+
+  const handleClose = () => {
+    setDialogOpen(false);
+    onDialogCancel?.();
   };
 
   const handleRemove = (index) => {
@@ -121,7 +134,7 @@ export default function IndustrySectorPicker({
 
       <IndustrySectorPickerDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={handleClose}
         onSave={handleSave}
         lang={lang}
         initialValues={selectedValues}

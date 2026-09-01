@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { Box, Button, Portal, useMediaQuery, useTheme } from '@mui/material';
 import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
 
@@ -7,6 +8,7 @@ const APP_BAR_HEIGHT_PX = 64;
 
 /**
  * Profile CTA row with a compact fixed bar on mobile once the user scrolls past the originals.
+ * Prefer `to` / `href` via React Router so in-app CTAs do not rely on full document reloads.
  */
 const ProfilePageActionBar = ({ actions, sx }) => {
   const theme = useTheme();
@@ -41,14 +43,16 @@ const ProfilePageActionBar = ({ actions, sx }) => {
     return () => observer.disconnect();
   }, [isMobile]);
 
-  const renderButton = (action, compact) => (
+  const renderButton = (action, compact) => {
+    const linkTo = action.to || action.href;
+    return (
     <Button
       key={`${action.key}-${compact ? 'compact' : 'full'}`}
       variant={action.variant}
       color={action.color || 'primary'}
       size={compact ? 'small' : 'medium'}
       startIcon={action.startIcon}
-      href={action.href}
+      {...(linkTo ? { component: RouterLink, to: linkTo } : {})}
       onClick={action.onClick}
       disabled={action.disabled}
       aria-label={action.ariaLabel || action.label}
@@ -71,7 +75,8 @@ const ProfilePageActionBar = ({ actions, sx }) => {
     >
       {compact ? action.shortLabel : action.label}
     </Button>
-  );
+    );
+  };
 
   if (!actions?.length) return null;
 

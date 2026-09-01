@@ -4,12 +4,31 @@
  */
 
 import { clearSimulationResultDetailsCaches } from './simulationResultSessionStore';
+import { clearAllCareerPathPlanning } from './careerPathPlanningSession';
+import { clearAllSeenIdentityPieces } from './identityTraitChangeHighlights';
+import {
+  toPersistedSimulationResults,
+  withMaterializedEvaluationFlow,
+} from './evaluationFlowModel';
 
 const STORAGE_KEYS = {
   SIMULATION_RESULTS: 'currentSimulationResults',
   SIMULATION_STATE: 'currentSimulationState',
   SIMULATION_METADATA: 'currentSimulationMetadata'
 };
+
+const SIMULATION_DETAIL_CONTEXT_KEY = 'currentSimulationDetailContext';
+
+function readSessionJson(key) {
+  if (typeof sessionStorage === 'undefined') return null;
+  const raw = sessionStorage.getItem(key);
+  if (!raw) return null;
+  return JSON.parse(raw);
+}
+
+function hasObjectResults(value) {
+  return Boolean(value && typeof value === 'object');
+}
 
 /**
  * Save simulation results to session storage
@@ -24,8 +43,12 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
       return false;
     }
 
+    const persistedResults = hasObjectResults(simulationData?.results)
+      ? toPersistedSimulationResults(simulationData.results)
+      : null;
+
     const storageData = {
-      results: simulationData.results,
+      results: persistedResults,
       metadata: {
         simulationDate: simulationData.simulationDate,
         profileCompletion: simulationData.profileCompletion,
@@ -43,6 +66,11 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
 
     sessionStorage.setItem(STORAGE_KEYS.SIMULATION_RESULTS, dataString);
     sessionStorage.setItem(STORAGE_KEYS.SIMULATION_STATE, state);
+    if (persistedResults) {
+      sessionStorage.setItem('currentSimResults', JSON.stringify(persistedResults));
+    } else {
+      sessionStorage.removeItem('currentSimResults');
+    }
     
     return true;
   } catch (error) {
@@ -55,7 +83,7 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
         // Clear old data and retry once
         sessionStorage.clear();
         const storageData = {
-          results: simulationData.results,
+          results: persistedResults,
           metadata: {
             simulationDate: simulationData.simulationDate,
             profileCompletion: simulationData.profileCompletion,
@@ -65,6 +93,11 @@ export const saveSimulationToStorage = (simulationData, state = 'clean') => {
         };
         sessionStorage.setItem(STORAGE_KEYS.SIMULATION_RESULTS, JSON.stringify(storageData));
         sessionStorage.setItem(STORAGE_KEYS.SIMULATION_STATE, state);
+        if (persistedResults) {
+          sessionStorage.setItem('currentSimResults', JSON.stringify(persistedResults));
+        } else {
+          sessionStorage.removeItem('currentSimResults');
+        }
         return true;
       } catch (retryError) {
         console.error('❌ Failed to save simulation even after clearing storage:', retryError);
@@ -97,6 +130,14 @@ export const loadSimulationFromStorage = () => {
     const simulationData = JSON.parse(storedData);
     
     // Validate the loaded data structure
+    if ((!simulationData.results && storedState === 'saved') || !simulationData.metadata) {
+      return {
+        results: null,
+        metadata: simulationData.metadata || {},
+        state: storedState || 'saved'
+      };
+    }
+
     if (!simulationData.results || !simulationData.metadata) {
       console.warn('⚠️ Invalid simulation data structure in storage - clearing');
       clearSimulationFromStorage();
@@ -104,7 +145,7 @@ export const loadSimulationFromStorage = () => {
     }
     
     return {
-      results: simulationData.results,
+      results: withMaterializedEvaluationFlow(simulationData.results),
       metadata: simulationData.metadata,
       state: storedState || 'clean'
     };
@@ -135,6 +176,8 @@ export const clearSimulationFromStorage = () => {
     sessionStorage.removeItem(STORAGE_KEYS.SIMULATION_RESULTS);
     sessionStorage.removeItem(STORAGE_KEYS.SIMULATION_STATE);
     sessionStorage.removeItem(STORAGE_KEYS.SIMULATION_METADATA);
+    sessionStorage.removeItem(SIMULATION_DETAIL_CONTEXT_KEY);
+    sessionStorage.removeItem('currentSimResults');
     
     return true;
   } catch (error) {
@@ -145,7 +188,6 @@ export const clearSimulationFromStorage = () => {
 
 /** Session keys set by simulation flows outside this module (see grep: sessionStorage.setItem). */
 const EXTRA_SIMULATION_SESSION_KEYS = [
-  'currentUnsavedResults',
   'currentSimResults',
   'usedReplacements',
   'currentResultDetails',
@@ -160,6 +202,8 @@ const EXTRA_SIMULATION_SESSION_KEYS = [
 export const clearSimulationSessionForAuthChange = () => {
   clearSimulationFromStorage();
   clearSimulationResultDetailsCaches();
+  clearAllCareerPathPlanning();
+  clearAllSeenIdentityPieces();
   if (typeof sessionStorage === 'undefined') return;
   for (const key of EXTRA_SIMULATION_SESSION_KEYS) {
     try {
@@ -167,6 +211,58 @@ export const clearSimulationSessionForAuthChange = () => {
     } catch {
       /* ignore */
     }
+  }
+};
+
+/**
+ * Persist lightweight navigation context for role-detail round trips.
+ * Latest-run results themselves stay in the main simulation snapshot.
+ *
+ * @param {{ savedSimulationId?: string|null }} [context]
+ * @returns {boolean}
+ */
+export const saveSimulationDetailContext = (context = {}) => {
+  try {
+    if (typeof sessionStorage === 'undefined') return false;
+    const savedSimulationId = context.savedSimulationId
+      ? String(context.savedSimulationId)
+      : null;
+    sessionStorage.setItem(
+      SIMULATION_DETAIL_CONTEXT_KEY,
+      JSON.stringify({ savedSimulationId })
+    );
+    return true;
+  } catch (error) {
+    console.warn('Failed to save simulation detail context:', error);
+    return false;
+  }
+};
+
+/**
+ * Read the most recent detail-navigation context.
+ * @returns {{ savedSimulationId: string|null }}
+ */
+export const loadSimulationDetailContext = () => {
+  try {
+    const parsed = readSessionJson(SIMULATION_DETAIL_CONTEXT_KEY);
+    return {
+      savedSimulationId: parsed?.savedSimulationId
+        ? String(parsed.savedSimulationId)
+        : null,
+    };
+  } catch {
+    return { savedSimulationId: null };
+  }
+};
+
+export const clearSimulationDetailContext = () => {
+  try {
+    if (typeof sessionStorage === 'undefined') return false;
+    sessionStorage.removeItem(SIMULATION_DETAIL_CONTEXT_KEY);
+    return true;
+  } catch (error) {
+    console.warn('Failed to clear simulation detail context:', error);
+    return false;
   }
 };
 
@@ -184,13 +280,112 @@ export const hasSimulationInStorage = () => {
 };
 
 /**
- * True when this tab has an in-progress (non-saved) simulation, or staged unsaved results
- * from the details flow (`currentUnsavedResults`).
+ * Prefer the active session snapshot for the latest run.
+ * `currentSimResults` is still read as a legacy fallback until older tabs age out.
+ *
+ * @returns {{
+ *   results: object,
+ *   date?: string | Date,
+ *   state: string,
+ *   source: 'session' | 'legacy-current',
+ *   metadata?: object,
+ * } | null}
  */
+export const loadPreferredSimulationSnapshot = () => {
+  const stored = loadSimulationFromStorage();
+  if (stored?.results && stored.state !== 'saved') {
+    return {
+      results: stored.results,
+      date: stored.metadata?.simulationDate,
+      state: stored.state || 'modified',
+      source: 'session',
+      metadata: stored.metadata,
+    };
+  }
+
+  try {
+    const legacyResults = readSessionJson('currentSimResults');
+    if (!legacyResults || typeof legacyResults !== 'object') return null;
+    return {
+      results: withMaterializedEvaluationFlow(legacyResults),
+      date: stored?.metadata?.simulationDate,
+      state:
+        (typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem(STORAGE_KEYS.SIMULATION_STATE)
+          : null) || 'modified',
+      source: 'legacy-current',
+      metadata: {
+        simulationDate: stored?.metadata?.simulationDate,
+        profileCompletion: stored?.metadata?.profileCompletion,
+      },
+    };
+  } catch (error) {
+    console.warn('Failed to parse currentSimResults:', error);
+    return null;
+  }
+};
+
+/**
+ * Apply a pure updater to the latest in-progress simulation snapshot and persist it
+ * through the single primary session-storage path.
+ *
+ * @param {(results: object) => object|null|undefined} updater
+ * @param {{
+ *   simulationDate?: string|Date|null,
+ *   profileCompletion?: number|null,
+ *   state?: 'clean'|'modified'|'saved',
+ * }} [options]
+ * @returns {{ results: object, metadata: object, state: string } | null}
+ */
+export const updateLatestSimulationSnapshot = (updater, options = {}) => {
+  if (typeof updater !== 'function') return null;
+  const preferred = loadPreferredSimulationSnapshot();
+  if (!preferred?.results || typeof preferred.results !== 'object') return null;
+
+  const nextResults = updater(preferred.results);
+  if (!nextResults || nextResults === preferred.results) {
+    return {
+      results: preferred.results,
+      metadata: preferred.metadata || {},
+      state: preferred.state || 'modified',
+    };
+  }
+
+  const simulationDate =
+    options.simulationDate !== undefined
+      ? options.simulationDate
+      : preferred.metadata?.simulationDate ?? preferred.date ?? null;
+  const profileCompletion =
+    options.profileCompletion !== undefined
+      ? options.profileCompletion
+      : preferred.metadata?.profileCompletion ?? null;
+  const state = options.state || preferred.state || 'modified';
+
+  saveSimulationToStorage(
+    {
+      results: nextResults,
+      simulationDate,
+      profileCompletion,
+    },
+    state
+  );
+
+  return {
+    results: nextResults,
+    metadata: {
+      ...(preferred.metadata || {}),
+      simulationDate,
+      profileCompletion,
+    },
+    state,
+  };
+};
+
+/** True when this tab has an in-progress (non-saved) simulation. */
 export const hasActiveCareerSimulationSession = () => {
   try {
     if (typeof sessionStorage === 'undefined') return false;
-    if (sessionStorage.getItem('currentUnsavedResults')) {
+    if (sessionStorage.getItem('currentSimResults')) {
       return true;
     }
     const storedData = sessionStorage.getItem(STORAGE_KEYS.SIMULATION_RESULTS);
@@ -238,7 +433,13 @@ export default {
   clearSimulationSessionForAuthChange,
   hasSimulationInStorage,
   hasActiveCareerSimulationSession,
+  saveSimulationDetailContext,
+  loadSimulationDetailContext,
+  clearSimulationDetailContext,
+  loadPreferredSimulationSnapshot,
+  updateLatestSimulationSnapshot,
   getSimulationStateFromStorage,
   updateSimulationStateInStorage,
-  STORAGE_KEYS
+  STORAGE_KEYS,
+  SIMULATION_DETAIL_CONTEXT_KEY,
 };

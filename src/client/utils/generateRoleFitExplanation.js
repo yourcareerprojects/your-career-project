@@ -3,9 +3,18 @@ import {
   resolveRoleFitLang,
   hydrateTrait,
   localizeBehaviorShell,
-  getFragments,
 } from './roleFitExplanationCopy';
 import { ROLE_FIT_TRAIT_DEFINITIONS, ROLE_FIT_FALLBACK_TRAIT_DEFINITIONS } from './roleFitExplanationTraits';
+import {
+  buildProfileRoleMatchCandidates,
+  buildDeterministicFitBullets,
+  extractUserMatchInventory,
+  extractRoleMatchInventory,
+  serializeRoleFitBullets,
+  parseRoleFitBullets,
+  simplifyFitBullet,
+  ROLE_FIT_BULLET_LIMITS,
+} from './roleFitProfileMatches';
 
 const BANNED_PHRASES = [
   'aligns strongly',
@@ -15,22 +24,17 @@ const BANNED_PHRASES = [
   'dynamic environment',
   'fast-paced',
   'passionate about',
+  'this role fits because',
+  'zu dieser rolle passt du, weil',
 ];
 const MAX_TRAITS = 2;
-const MAX_SENTENCES = 4;
-const MIN_SENTENCES = 3;
+const { MIN_BULLETS, MAX_BULLETS } = ROLE_FIT_BULLET_LIMITS;
 const ROLE_COPY_PHRASE_MIN_WORDS = 4;
 const MIN_TRAIT_POOL = 4;
 const MAX_TRAIT_POOL = 8;
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function toSentence(value) {
-  const text = cleanText(value).replace(/[.?!]+$/g, '');
-  if (!text) return '';
-  return `${text}.`;
 }
 
 function safeArray(value) {
@@ -480,15 +484,14 @@ function getRoleKey(role) {
   return esco || title || `role-${cleanText(role?.description).slice(0, 80).toLowerCase()}`;
 }
 
-function pickGrowthSentence(roleBehavior, selectedTraits, roleKey, lang = 'en') {
-  const fr = getFragments(resolveRoleFitLang(lang));
-  const variants = fr.growthTemplates.map((tpl) =>
-    tpl.replace(/\{\{summary\}\}/g, roleBehavior.summary)
-  );
-  const seed = `${roleBehavior?.id || ''}|${roleKey || ''}|${safeArray(selectedTraits).map((t) => t.id).join('|')}`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  return variants[hash % variants.length];
+function bulletStartsCorrectly(bullet, lang = 'en') {
+  const text = cleanText(bullet);
+  if (!text) return false;
+  const L = resolveRoleFitLang(lang);
+  if (L === 'de') {
+    return /^(dein(e|er|em|en|es)?|du)\b/i.test(text);
+  }
+  return /^(your|you)\b/i.test(text);
 }
 
 function normalizeForCopyCheck(text) {
@@ -513,91 +516,55 @@ function hasCopiedRolePhrase(outputText, role) {
   return false;
 }
 
-function buildFallbackExplanationLines(selectedTraits, roleBehavior, roleKey, lang = 'en') {
-  const fr = getFragments(resolveRoleFitLang(lang));
-  const primary = selectedTraits[0];
-  const supporting = selectedTraits[1];
-  if (!primary) {
-    const genericBodies = fr.genericOpenerTemplates.map((tpl) =>
-      tpl.replace(/\{\{summary\}\}/g, roleBehavior.summary)
-    );
-    let h = 0;
-    for (let i = 0; i < String(roleKey || '').length; i += 1) h = (h * 33 + roleKey.charCodeAt(i)) >>> 0;
-    return [
-      toSentence(`${fr.openerPrefix} ${genericBodies[h % genericBodies.length]}`),
-      toSentence(fr.genericSecondaryNoTraits),
-      toSentence(roleBehavior.connection),
-      toSentence(pickGrowthSentence(roleBehavior, [], roleKey, lang)),
-    ].filter(Boolean).slice(0, MAX_SENTENCES);
-  }
-
-  const openerHashes = [
-    `${fr.openerPrefix} ${primary.anchor}`,
-    `${fr.openerPrefix} ${primary.anchor}${fr.openerMidRealSituations}`,
-    `${fr.openerPrefix} ${primary.anchor}${fr.openerMidNotTheory}`,
-  ];
-  let hash = 0;
-  for (let i = 0; i < String(roleKey || '').length; i += 1) hash = (hash * 33 + roleKey.charCodeAt(i)) >>> 0;
-  const sentence1 = toSentence(openerHashes[hash % openerHashes.length]);
-  const sentence2 = toSentence(primary.patternSentence);
-  const bridge = supporting
-    ? `${cleanText(supporting.patternSentence).replace(/[.?!]+$/g, '')}${fr.bridgeCommaAnd}`
-    : '';
-  const sentence3 = toSentence(`${bridge}${roleBehavior.connection}`);
-  const sentence4 = toSentence(pickGrowthSentence(roleBehavior, selectedTraits, roleKey, lang));
-  return [sentence1, sentence2, sentence3, sentence4].filter(Boolean).slice(0, MAX_SENTENCES);
-}
-
-function qualityCheck(lines, role, selectedTraits, traitCapExhausted, lang = 'en') {
-  if (!Array.isArray(lines)) return false;
-  if (lines.length < MIN_SENTENCES || lines.length > MAX_SENTENCES) return false;
-  const fr = getFragments(resolveRoleFitLang(lang));
-  if (!String(lines[0] || '').startsWith(fr.openerPrefix)) return false;
-  if (selectedTraits.length === 0 && !traitCapExhausted) return false;
-  if (hasCopiedRolePhrase(lines.join(' '), role)) return false;
+function qualityCheckBullets(bullets, role, lang = 'en') {
+  if (!Array.isArray(bullets)) return false;
+  if (bullets.length < MIN_BULLETS || bullets.length > MAX_BULLETS) return false;
+  if (!bullets.every((b) => bulletStartsCorrectly(b, lang))) return false;
+  if (hasCopiedRolePhrase(bullets.join(' '), role)) return false;
   return true;
 }
 
-function sanitizeOutput(text) {
-  let result = cleanText(text);
-  for (const phrase of BANNED_PHRASES) {
-    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    result = result.replace(new RegExp(escaped, 'gi'), '');
-  }
-  return cleanText(result);
+function sanitizeBullets(bullets, lang = 'en') {
+  const L = resolveRoleFitLang(lang);
+  return safeArray(bullets)
+    .map((bullet) => {
+      let result = cleanText(bullet);
+      for (const phrase of BANNED_PHRASES) {
+        const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(escaped, 'gi'), '');
+      }
+      return simplifyFitBullet(result, L);
+    })
+    .filter(Boolean)
+    .slice(0, MAX_BULLETS);
 }
 
-/**
- * Minimal deterministic explanation (legacy assembly), used when the LLM path fails or is unavailable.
- */
-function buildExplanationStringFallback(selectedTraits, roleBehavior, roleKey, lang, role, traitCapExhausted) {
-  const lines = buildFallbackExplanationLines(selectedTraits, roleBehavior, roleKey, lang);
-  const branch = qualityCheck(lines, role, selectedTraits, traitCapExhausted, lang)
+function buildExplanationBulletsFallback(
+  profileMatches,
+  selectedTraits,
+  roleBehavior,
+  lang,
+  role,
+  traitCapExhausted
+) {
+  const bullets = buildDeterministicFitBullets(
+    profileMatches,
+    selectedTraits,
+    roleBehavior,
+    lang
+  );
+  const branch = qualityCheckBullets(bullets, role, lang) && (selectedTraits.length > 0 || traitCapExhausted)
     ? 'highQuality'
     : 'fallback';
-
-  const fallbackLines = traitCapExhausted
-    ? lines
-    : (() => {
-        const fr = getFragments(resolveRoleFitLang(lang));
-        const p = selectedTraits[0];
-        const s = selectedTraits[1];
-        const bridge = s
-          ? `${cleanText(s.patternSentence).replace(/[.?!]+$/g, '')}${fr.bridgeCommaAnd}`
-          : '';
-        return [
-          toSentence(
-            `${fr.openerPrefix} ${p ? p.anchor : fr.genericUndefinedTraitAnchor}`
-          ),
-          toSentence(p ? p.patternSentence : fr.genericUndefinedTraitSentence),
-          toSentence(`${bridge}${roleBehavior.connection}`),
-          toSentence(pickGrowthSentence(roleBehavior, selectedTraits, roleKey, lang)),
-        ];
-      })();
-
+  const sanitized = sanitizeBullets(bullets, lang);
   return {
     branch,
-    text: sanitizeOutput((branch === 'highQuality' ? lines : fallbackLines).join(' ')),
+    bullets: sanitized.length >= MIN_BULLETS
+      ? sanitized
+      : sanitizeBullets(
+          buildDeterministicFitBullets([], selectedTraits, roleBehavior, lang),
+          lang
+        ),
   };
 }
 
@@ -639,9 +606,12 @@ function buildRoleDigestForLLM(role) {
   return lines.join('\n').slice(0, 1400);
 }
 
-function buildRoleFitExplanationPayload(lang, roleContext, selectedTraits, roleBehavior, role) {
+function buildRoleFitExplanationPayload(lang, roleContext, selectedTraits, roleBehavior, role, userProfile, profileMatches) {
+  const activeLang = resolveRoleFitLang(lang);
+  const userInventory = extractUserMatchInventory(userProfile, activeLang);
+  const roleInventory = extractRoleMatchInventory(role, activeLang);
   return {
-    language: resolveRoleFitLang(lang),
+    language: activeLang,
     role: {
       title: roleContext.title || '',
       coreChallenge: roleContext.coreChallenge || '',
@@ -649,6 +619,23 @@ function buildRoleFitExplanationPayload(lang, roleContext, selectedTraits, roleB
       realWork: roleContext.realWork || '',
       digest: buildRoleDigestForLLM(role),
     },
+    userProfile: {
+      skills: userInventory.skills.slice(0, 12),
+      responsibilities: userInventory.responsibilities.slice(0, 8),
+      domains: userInventory.domains.slice(0, 8),
+      identitySnippets: userInventory.identitySnippets.slice(0, 4),
+    },
+    roleRequirements: {
+      skills: roleInventory.skills.slice(0, 12),
+      responsibilities: roleInventory.responsibilities.slice(0, 8),
+      domains: roleInventory.domains.slice(0, 8),
+    },
+    profileMatches: safeArray(profileMatches).slice(0, 8).map((m) => ({
+      type: m.type,
+      userLabel: m.userLabel,
+      roleLabel: m.roleLabel,
+      score: m.score,
+    })),
     traits: selectedTraits.map((t) => ({
       id: t.id,
       dimension: t.dimension || '',
@@ -664,6 +651,28 @@ function buildRoleFitExplanationPayload(lang, roleContext, selectedTraits, roleB
       connection: cleanText(roleBehavior.connection),
     },
   };
+}
+
+function parseLlmBulletResponse(raw, lang = 'en') {
+  const text = cleanText(raw);
+  if (!text) return [];
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    try {
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+      if (Array.isArray(parsed?.bullets)) {
+        return sanitizeBullets(parsed.bullets, lang);
+      }
+    } catch {
+      // fall through
+    }
+  }
+  const lineBullets = text
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+    .filter(Boolean);
+  return sanitizeBullets(lineBullets, lang);
 }
 
 /**
@@ -700,18 +709,27 @@ export async function generateRoleFitExplanationCore(userProfile, role, options 
     ? buildCombinationKeyFromTraitIds(selectedTraits.map((t) => t.id))
     : '';
 
-  const deterministic = buildExplanationStringFallback(
+  const profileMatches = buildProfileRoleMatchCandidates(userProfile, role, lang);
+  const deterministic = buildExplanationBulletsFallback(
+    profileMatches,
     selectedTraits,
     roleBehavior,
-    roleKey,
     lang,
     role,
     traitCapExhausted
   );
-  const { branch, text: deterministicText } = deterministic;
+  const { branch, bullets: deterministicBullets } = deterministic;
 
   const roleContext = resolveRoleContext(role, options);
-  const payload = buildRoleFitExplanationPayload(lang, roleContext, selectedTraits, roleBehavior, role);
+  const payload = buildRoleFitExplanationPayload(
+    lang,
+    roleContext,
+    selectedTraits,
+    roleBehavior,
+    role,
+    userProfile,
+    profileMatches
+  );
 
   if (scopeKey && selectedTraits.length > 0) {
     traitUsageStore.trackUsedTraitCombinationAcrossRoles(
@@ -736,6 +754,7 @@ export async function generateRoleFitExplanationCore(userProfile, role, options 
     selectedCombinationKey,
     roleContext,
     payload,
+    profileMatches,
   };
 
   if (deps && typeof deps.tryLoadCached === 'function') {
@@ -745,19 +764,23 @@ export async function generateRoleFitExplanationCore(userProfile, role, options 
       language: resolveRoleFitLang(lang),
     });
     if (cached && typeof cached.text === 'string' && cached.text.trim()) {
-      if (typeof deps.persistTraitUsage === 'function') {
-        await deps.persistTraitUsage();
+      const cachedBullets = parseRoleFitBullets(cached.text);
+      if (cachedBullets.length >= MIN_BULLETS) {
+        if (typeof deps.persistTraitUsage === 'function') {
+          await deps.persistTraitUsage();
+        }
+        return {
+          ...baseReturn,
+          bullets: cachedBullets,
+          text: serializeRoleFitBullets(cachedBullets),
+          explanationSource: cached.source === 'llm' ? 'llm' : 'fallback',
+          fromCache: true,
+        };
       }
-      return {
-        ...baseReturn,
-        text: sanitizeOutput(cached.text),
-        explanationSource: cached.source === 'llm' ? 'llm' : 'fallback',
-        fromCache: true,
-      };
     }
   }
 
-  let finalText = deterministicText;
+  let finalBullets = deterministicBullets;
   let explanationSource = 'fallback';
 
   const llmCaller = options.llmCaller;
@@ -767,21 +790,31 @@ export async function generateRoleFitExplanationCore(userProfile, role, options 
         // eslint-disable-next-line no-console
         console.debug('[generateRoleFitExplanationCore] LLM payload', payload);
       }
-      finalText = sanitizeOutput(await llmCaller(payload));
-      explanationSource = 'llm';
+      const llmRaw = await llmCaller(payload);
+      const llmBullets = parseLlmBulletResponse(llmRaw, lang);
+      if (llmBullets.length >= MIN_BULLETS) {
+        finalBullets = llmBullets;
+        explanationSource = 'llm';
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
         '[generateRoleFitExplanationCore] LLM failed, using deterministic fallback:',
         err?.message || err
       );
-      finalText = deterministicText;
+      finalBullets = deterministicBullets;
       explanationSource = 'fallback';
     }
   } else if (debug) {
     // eslint-disable-next-line no-console
     console.debug('[generateRoleFitExplanationCore] skipped LLM (no llmCaller)');
   }
+
+  finalBullets = sanitizeBullets(finalBullets, lang);
+  if (finalBullets.length < MIN_BULLETS) {
+    finalBullets = sanitizeBullets(deterministicBullets, lang);
+  }
+  const finalText = serializeRoleFitBullets(finalBullets);
 
   if (typeof deps?.persistTraitUsage === 'function') {
     await deps.persistTraitUsage();
@@ -799,6 +832,7 @@ export async function generateRoleFitExplanationCore(userProfile, role, options 
 
   return {
     ...baseReturn,
+    bullets: finalBullets,
     text: finalText,
     explanationSource,
     fromCache: false,

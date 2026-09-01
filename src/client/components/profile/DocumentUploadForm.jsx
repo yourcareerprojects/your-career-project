@@ -4488,6 +4488,7 @@ const DocumentUploadForm = ({
                       confirmInFooter
                       initialActivities={resolveWorkEnjoyInitialActivities(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
                       initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workEnjoy')}
+                      initialManualEntry={Boolean(manualFillCoachingDraft?.workEnjoy?.manualEntry)}
                       onChatPersist={(snapshot) => handleManualFillCoachingPersist('workEnjoy', snapshot)}
                       onSummaryFooterStateChange={handleWorkEnjoySummaryFooterStateChange}
                       onBindConfirm={handleBindWorkEnjoyConfirm}
@@ -4533,6 +4534,7 @@ const DocumentUploadForm = ({
                       initialInterestTopics={resolveTopicsInitialInterest(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
                       initialIndustries={resolveTopicsInitialIndustries(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
                       initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'topics')}
+                      initialManualEntry={Boolean(manualFillCoachingDraft?.topics?.manualEntry)}
                       onChatPersist={(snapshot) => handleManualFillCoachingPersist('topics', snapshot)}
                       onSummaryFooterStateChange={handleTopicsSummaryFooterStateChange}
                       onBindConfirm={handleBindTopicsConfirm}
@@ -4593,6 +4595,7 @@ const DocumentUploadForm = ({
                       initialStrengths={resolveStrengthsInitialStrengths(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
                       initialSkillDomains={resolveStrengthsInitialSkillDomains(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot)}
                       initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'strengths')}
+                      initialManualEntry={Boolean(manualFillCoachingDraft?.strengths?.manualEntry)}
                       onChatPersist={(snapshot) => handleManualFillCoachingPersist('strengths', snapshot)}
                       onSummaryFooterStateChange={handleStrengthsSummaryFooterStateChange}
                       onBindConfirm={handleBindStrengthsConfirm}
@@ -4652,6 +4655,7 @@ const DocumentUploadForm = ({
                       initialWorkStyles={resolveWorkEnvironmentInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).workStyles}
                       initialWorkEnvironments={resolveWorkEnvironmentInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).workEnvironments}
                       initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workEnvironment')}
+                      initialManualEntry={Boolean(manualFillCoachingDraft?.workEnvironment?.manualEntry)}
                       onChatPersist={(snapshot) => handleManualFillCoachingPersist('workEnvironment', snapshot)}
                       onSummaryFooterStateChange={handleWorkEnvironmentSummaryFooterStateChange}
                       onBindConfirm={handleBindWorkEnvironmentConfirm}
@@ -4697,6 +4701,7 @@ const DocumentUploadForm = ({
                       initialCareerGoals={resolveWorkingLifeAchievementInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).careerGoals}
                       initialPriorities={resolveWorkingLifeAchievementInitial(reviewProfile, manualFillCoachingDraft, manualFillCvSnapshot).priorities}
                       initialMessages={resolveCoachingInitialMessages(manualFillCoachingDraft, 'workingLifeAchievement')}
+                      initialManualEntry={Boolean(manualFillCoachingDraft?.workingLifeAchievement?.manualEntry)}
                       onChatPersist={(snapshot) => handleManualFillCoachingPersist('workingLifeAchievement', snapshot)}
                       onSummaryFooterStateChange={handleWorkingLifeAchievementSummaryFooterStateChange}
                       onBindConfirm={handleBindWorkingLifeAchievementConfirm}

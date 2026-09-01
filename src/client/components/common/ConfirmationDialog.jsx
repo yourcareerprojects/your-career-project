@@ -19,6 +19,7 @@ const ConfirmationDialog = ({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   severity = 'warning',
+  hideCancel = false,
   loading = false
 }) => {
   const getSeverityColor = () => {
@@ -86,17 +87,20 @@ const ConfirmationDialog = ({
       </DialogContent>
       
       <DialogActions>
-        <Button 
-          onClick={handleCancelClick} 
+        {!hideCancel ? (
+          <Button
+            onClick={handleCancelClick}
+            disabled={loading}
+            variant="outlined"
+            color={getSeverityColor()}
+          >
+            {cancelText}
+          </Button>
+        ) : null}
+        <Button
+          onClick={handleConfirmClick}
           disabled={loading}
-          variant="outlined"
-        >
-          {cancelText}
-        </Button>
-        <Button 
-          onClick={handleConfirmClick} 
-          disabled={loading}
-          variant="contained" 
+          variant="contained"
           color={getSeverityColor()}
           autoFocus
         >

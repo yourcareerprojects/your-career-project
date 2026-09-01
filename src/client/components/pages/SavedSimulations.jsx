@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invalidateCareerIdentityQueries } from '../../hooks/useCareerIdentityQueries';
 import {
   Box,
   Typography,
@@ -24,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { MIN_PROFILE_COMPLETION_REQUIRED } from '../../constants/profileCompletion';
 import { hasActiveCareerSimulationSession } from '../../utils/simulationPersistence';
+import { resolveCareerSimulationPath } from '../../hooks/useAppNavigation';
 import {
   useSavedSimulationsListQuery,
   invalidateSavedSimulationsListQuery,
@@ -49,17 +51,16 @@ const SavedSimulations = () => {
   const lastSimulationQuery = useLastSimulationQuery({
     enabled: !!user && meetsSimulationProfileMin && !hasSimulationSession,
   });
-  const goToSimulationHref = useMemo(() => {
-    if (hasSimulationSession) return '/simulation/results';
-    if (!meetsSimulationProfileMin) return '/simulation';
-    if (lastSimulationQuery.isError || lastSimulationQuery.data == null) return '/simulation';
-    return lastSimulationQuery.data?.results ? '/simulation/results' : '/simulation';
-  }, [
-    hasSimulationSession,
-    meetsSimulationProfileMin,
-    lastSimulationQuery.data,
-    lastSimulationQuery.isError,
-  ]);
+  const goToSimulationHref = useMemo(
+    () =>
+      resolveCareerSimulationPath({
+        hasSimulationSession,
+        isAuthenticated: !!user,
+        queryEnabled: !!user && meetsSimulationProfileMin && !hasSimulationSession,
+        lastSimQuery: lastSimulationQuery,
+      }),
+    [hasSimulationSession, user, meetsSimulationProfileMin, lastSimulationQuery]
+  );
   const { data: savedSimulations = [], isLoading, isError, error } = useSavedSimulationsListQuery();
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -86,6 +87,7 @@ const SavedSimulations = () => {
         }
       });
       if (res.ok) {
+        invalidateCareerIdentityQueries();
         invalidateSavedSimulationsListQuery();
         setSnackbar({ open: true, message: t('simulation.messages.deletedSuccessfully', { ns: 'dashboard' }), severity: 'success' });
       } else {
@@ -186,7 +188,7 @@ const SavedSimulations = () => {
               name: displayName,
             });
             const savedCaption = simulation.timestamp
-              ? `${t('details.labels.saved', { ns: 'dashboard' })} ${t('savedLists.savedCareerSteps.onDate', {
+              ? `${t('details.labels.saved', { ns: 'dashboard' })} ${t('savedLists.common.onDate', {
                   ns: 'dashboard',
                   date: formatSimulationCardDate(simulation.timestamp),
                 })}`

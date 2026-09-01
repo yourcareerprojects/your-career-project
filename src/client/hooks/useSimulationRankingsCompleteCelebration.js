@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isSimulationRankingOverviewCelebrationEligible } from '../utils/simulationRoleRanking';
-import { fireStarBurstConfetti } from '../utils/profileCreatedConfetti';
+import { fireProfileCreatedConfetti } from '../utils/profileCreatedConfetti';
 
 function normalizeFlowKey(evaluationFlow) {
   return evaluationFlow?.simulationId ?? 'local';
@@ -14,7 +14,7 @@ function isSameFlowSession(previousKey, nextKey) {
 }
 
 /**
- * Fires a one-time star burst when a simulation ranking overview becomes visible —
+ * Fires confetti once when a simulation ranking overview becomes visible —
  * either both categories are ranked, or next-role ranking after skipping OOTB for now.
  * Skips celebration when opening a simulation that already reached that state.
  */
@@ -47,7 +47,7 @@ export function useSimulationRankingsCompleteCelebration(evaluationFlow) {
     }
 
     if (celebrationEligible && !wasCelebrationEligibleRef.current) {
-      fireStarBurstConfetti();
+      fireProfileCreatedConfetti();
     }
     wasCelebrationEligibleRef.current = celebrationEligible;
   }, [celebrationEligible, evaluationFlow, flowKey]);

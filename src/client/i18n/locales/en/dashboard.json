@@ -1,8 +1,8 @@
 {
   "simulation": {
-    "menuLabel": "Career Simulation",
+    "menuLabel": "PuzzleJOB",
     "pageTitle": "Your Career Simulation",
-    "resultsTitle": "Your Simulation Results",
+    "resultsTitle": "PuzzleJOB",
     "subtitle": {
       "hasResults": "Review your latest generated career recommendations and explore each role in detail.",
       "empty": "Start a simulation to receive personalized career recommendations and next steps based on your profile and goals."
@@ -21,49 +21,24 @@
       "title": "Profile completion required",
       "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to start a career simulation."
     },
-    "emailVerificationGate": {
-      "title": "Verify your email first",
-      "description": "Only then can you start the career simulation.",
-      "cta": "Check your inbox"
-    },
     "tooltips": {
       "completeProfileFirst": "Complete at least {{min}}% of your profile first",
-      "verifyEmailFirst": "Verify your email address first",
       "startSimulation": "Choose a goal and generate new career role suggestions",
       "savedSimulations": "View and manage your saved simulations",
-      "saveResults": "Save this simulation to your saved simulations list",
-      "clearAndRestart": "Clear current results and start over",
       "updateProfile": "Update your profile information",
       "saveEdits": "Save your edits to this saved simulation"
     },
     "aria": {
       "startSimulation": "Choose a goal and generate new career role suggestions",
       "savedSimulations": "View and manage your saved simulations",
-      "saveResults": "Save this simulation to your saved simulations list",
-      "clearAndRestart": "Clear results and start a new simulation",
       "goToProfile": "Go to your profile page",
       "saveEdits": "Save your edits to this saved simulation"
     },
     "actions": {
       "start": "Start Simulation",
-      "saveResults": "Save Results",
-      "saveResultsShort": "Save",
-      "clearAndRestart": "Clear results and start a new simulation",
-      "clearAndRestartShort": "Restart",
       "goToProfile": "Go to my profile",
       "goToProfileShort": "Profile",
-      "startNew": "Start New Simulation",
-      "openSavedSimulation": "Open saved simulation",
       "open": "Open"
-    },
-    "saveDialog": {
-      "title": "Save Simulation",
-      "nameLabel": "Simulation Name"
-    },
-    "unsavedDialog": {
-      "title": "Unsaved Changes",
-      "description": "You have unsaved simulation results. Do you want to start a new simulation anyway?",
-      "warning": "All unsaved changes will be lost."
     },
     "deleteDialog": {
       "title": "Delete Simulation",
@@ -118,6 +93,7 @@
         "skip": "don't know",
         "dislike": "Uncool",
         "more": "More",
+        "planPath": "Plan path",
         "save": "Save",
         "saved": "Saved",
         "saving": "Saving..."
@@ -128,6 +104,7 @@
         "dislikePoorFit": "Uncool - poor fit",
         "dragToReorder": "Drag to reorder or move group",
         "moreDetails": "View details for this role",
+        "planPath": "Explore how to reach this role",
         "savedRemove": "Saved - click to remove from your saved list",
         "saveToSavedList": "Save this role to your saved list"
       }
@@ -137,21 +114,21 @@
       "loadingTitle": "Generating your simulation",
       "loadingDescription": "We are analysing your profile and building personalised role suggestions...",
       "nextRoleTitle": "Natural Next Roles",
-      "nextRoleIntro": "Rate this suggestion — swipe right for Cool or left for Uncool, or use the buttons. The next role will appear automatically.",
+      "nextRoleIntro": "Rate this suggestion. The next role will appear automatically.",
       "ootbChoiceTitle": "Surprising Perspectives",
       "ootbRoleTitle": "Surprising Perspectives",
-      "ootbRoleIntro": "Rate this suggestion — swipe right for Cool or left for Uncool, or use the buttons.",
+      "ootbRoleIntro": "Rate this suggestion. The next role will appear automatically.",
       "exitRanking": "Exit ranking",
       "pauseDialog": {
         "title": "Exit ranking?",
-        "description": "Your ratings so far are saved in this browser session. You can return anytime to continue where you left off, or keep editing now.",
+        "description": "Your ratings so far will be saved. You can continue where you left off anytime.",
         "stay": "Keep editing",
         "saveAndExit": "Save and return later",
         "savedMessage": "Progress saved. You can continue ranking anytime from your results."
       },
       "pausedPrompt": {
         "title": "Ranking in progress",
-        "descriptionNext": "You rated {{evaluated}} of {{total}} next career roles. Continue where you left off.",
+        "descriptionNext": "You rated {{evaluated}} of {{total}} roles. Continue where you left off.",
         "descriptionOotbChoice": "You finished rating next career roles. Continue with {{count}} outside-the-box role suggestions when you are ready.",
         "descriptionOotb": "You rated {{evaluated}} of {{total}} outside-the-box roles. Continue where you left off.",
         "resume": "Continue ranking"
@@ -164,25 +141,14 @@
     "messages": {
       "loadFailed": "Failed to load simulation",
       "profileCompletionRequired": "Your profile must be at least {{min}}% complete to run a simulation. Update your profile and try again.",
-      "emailVerificationRequired": "Please verify your email address before running a simulation.",
       "completeProfileToRun": "Complete at least {{min}}% of your profile to run a simulation.",
       "failedTryAgain": "Simulation failed. Please try again.",
       "failedCheckConnection": "Simulation failed. Please check your connection and try again.",
-      "saveCancelledByUser": "Save cancelled by user",
-      "savedSuccessfully": "Simulation saved successfully!",
-      "saveFailed": "Failed to save simulation",
       "changesSavedSuccessfully": "Changes saved successfully!",
       "saveChangesFailed": "Failed to save changes",
       "loadedSuccessfully": "Simulation loaded successfully!",
       "deletedSuccessfully": "Simulation deleted successfully!",
       "deleteFailed": "Failed to delete simulation",
-      "noSavedCareerSteps": "No saved career steps available",
-      "careerStepNotFound": "Career step not found in saved list",
-      "careerStepRemoved": "Career step removed from saved",
-      "careerStepRemoveFailed": "Failed to remove career step",
-      "careerStepSaved": "Career step saved",
-      "alreadySaved": "Already saved",
-      "careerStepSaveFailed": "Failed to save career step",
       "similaritySuffix": "({{percent}}% similar)"
     },
     "errors": {
@@ -201,16 +167,12 @@
     "stepDetailsNotFound": "Step details not found",
     "context": {
       "savedSimulation": "Saved Simulation",
-      "unsavedSimulation": "Unsaved Simulation",
-      "savedCareerStep": "Saved Career Step",
-      "savedSimulationCareerStep": "Saved Simulation Career Step"
+      "unsavedSimulation": "Unsaved Simulation"
     },
     "actions": {
       "backToResults": "Back to Results",
       "backToSimulation": "Back to Simulation",
       "backToSimulations": "Back to Simulations",
-      "saveToSavedSteps": "Save to Saved Steps",
-      "removeFromSavedSteps": "Remove from Saved Steps",
       "share": "Share",
       "saving": "Saving...",
       "loading": "Loading..."
@@ -224,8 +186,6 @@
       "simulationDate": "Simulation Date",
       "roleDescription": "Role Description",
       "noDetailedDescription": "No detailed description available.",
-      "additionalInformation": "Additional Information",
-      "resourceHelpText": "This resource or advice is designed to help you in your career development journey.",
       "actions": "Actions",
       "profileEnrichmentTitle": "Profile enrichment from uploaded documents",
       "profileEnrichmentFallback": "Document-derived signals were applied to improve recommendations.",
@@ -260,13 +220,13 @@
       "skillDomains": "Skill Domains",
       "showMore": "Show more",
       "showLess": "Show less",
+      "more": "More",
       "includes": "Includes: {{items}}",
       "noRequiredSkills": "No required skills listed for this role.",
       "noRoleInsights": "No role insights (seniority, key responsibilities, or skill domains) are available for this step yet. They are loaded from the occupation database when a career path id or ESCO id is available."
     },
     "messages": {
       "ratingSavedToSimulation": "Rating saved to simulation",
-      "ratingSavedToSavedSteps": "Rating saved to your saved steps",
       "simulationUpdatedSuccessfully": "Simulation updated successfully!"
     },
     "errors": {
@@ -275,8 +235,7 @@
       "loadStepDetailsFailed": "Failed to load step details. Please try again.",
       "updateRatingFailed": "Failed to update rating",
       "careerStepNotFoundInSimulation": "Career step not found in this simulation",
-      "updateSimulationFailed": "Failed to update simulation",
-      "savedStepNotFoundForRemoval": "Could not find the saved career step to remove"
+      "updateSimulationFailed": "Failed to update simulation"
     },
     "tooltips": {
       "editSimulationDetails": "Edit simulation details",
@@ -284,34 +243,77 @@
     },
     "dialogs": {
       "editSimulationTitle": "Edit Simulation"
-    },
-    "unsaveDialog": {
-      "title": "Remove saved career step?",
-      "message": "This will remove this career step from your saved career steps. This action cannot be undone.",
-      "confirm": "Remove"
     }
   },
   "saved": {
     "simulations": "Saved Simulations",
-    "careerSteps": "Saved Career Steps"
+    "careerPaths": "Saved Career Paths"
   },
   "savedSearch": {
     "pageTitle": "Saved & Search",
-    "subtitle": "Search for roles, revisit saved career steps, or open saved simulations.",
+    "subtitle": "Explore roles, review your history, or open saved simulations and career paths.",
+    "menuLabel": "Saved & Search",
     "searchRoles": {
-      "title": "Search Roles",
+      "title": "Explore Roles",
       "description": "Browse and explore career roles that match your interests."
     },
-    "savedCareerSteps": {
-      "title": "Saved Career Steps",
-      "description": "View and manage career steps you have saved."
+    "savedCareerPaths": {
+      "title": "Saved Career Paths",
+      "description": "Open Career Puzzle paths you have saved for later."
     },
     "savedSimulations": {
       "title": "Saved Simulations",
       "description": "Open simulations you have saved for later."
+    },
+    "history": {
+      "title": "History",
+      "description": "See your milestones and the activities that led to them."
+    }
+  },
+  "history": {
+    "pageTitle": "History",
+    "subtitle": "Your journey so far from profile setup to new roles.",
+    "empty": "No history yet.",
+    "loadError": "Could not load your history. Please try again.",
+    "recentActivity": "Recent activity",
+    "milestones": {
+      "profile_created": "Profile created",
+      "profile_filled": "Profile filled",
+      "first_simulation": "1st Simulation",
+      "roles_unlocked": "New roles unlocked"
+    },
+    "activities": {
+      "profile_section_updated": "Updated profile",
+      "profile_section_updated_with_section": "Updated {{section}}",
+      "document_uploaded": "Uploaded a document",
+      "document_uploaded_named": "Uploaded {{name}}",
+      "simulation_completed": "Completed a simulation",
+      "simulation_saved": "Saved a simulation",
+      "simulation_saved_named": "Saved simulation \"{{name}}\"",
+      "career_step_saved": "Saved a role",
+      "career_step_saved_named": "Saved role \"{{title}}\"",
+      "career_step_evaluated": "Rated a saved role",
+      "career_step_evaluated_named": "Rated saved role \"{{title}}\" as {{evaluation}}",
+      "trait_voted": "Voted on an identity trait",
+      "sections": {
+        "userIdentity": "identity answers",
+        "structuredUserInfo": "skills and experience",
+        "seniority": "seniority",
+        "profileReview": "profile review",
+        "profile": "profile"
+      },
+      "evaluations": {
+        "keep": "Keep",
+        "skip": "Skip",
+        "dislike": "Dislike"
+      }
     }
   },
   "savedLists": {
+    "common": {
+      "onDate": "on {{date}}",
+      "retry": "Retry"
+    },
     "savedSimulations": {
       "subtitle": "Manage and review your saved career simulation",
       "empty": "No saved simulations yet",
@@ -334,45 +336,40 @@
         "delete": "Delete"
       }
     },
-    "savedCareerSteps": {
-      "subtitle": "Manage and review your saved career opportunities from previous simulations",
-      "searchPlaceholder": "Search career steps...",
-      "resultsFound": "{{count}} career step found",
-      "resultsFound_other": "{{count}} career steps found",
-      "emptyTitle": "No saved career steps found",
-      "emptyAdjustSearch": "Try adjusting your search",
-      "emptyStartSimulation": "Start a career simulation to save interesting career steps",
-      "selectAllOnPage": "Select all on this page",
-      "rateThisRole": "Rate this role",
-      "onDate": "on {{date}}",
-      "tooltips": {
-        "moreDetails": "View details for this role",
-        "savedRemove": "Saved - click to remove from your saved list",
-        "keepStrongFit": "Cool - strong fit",
-        "skipNotSure": "don't know - not sure",
-        "dislikePoorFit": "Uncool - poor fit"
-      },
-      "actions": {
-        "retry": "Retry",
-        "removeSelected": "Remove Selected ({{count}})",
-        "keep": "Cool",
-        "skip": "don't know",
-        "dislike": "Uncool",
-        "more": "More",
-        "saved": "Saved"
-      },
-      "messages": {
-        "removedFromSavedList": "Career step removed from saved list",
-        "bulkRemoved": "{{count}} career steps removed",
-        "bulkPartiallyRemoved": "{{removed}} of {{count}} career steps removed"
+    "savedCareerPaths": {
+      "subtitle": "Manage and review the Career Puzzle paths you have saved",
+      "emptyTitle": "No saved career paths found",
+      "emptySubtitle": "Build a path in Career Puzzle and tap Save to see it listed here",
+      "goToPuzzleCta": "Go to Career Puzzle",
+      "unnamed": "Unnamed career path",
+      "noTimestamp": "No timestamp",
+      "invalidDate": "Invalid date",
+      "aria": {
+        "openPath": "Open saved career path {{name}}",
+        "unsavePath": "Remove saved career path {{name}}"
       },
       "errors": {
-        "fetchFailed": "Failed to load saved career steps",
-        "bulkRemoveFailed": "Failed to remove selected career steps",
-        "bulkRemoveNoneRemoved": "None of the selected career steps could be removed"
+        "invalidPathId": "Invalid career path ID",
+        "fetchFailed": "Failed to load saved career paths",
+        "openFailed": "Could not open this career path",
+        "unsaveFailed": "Could not remove this career path from saved",
+        "pathNotFound": "This career path could not be found"
       },
-      "dialogs": {
-        "bulkRemoveMessage": "This will remove the selected career steps from your saved career steps. This action cannot be undone."
+      "actions": {
+        "more": "More",
+        "remove": "Remove"
+      },
+      "messages": {
+        "unsaved": "Career path removed from saved"
+      },
+      "editTitle": "Edit career path",
+      "editSubtitle": "Changes are saved as you edit. Return to Saved Career Paths when you are done.",
+      "backToList": "Back to saved career paths",
+      "unsaveDialog": {
+        "title": "Remove saved career path?",
+        "message": "This will remove this path from your saved career paths. You can save it again later from Career Puzzle.",
+        "confirm": "Remove",
+        "nameLabel": "Path:"
       }
     }
   },
@@ -382,6 +379,8 @@
     "detailPageTitle": "Role Details",
     "subtitle": "Search for a role you have in mind. We will suggest matching occupations from our database, including alternative titles you may have meant.",
     "searchPlaceholder": "Search roles by title or synonym…",
+    "domainFilterLabel": "Domain",
+    "domainFilterPlaceholder": "All domains",
     "minLengthHint": "Type at least 2 characters to search.",
     "resultsFound": "{{count}} possible role found",
     "resultsFound_other": "{{count}} possible roles found",
@@ -399,12 +398,385 @@
     },
     "actions": {
       "backToSearch": "Back to role search",
-      "viewSavedDetail": "Open saved career step"
+      "clearSearch": "Clear search"
     },
     "errors": {
       "searchFailed": "Role search failed. Please try again.",
       "roleNotFound": "Role not found.",
       "loadFailed": "Failed to load role details. Please try again."
+    }
+  },
+  "careerPathPlanning": {
+    "pageTitleQuestionnaire": "Plan your path",
+    "pageTitleOverview": "Your personal path to this role",
+    "actions": {
+      "back": "Back",
+      "backToRanking": "Back to ranking",
+      "planPath": "Plan path"
+    },
+    "errors": {
+      "missingStep": "No role was specified for path planning.",
+      "missingRole": "Role data is missing. Please start again from your ranking."
+    },
+    "questionnaire": {
+      "intro": "Answer {{count}} short questions — then you'll instantly receive your personal career path.",
+      "progress": "Question {{current}} of {{total}}",
+      "generating": "Creating your personal path…",
+      "back": "Back",
+      "errors": {
+        "noPlan": "No path plan was returned. Please try again.",
+        "generateFailed": "Could not create your path plan. Please try again.",
+        "loadFailed": "Could not load the questionnaire. Please try again."
+      },
+      "shared": {
+        "boolean": {
+          "yes": "Yes",
+          "maybe": "Maybe",
+          "no": "No"
+        }
+      },
+      "audiences": {
+        "pupil": {
+          "questions": {
+            "educationPreference": {
+              "short": "After school",
+              "question": "How would you like to continue after school?",
+              "options": {
+                "work": "I want to start working as soon as possible.",
+                "school": "I want to continue in school.",
+                "unsure": "I'm not sure yet."
+              }
+            },
+            "apprenticeship": {
+              "short": "Apprenticeship",
+              "question": "Could you imagine doing an apprenticeship?",
+              "options": {
+                "yes": "Yes",
+                "maybe": "Maybe",
+                "no": "No"
+              }
+            },
+            "university": {
+              "short": "University",
+              "question": "Could you imagine studying later?",
+              "options": {
+                "yes": "Yes",
+                "maybe": "Maybe",
+                "no": "No"
+              }
+            }
+          }
+        },
+        "student": {
+          "questions": {
+            "studyPace": {
+              "short": "Study pace",
+              "question": "How do you want to approach your studies or training?",
+              "options": {
+                "finish_first": "I want to finish my studies/training first.",
+                "start_sooner": "I want to start working in this role sooner.",
+                "unsure": "I'm not sure yet."
+              }
+            },
+            "extraQualification": {
+              "short": "Extra qualification",
+              "question": "Would an extra or dual qualification help you get there?",
+              "options": {
+                "yes": "Yes",
+                "maybe": "Maybe",
+                "no": "No"
+              }
+            }
+          }
+        },
+        "career": {
+          "questions": {
+            "timeline": {
+              "short": "Timeline",
+              "question": "How soon do you want to move into this role?",
+              "options": {
+                "asap": "As soon as possible",
+                "one_to_two_years": "Within about 1–2 years",
+                "exploring": "I'm still exploring"
+              }
+            },
+            "gapClosing": {
+              "short": "Closing gaps",
+              "question": "How do you prefer to close skill gaps for this role?",
+              "options": {
+                "on_the_job": "Learn on the job",
+                "courses": "Targeted courses or training",
+                "further_degree": "A further degree",
+                "unsure": "I'm not sure yet"
+              }
+            },
+            "moveType": {
+              "short": "Type of move",
+              "question": "What kind of move is this for you?",
+              "options": {
+                "deepen": "Going deeper in my current field",
+                "pivot": "An adjacent pivot into something new",
+                "leadership": "A step toward leadership"
+              }
+            }
+          }
+        },
+        "senior": {
+          "questions": {
+            "scope": {
+              "short": "Scope",
+              "question": "What scope are you aiming for in this role?",
+              "options": {
+                "ic": "Expert / individual-contributor track",
+                "leadership": "Leadership track",
+                "hybrid": "A mix of expert and leadership work"
+              }
+            },
+            "changePace": {
+              "short": "Pace",
+              "question": "How quickly do you want this change to happen?",
+              "options": {
+                "gradual": "Gradually, in steps",
+                "decisive": "Decisively / sooner",
+                "exploring": "I'm still exploring"
+              }
+            },
+            "constraints": {
+              "short": "Constraints",
+              "question": "What constraints matter most for this move?",
+              "options": {
+                "flexible": "I'm flexible",
+                "geography": "Location / region matters",
+                "industry": "Industry matters",
+                "both": "Both location and industry matter"
+              }
+            }
+          }
+        }
+      }
+    },
+    "overview": {
+      "introduction": "Why this suits you",
+      "whyThisPath": "Why this path fits",
+      "keySkills": "Skills to build",
+      "alternatives": "Alternative options",
+      "recommendedPath": "Recommended path",
+      "pathsCarousel": {
+        "slide": "Path {{current}} of {{total}}: {{title}}",
+        "dots": "Choose a path",
+        "goToSlide": "Go to path {{index}}: {{title}}"
+      },
+      "pros": "Advantages",
+      "cons": "Trade-offs",
+      "adjustAnswers": {
+        "recalculate": "Recalculate plan",
+        "recalculating": "Recalculating…",
+        "loadFailed": "Could not load your answers. Please refresh and try again."
+      }
+    }
+  },
+  "careerPuzzle": {
+    "menuLabel": "PuzzlePATH",
+    "pageTitle": "PuzzlePATH",
+    "pageSubtitle": "Build your own future step by step. Start from where you are and decide for yourself what comes next.",
+    "profileGate": {
+      "title": "Profile completion required",
+      "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to build your career path puzzle."
+    },
+    "emptySlot": "Your next step",
+    "emptySlotAria": "Open next step choices",
+    "dropHere": "Drop here to add",
+    "dropToRemove": "Drop here to remove",
+    "dropToRemoveHint": "Release to remove the last piece from your path.",
+    "chooseNext": "Your next step",
+    "selectCategoryHint": "Choose a category to see matching next steps.",
+    "noNextSteps": "No further pieces from here yet — try undoing a step.",
+    "pathCompleteTitle": "Path complete",
+    "pathCompleteHint": "You planned {{count}} steps ahead. Save this path or undo a step to change it.",
+    "locked": "From your profile",
+    "pathActions": "Path",
+    "undo": "Undo",
+    "favorite": "Save",
+    "unfavorite": "Saved",
+    "saveDialog": {
+      "title": "Save Career Path",
+      "nameLabel": "Path Name",
+      "hint": "Saving stores this path and starts a new one from your locked profile steps. You can reopen the saved path anytime from Saved Career Paths."
+    },
+    "messages": {
+      "savedSuccessfully": "Career path saved — you can start a new path now",
+      "saveFailed": "Could not save this career path",
+      "unsavedSuccessfully": "Career path removed from saved",
+      "openSavedPaths": "Open saved career paths",
+      "pieceUpdated": "Puzzle piece updated",
+      "pieceUpdateFailed": "Could not update this puzzle piece",
+      "pieceCreated": "Profile step added",
+      "pieceCreateFailed": "Could not add this profile step",
+      "pieceDeleted": "Profile step removed",
+      "pieceDeleteFailed": "Could not remove this profile step",
+      "stepRemoved": "Step removed from path",
+      "stepRemoveFailed": "Could not remove this step from the path"
+    },
+    "addProfileStep": "Add profile step",
+    "editDialog": {
+      "title": "Edit puzzle piece",
+      "createTitle": "Add profile step",
+      "editAria": "Edit puzzle piece",
+      "closeAria": "Close edit dialog",
+      "delete": "Delete",
+      "deleteDialog": {
+        "title": "Delete profile step?",
+        "message": "Remove this profile step from your path? You must keep at least two profile steps.",
+        "confirm": "Delete"
+      },
+      "categoryLabel": "Category",
+      "titleLabel": "Title",
+      "descriptionLabel": "Description",
+      "roleSearchLabel": "Search role",
+      "roleSearchPlaceholder": "Search roles by title or synonym…",
+      "roleSearchHint": "Selecting a role fills the title and description.",
+      "endDateLabel": "End date",
+      "endDateHint": "Optional",
+      "endDateDisplay": "Until {{date}}",
+      "monthPlaceholder": "Month",
+      "yearPlaceholder": "Year",
+      "errors": {
+        "categoryRequired": "Please select a category",
+        "titleRequired": "Please enter a title",
+        "endDateIncomplete": "Please select both month and year, or leave both empty",
+        "roleLookupFailed": "Could not load this role. Please try another one."
+      },
+      "months": {
+        "1": "January",
+        "2": "February",
+        "3": "March",
+        "4": "April",
+        "5": "May",
+        "6": "June",
+        "7": "July",
+        "8": "August",
+        "9": "September",
+        "10": "October",
+        "11": "November",
+        "12": "December"
+      }
+    },
+    "loadError": "Could not load your Career Puzzle.",
+    "more": "More",
+    "addToPath": "Add to path",
+    "removeFromPath": "Remove from path",
+    "pieceDetail": "Piece details",
+    "closeDetail": "Close details",
+    "pieceNotFound": "This piece could not be found.",
+    "estimatedDuration": "About {{months}} months",
+    "escoLinked": "Linked occupation",
+    "coreSkills": "Core skills: {{skills}}",
+    "categories": {
+      "school": "School education",
+      "apprenticeship": "Apprenticeship",
+      "university": "University",
+      "further_education": "Further education",
+      "occupation": "Occupation"
+    }
+  },
+  "careerIdentity": {
+    "menuLabel": "PuzzleYOU",
+    "pageTitle": "PuzzleYOU",
+    "pageSubtitle": "Your professional life is a puzzle. Every experience adds new insights to the picture, helping you get to know yourself better.",
+    "profileGate": {
+      "title": "Profile completion required",
+      "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to unlock your career identity puzzle."
+    },
+    "loadError": "Could not load your Career Identity.",
+    "closeDetail": "Close details",
+    "emptyGraph": "Your puzzle pieces appear here once you fill in your profile and explore careers. Let's go!",
+    "confidence": {
+      "strong": "Becoming clearer",
+      "emerging": "Taking shape",
+      "early": "Just emerging"
+    },
+    "whyWeThinkThis": "Why do we think this?",
+    "noEvidenceYet": "No evidence for this trait yet. Explore, reflect, or upload your CV to grow clarity.",
+    "vote": {
+      "title": "Does this fit you?",
+      "saveError": "Could not save your feedback.",
+      "dropConfirmTitle": "Remove this puzzle piece?",
+      "dropConfirmMessage": "This rating will remove “{{name}}” from your Career Identity puzzle.",
+      "dropConfirmAction": "Remove piece",
+      "dropNoticeTitle": "Puzzle piece removed",
+      "dropNoticeMessage": "“{{name}}” was removed from your Career Identity puzzle based on your rating.",
+      "dropNoticeAction": "OK",
+      "actions": {
+        "confirm": "Yes, a lot",
+        "unsure": "Not sure",
+        "reject": "Not really"
+      },
+      "tooltips": {
+        "confirm": "Confirm this trait — it gently strengthens this puzzle piece.",
+        "unsure": "Stay undecided — we keep collecting evidence from how you use the app.",
+        "reject": "Say this does not fit — it gently weakens this puzzle piece."
+      }
+    },
+    "voteFlow": {
+      "title": "Rate your identity puzzle",
+      "intro": "Review this puzzle piece and tell us how well it fits you.",
+      "doneTitle": "Puzzle reviewed",
+      "doneBody": "You have rated every piece of your identity puzzle. Your feedback helps sharpen your Career Identity.",
+      "empty": "Every piece of your identity puzzle already has your feedback. Open a piece anytime to change a rating.",
+      "close": "Close",
+      "done": "Done"
+    },
+    "categories": {
+      "values": "Values",
+      "interests": "Interests",
+      "strengths": "Strengths",
+      "work_style": "Work style",
+      "thinking_style": "Thinking style",
+      "motivation": "Motivation",
+      "environment": "Environment",
+      "communication": "Communication",
+      "leadership": "Leadership",
+      "problem_solving": "Problem solving",
+      "learning": "Learning",
+      "social_orientation": "Social orientation"
+    },
+    "progress": {
+      "title": "Want to discover new careers?",
+      "ready": "You have changed enough. We are preparing new role suggestions for you.",
+      "preparing": "We looked for new roles but could not find a fresh match yet. Keep exploring — we will try again as your identity keeps changing.",
+      "preparingShort": "Preparing…",
+      "updating": "Updating your progress after the latest profile changes…",
+      "updatingShort": "Updating…",
+      "delivered": "New role suggestions are ready. Rank them to continue — progress resets after you finish.",
+      "percentLabel": "{{percent}}%",
+      "helpText": "Your activities in the app update your puzzle. That unlocks new career suggestions. What would you like to do next?",
+      "completeSimulationFirst": "Complete your career simulation first. After that, your activities in the app can unlock new careers to discover.",
+      "ctaCompleteSimulation": "Go to simulation",
+      "ctaUpdateProfile": "Update profile",
+      "ctaPuzzlePath": "Puzzle my path",
+      "ctaRateIdentity": "Rate my identity puzzle",
+      "ctaRateIdentityDisabled": "All puzzle pieces already have your feedback.",
+      "reasonsTitle": "Currently moving the bar"
+    },
+    "exploration": {
+      "discoveredBody_one": "We discovered {{count}} new career that matches you.",
+      "discoveredBody_other": "We discovered {{count}} new careers that match you.",
+      "cta": "Discover now",
+      "ctaContinue": "Continue ranking",
+      "continueBody": "You rated {{evaluated}} of {{total}} roles. Continue where you left off.",
+      "discoverTitle": "New careers for you",
+      "discoverSubtitle": "Based on how your Career Identity just changed, these roles are newly worth exploring.",
+      "roleIntro": "Review this role and choose Keep, Skip, or Dislike — just like after a simulation.",
+      "preparingRoles": "Preparing your new role suggestions…",
+      "rankingTitle": "Your ranking",
+      "rankingDescription": "Drag roles between Keep, Skip, and Dislike to refine your ranking.",
+      "rankCategoryLabel": "Suggested roles",
+      "loadError": "Could not load this exploration.",
+      "empty": "No new careers in this exploration.",
+      "untitledRole": "Untitled role",
+      "roleMeta": "{{domain}}",
+      "close": "Close",
+      "done": "Done"
     }
   }
 }

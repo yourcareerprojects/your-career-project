@@ -37,9 +37,18 @@
     "worker:cv-extraction": "node src/workers/cvExtractionWorker.js",
     "rebuild:role-embeddings": "node scripts/rebuildRoleEmbeddings.js",
     "rebuild:role-embeddings:dry": "node scripts/rebuildRoleEmbeddings.js --dry-run",
+    "build:identity-trait-embeddings": "node scripts/buildIdentityTraitEmbeddings.js",
+    "build:identity-trait-embeddings:dry": "node scripts/buildIdentityTraitEmbeddings.js --dry-run",
+    "build:identity-trait-embeddings:force": "node scripts/buildIdentityTraitEmbeddings.js --force",
+    "playground:semantic-traits": "node scripts/semanticTraitPlayground.js --examples",
+    "playground:semantic-traits:list": "node scripts/semanticTraitPlayground.js --list-examples",
     "check:i18n-integrity": "node scripts/check-i18n-integrity.js",
     "migrate:skills": "node scripts/migrateSkills.js",
     "migrate:skills:dry": "node scripts/migrateSkills.js --dry-run --limit=100",
+    "migrate:occupation-domains": "node scripts/migrateOccupationDomains.js",
+    "migrate:occupation-domains:dry": "node scripts/migrateOccupationDomains.js --dry-run --limit=100",
+    "classify:occupation-domains": "node scripts/classifyOccupationDomains.js",
+    "classify:occupation-domains:dry": "node scripts/classifyOccupationDomains.js --dry-run --limit=20",
     "skills:find-bad": "node scripts/findBadSkills.js",
     "skills:generate-suggestions": "node scripts/generateSkillSuggestions.js",
     "skills:apply-suggestions": "node scripts/applySkillTranslations.js",
@@ -155,6 +164,23 @@
     "testMatch": [
       "**/tests/**/*.test.js"
     ],
+    "transform": {
+      "^.+[\\\\/]src[\\\\/]client[\\\\/].+\\.jsx?$": [
+        "babel-jest",
+        {
+          "presets": [
+            [
+              "@babel/preset-env",
+              {
+                "targets": {
+                  "node": "current"
+                }
+              }
+            ]
+          ]
+        }
+      ]
+    },
     "verbose": true,
     "forceExit": true,
     "clearMocks": true,

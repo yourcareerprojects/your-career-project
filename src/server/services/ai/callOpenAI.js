@@ -30,11 +30,16 @@ const {
 } = require('../../utils/httpTimeouts');
 
 /**
- * Thin OpenAI-compatible chat completions wrapper (plain text; no JSON mode).
- * @param {{ model: string, temperature?: number, messages: { role: string, content: string }[] }} params
+ * Thin OpenAI-compatible chat completions wrapper.
+ * @param {{
+ *   model: string,
+ *   temperature?: number,
+ *   messages: { role: string, content: string }[],
+ *   responseFormat?: { type: string },
+ * }} params
  * @returns {Promise<{ text: string }>}
  */
-async function callOpenAI({ model, temperature, messages }) {
+async function callOpenAI({ model, temperature, messages, responseFormat }) {
   const apiKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not set. Configure it in .env.');
@@ -47,6 +52,9 @@ async function callOpenAI({ model, temperature, messages }) {
   };
   if (typeof temperature === 'number') {
     body.temperature = temperature;
+  }
+  if (responseFormat && typeof responseFormat === 'object' && responseFormat.type) {
+    body.response_format = responseFormat;
   }
 
   const started = Date.now();

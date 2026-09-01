@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ThemeModeProvider } from '../contexts/ThemeModeContext';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
@@ -12,16 +12,17 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import NotFound from './pages/NotFound';
 import SimulationResults from './pages/SimulationResults';
-import SavedSimulations from './pages/SavedSimulations';
-import SavedSimulationDetails from './pages/SavedSimulationDetails';
-import SavedSimulationCareerStepDetails from './pages/SavedSimulationCareerStepDetails';
-import SavedCareerSteps from './pages/SavedCareerSteps';
-import SavedCareerStepDetails from './pages/SavedCareerStepDetails';
+import SavedCareerPaths from './pages/SavedCareerPaths';
+import SavedCareerPathEditPage from './pages/SavedCareerPathEditPage';
 import RoleSearch from './pages/RoleSearch';
 import RoleDetails from './pages/RoleDetails';
 import SavedSearchHub from './pages/SavedSearchHub';
+import HistoryPage from './pages/HistoryPage';
 import Settings from './pages/Settings';
 import SimulationResultDetails from './pages/SimulationResultDetails';
+import CareerPathPlanning from './pages/CareerPathPlanning';
+import CareerPuzzlePage from './pages/CareerPuzzlePage';
+import CareerIdentityPage from './pages/CareerIdentityPage';
 import SharedResult from './pages/SharedResult';
 import VerifyEmail from './pages/VerifyEmail';
 import CheckEmail from './pages/CheckEmail';
@@ -35,6 +36,12 @@ const Profile = lazy(() => import('./pages/Profile'));
 const RouteLoadingFallback = () => {
   const { t } = useTranslation('common');
   return <div>{t('app.loading')}</div>;
+};
+
+/** Preserve query/hash when renaming page paths (e.g. ?rateTraits=1). */
+const LegacyPathRedirect = ({ to }) => {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 };
 
 // Protected Route component
@@ -119,7 +126,7 @@ const ProtectedOutlet = () => {
 
 /** Career simulation UX requires an account; guests may only use Home (plus login/register). */
 const AuthenticatedSimulationShell = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const { t } = useTranslation('common');
 
   if (loading) {
@@ -128,6 +135,10 @@ const AuthenticatedSimulationShell = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  if (!user?.isVerified && !user?.emailVerified) {
+    return <Navigate to="/check-email" replace />;
   }
 
   return children;
@@ -166,7 +177,7 @@ const App = () => {
                 }
               />
               <Route
-                path="/simulation/results"
+                path="/puzzle-job"
                 element={
                   <AuthenticatedSimulationShell>
                     <SimulationResults />
@@ -174,10 +185,22 @@ const App = () => {
                 }
               />
               <Route
+                path="/simulation/results"
+                element={<LegacyPathRedirect to="/puzzle-job" />}
+              />
+              <Route
                 path="/simulation/result/:resultId"
                 element={
                   <AuthenticatedSimulationShell>
                     <SimulationResultDetails />
+                  </AuthenticatedSimulationShell>
+                }
+              />
+              <Route
+                path="/simulation/path/:stepId"
+                element={
+                  <AuthenticatedSimulationShell>
+                    <CareerPathPlanning />
                   </AuthenticatedSimulationShell>
                 }
               />
@@ -195,20 +218,40 @@ const App = () => {
                 </Route>
               </Route>
 
+              {/* Role search & hub: auth + verified email (no profile-completion gate) */}
+              <Route element={<ProtectedOutlet />}>
+                <Route element={<VerifiedEmailOutlet />}>
+                  <Route path="/saved-search" element={<SavedSearchHub />} />
+                  <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/explore-roles" element={<RoleSearch />} />
+                  <Route path="/role/:escoId" element={<RoleDetails />} />
+                  <Route path="/puzzle-path" element={<CareerPuzzlePage />} />
+                  <Route path="/career-puzzle" element={<LegacyPathRedirect to="/puzzle-path" />} />
+                  <Route path="/puzzle-you" element={<CareerIdentityPage />} />
+                  <Route path="/career-identity" element={<LegacyPathRedirect to="/puzzle-you" />} />
+                </Route>
+              </Route>
+
               {/* Saved content: auth + verified email + profile completion gate */}
               <Route element={<ProtectedOutlet />}>
                 <Route element={<ProfileCompletionOutlet />}>
-                  <Route path="/simulations" element={<SavedSimulations />} />
-                  <Route path="/simulation/:simulationId" element={<SavedSimulationDetails />} />
+                  <Route path="/simulations" element={<LegacyPathRedirect to="/puzzle-job" />} />
+                  <Route path="/simulation/:simulationId" element={<LegacyPathRedirect to="/puzzle-job" />} />
                   <Route
                     path="/saved-simulation/:simulationId/career-step/:stepId"
-                    element={<SavedSimulationCareerStepDetails />}
+                    element={<LegacyPathRedirect to="/puzzle-job" />}
                   />
-                  <Route path="/saved-search" element={<SavedSearchHub />} />
-                  <Route path="/explore-roles" element={<RoleSearch />} />
-                  <Route path="/role/:escoId" element={<RoleDetails />} />
-                  <Route path="/saved-steps" element={<SavedCareerSteps />} />
-                  <Route path="/saved-career-step/:stepId" element={<SavedCareerStepDetails />} />
+                  <Route
+                    path="/saved-simulation/:simulationId/path/:stepId"
+                    element={<LegacyPathRedirect to="/puzzle-job" />}
+                  />
+                  <Route path="/saved-steps" element={<LegacyPathRedirect to="/saved-search" />} />
+                  <Route
+                    path="/saved-career-step/:stepId"
+                    element={<LegacyPathRedirect to="/saved-search" />}
+                  />
+                  <Route path="/saved-paths" element={<SavedCareerPaths />} />
+                  <Route path="/saved-paths/:pathId" element={<SavedCareerPathEditPage />} />
                 </Route>
               </Route>
 

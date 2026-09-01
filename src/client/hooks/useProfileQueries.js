@@ -20,28 +20,10 @@ export const PROFILE_QUERY_STALE_TIME_MS = 10 * 60 * 1000;
 export const PROFILE_QUERY_CACHE_TIME_MS = 30 * 60 * 1000;
 /** List payload for Saved Simulations page + simulation hub drawer (GET /api/profile/simulation/saved). */
 export const savedSimulationsListQueryKey = ['profile', 'simulation', 'saved', 'list'];
-/** List payload for Saved Career Steps (GET /api/profile/saved-career-steps). */
-export const savedCareerStepsListQueryKey = ['profile', 'saved-career-steps', 'list'];
-
-/**
- * Full query key (must match `useSavedCareerStepsListQuery` — last segment is locale).
- * @param {string} [lang] – optional override; defaults to i18n current language
- */
-export function getSavedCareerStepsListQueryKeyFull(lang) {
-  const resolved = lang != null && String(lang).trim() !== ''
-    ? String(lang).toLowerCase().split('-')[0] || DEFAULT_UI_LANGUAGE
-    : baseUILanguage();
-  return [...savedCareerStepsListQueryKey, resolved];
-}
-
-/**
- * Set list cache for the active language (fixes saves “not sticking” and empty saved-steps list).
- * @param {unknown} data – array or function `(prev) => next`
- * @param {string} [lang] – when updating from a callback outside i18n (rare)
- */
-export function setSavedCareerStepsListQueryData(data, lang) {
-  queryClient.setQueryData(getSavedCareerStepsListQueryKeyFull(lang), data);
-}
+/** Chronological History timeline (GET /api/profile/history). */
+export const userHistoryQueryKey = ['profile', 'history'];
+/** Persisted career path plans, one per role escoId (GET /api/profile/career-path-plans). */
+export const careerPathPlansQueryKey = ['profile', 'career-path-plans', 'list'];
 
 /** Full profile document (GET /api/profile). Heavy on the server — keep behind React Query + staleTime. */
 export function getProfileFullQueryKeyFull(lang) {
@@ -292,34 +274,69 @@ export function useSavedSimulationsListQuery(options = {}) {
   });
 }
 
-export async function fetchSavedCareerStepsList() {
+export async function fetchCareerPathPlans() {
   const token = localStorage.getItem('token');
   if (!token) {
     throw new Error('Not authenticated');
   }
-  const lang = baseUILanguage();
-  const response = await fetch(`/api/profile/saved-career-steps?lang=${encodeURIComponent(lang)}`, {
+  const response = await fetch('/api/profile/career-path-plans', {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!response.ok) {
-    throw new Error('Failed to fetch saved career steps');
+    throw new Error('Failed to fetch career path plans');
   }
   const data = await response.json();
-  if (data.success) {
-    return Array.isArray(data.savedCareerSteps) ? data.savedCareerSteps : [];
-  }
-  return [];
+  return Array.isArray(data.careerPathPlans) ? data.careerPathPlans : [];
 }
 
-export function useSavedCareerStepsListQuery(options = {}) {
+/** All persisted career path plans for the user (one per role escoId). */
+export function useCareerPathPlansQuery(options = {}) {
   const { enabled = true } = options;
-  const lang = baseUILanguage();
-  return useQuery([...savedCareerStepsListQueryKey, lang], fetchSavedCareerStepsList, {
+  return useQuery(careerPathPlansQueryKey, fetchCareerPathPlans, {
     enabled,
     staleTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false
   });
+}
+
+export async function fetchUserHistory() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  const lang = baseUILanguage();
+  const response = await fetch(`/api/profile/history?lang=${encodeURIComponent(lang)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch history');
+  }
+  return response.json();
+}
+
+export function useUserHistoryQuery(options = {}) {
+  const { enabled = true } = options;
+  const lang = baseUILanguage();
+  return useQuery([...userHistoryQueryKey, lang], fetchUserHistory, {
+    enabled,
+    staleTime: 60 * 1000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function invalidateUserHistoryQuery() {
+  return queryClient.invalidateQueries(userHistoryQueryKey);
+}
+
+/** @param {unknown} data – array or function `(prev) => next` */
+export function setCareerPathPlansQueryData(data) {
+  queryClient.setQueryData(careerPathPlansQueryKey, data);
+}
+
+export function invalidateCareerPathPlansQuery() {
+  return queryClient.invalidateQueries(careerPathPlansQueryKey);
 }
 
 /** After Profile page loads completion via axios, keep React Query cache in sync. */
@@ -336,12 +353,35 @@ export function invalidateLastSimulationQuery() {
   return queryClient.invalidateQueries(lastSimulationQueryKey);
 }
 
-export function invalidateSavedSimulationsListQuery() {
-  return queryClient.invalidateQueries(savedSimulationsListQueryKey);
+/**
+ * Keep React Query in sync when ranking progress is written to the server/session.
+ * Patches every language variant of the last-simulation query so gated UI (e.g. discovery
+ * card) unlocks without a full page reload.
+ * @param {object | null | undefined} evaluationFlow
+ */
+export function patchLastSimulationQueryEvaluationFlow(evaluationFlow) {
+  if (!evaluationFlow || typeof evaluationFlow !== 'object') return;
+
+  for (const lang of SUPPORTED_PROFILE_CACHE_LANGS) {
+    const key = [...lastSimulationQueryKey, lang];
+    queryClient.setQueryData(key, (prev) => {
+      if (!prev || typeof prev !== 'object') return prev;
+      const prevResults = prev.results && typeof prev.results === 'object'
+        ? prev.results
+        : {};
+      return {
+        ...prev,
+        results: {
+          ...prevResults,
+          evaluationFlow,
+        },
+      };
+    });
+  }
 }
 
-export function invalidateSavedCareerStepsListQuery() {
-  return queryClient.invalidateQueries(savedCareerStepsListQueryKey);
+export function invalidateSavedSimulationsListQuery() {
+  return queryClient.invalidateQueries(savedSimulationsListQueryKey);
 }
 
 export function invalidateFullProfileQuery() {

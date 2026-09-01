@@ -984,14 +984,30 @@ async function runCareerSimulationImpl(reqLike, resLike, deps, runtimeOpts = {})
     };
 
     // Save simulation results to user
+    const simulationCompletedAt = new Date();
     await User.findByIdAndUpdate(userId, {
       $set: {
         lastSimulationResult: {
           results,
-          date: new Date()
+          date: simulationCompletedAt
         }
       }
     });
+
+    try {
+      const {
+        logUserActivity,
+        maybeRecordFirstSimulation,
+        ACTIVITY_TYPES,
+      } = require('../userHistory/logUserActivity');
+      logUserActivity(userId, {
+        type: ACTIVITY_TYPES.SIMULATION_COMPLETED,
+        occurredAt: simulationCompletedAt,
+      });
+      void maybeRecordFirstSimulation(userId, { occurredAt: simulationCompletedAt });
+    } catch (historyErr) {
+      console.warn('[simulation-engine] history log failed (non-fatal):', historyErr?.message);
+    }
 
     const totalMs = Date.now() - startedAt;
     console.log('[simulation-engine] simulation_completed', {

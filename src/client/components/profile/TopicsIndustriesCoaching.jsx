@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -29,8 +28,14 @@ import { getProfileApiLangQuery } from '../../utils/profileApiLangQuery';
 import IndustrySectorPicker from './IndustrySectorPicker';
 import IndustrySectorChip from './IndustrySectorChip';
 import { normalizeIndustryDomains } from '../../../constants/industries';
-
-const TOPIC_COUNT = 5;
+import {
+  TOPIC_COUNT,
+  formatInterestTopicsAsText,
+  formatTopicsIndustriesAsText,
+  parseInterestTopicsFromText,
+  parseTopicsIndustriesFromText,
+} from '../../utils/topicsIndustriesText';
+import CoachingChatFailureAlert from './CoachingChatFailureAlert';
 
 async function postTopicsIndustriesCoaching({ seniority, messages, lang, token, cvContext }) {
   const res = await fetch(`/api/profile/topics-industries-coaching?${getProfileApiLangQuery()}`, {
@@ -61,34 +66,6 @@ function normalizeListDrafts(drafts, targetCount) {
   return cleaned.slice(0, targetCount);
 }
 
-function formatInterestTopicsAsText(interestTopics = []) {
-  return interestTopics.map((item) => String(item || '').trim()).filter(Boolean).join('\n');
-}
-
-function parseTopicsIndustriesFromText(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return { interestTopics: [], industries: [] };
-  const blocks = raw.split(/\n\s*\n+/).map((block) => block.trim()).filter(Boolean);
-  const parseBlock = (block) => block
-    .split('\n')
-    .map((line) => line.replace(/^\d+\.\s*/, '').trim())
-    .filter(Boolean);
-  if (blocks.length >= 2) {
-    return { interestTopics: parseBlock(blocks[0]), industries: parseBlock(blocks[1]) };
-  }
-  const lines = parseBlock(raw);
-  return { interestTopics: lines.slice(0, TOPIC_COUNT), industries: lines.slice(TOPIC_COUNT) };
-}
-
-/** Identity field stores interest topics only; industries live in structuredUserInfo.domains. */
-function parseInterestTopicsFromText(text) {
-  return parseTopicsIndustriesFromText(text).interestTopics;
-}
-
-function formatTopicsIndustriesAsText({ interestTopics = [], industries = [] } = {}) {
-  return formatInterestTopicsAsText(interestTopics);
-}
-
 /**
  * Summary panel with editable interest topics and industries.
  */
@@ -104,11 +81,20 @@ export function TopicsIndustriesSummaryPanel({
   onConfirm,
   lang = 'en',
   onRestartChat,
+  initialEditing = false,
 }) {
   const { t } = useTranslation('onboarding');
-  const [editing, setEditing] = useState(false);
-  const [topicDrafts, setTopicDrafts] = useState([]);
-  const [industryDrafts, setIndustryDrafts] = useState([]);
+  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [topicDrafts, setTopicDrafts] = useState(() => (
+    initialEditing
+      ? normalizeListDrafts(interestTopics.length > 0 ? interestTopics : [], TOPIC_COUNT)
+      : []
+  ));
+  const [industryDrafts, setIndustryDrafts] = useState(() => (
+    initialEditing
+      ? (industries.length > 0 ? [...industries] : [])
+      : []
+  ));
 
   useEffect(() => {
     onEditingChange?.(editing);
@@ -291,6 +277,7 @@ const TopicsIndustriesCoaching = ({
   initialInterestTopics = [],
   initialIndustries = [],
   initialMessages = [],
+  initialManualEntry = false,
   onChatPersist,
   confirmInFooter = false,
   onSummaryFooterStateChange,
@@ -302,16 +289,19 @@ const TopicsIndustriesCoaching = ({
   const coachingLang = baseUILanguage() || String(i18n.language || 'de').toLowerCase().split('-')[0];
   const hasInitialSummary = initialInterestTopics.length > 0 || initialIndustries.length > 0;
   const hasInitialChat = initialMessages.length > 0;
-  const [phase, setPhase] = useState(hasInitialSummary ? 'summary' : 'chat');
+  const startInManualEntry = Boolean(initialManualEntry) && !hasInitialSummary;
+  const [phase, setPhase] = useState(hasInitialSummary || startInManualEntry ? 'summary' : 'chat');
   const [messages, setMessages] = useState(initialMessages);
   const [interestTopics, setInterestTopics] = useState(initialInterestTopics);
   const [industries, setIndustries] = useState(initialIndustries);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat);
-  const [userEdited, setUserEdited] = useState(false);
-  const [summaryEditing, setSummaryEditing] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(hasInitialSummary || hasInitialChat || startInManualEntry);
+  const [userEdited, setUserEdited] = useState(Boolean(initialManualEntry));
+  const [manualEntry, setManualEntry] = useState(Boolean(initialManualEntry));
+  const [summaryEditing, setSummaryEditing] = useState(startInManualEntry);
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const messagesRef = useRef(messages);
   const bootstrapStartedRef = useRef(false);
   const requestNextRef = useRef(null);
@@ -339,6 +329,7 @@ const TopicsIndustriesCoaching = ({
     interestTopics,
     industries,
     userEdited,
+    manualEntry,
   });
 
   const requestNext = useCallback(async (history) => {
@@ -396,7 +387,7 @@ const TopicsIndustriesCoaching = ({
       bootstrapStartedRef.current = false;
       setLoading(false);
     };
-  }, [bootstrapped, phase]);
+  }, [bootstrapped, phase, bootstrapNonce]);
 
   const handleSend = async () => {
     const answer = draft.trim();
@@ -417,6 +408,28 @@ const TopicsIndustriesCoaching = ({
     }
   };
 
+  const handleRetryCoaching = useCallback(() => {
+    setError('');
+    if (!bootstrapped && messagesRef.current.length === 0) {
+      bootstrapStartedRef.current = false;
+      setBootstrapNonce((n) => n + 1);
+    }
+  }, [bootstrapped]);
+
+  const handleEnterManually = useCallback(() => {
+    setError('');
+    setLoading(false);
+    setDraft('');
+    setMessages([]);
+    setInterestTopics([]);
+    setIndustries([]);
+    setUserEdited(true);
+    setManualEntry(true);
+    setSummaryEditing(true);
+    setBootstrapped(true);
+    setPhase('summary');
+  }, []);
+
   const handleConfirmSummary = useCallback(() => {
     const cleanedTopics = interestTopics.map((item) => String(item || '').trim()).filter(Boolean);
     const cleanedIndustries = industries.map((item) => String(item || '').trim()).filter(Boolean);
@@ -434,8 +447,10 @@ const TopicsIndustriesCoaching = ({
     setDraft('');
     setError('');
     setUserEdited(false);
+    setManualEntry(false);
     setSummaryEditing(false);
     setBootstrapped(false);
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -475,12 +490,15 @@ const TopicsIndustriesCoaching = ({
         }}
         onUserEdited={() => setUserEdited(true)}
         onEditingChange={setSummaryEditing}
-        introText={t('topicsIndustriesCoaching.summary.intro')}
+        introText={manualEntry
+          ? t('coachingFallback.manualIntro')
+          : t('topicsIndustriesCoaching.summary.intro')}
         showConfirm={!confirmInFooter}
         confirmCta={t('topicsIndustriesCoaching.summary.confirmCta')}
         onConfirm={handleConfirmSummary}
         lang={coachingLang}
         onRestartChat={handleRestartChat}
+        initialEditing={manualEntry && interestTopics.length === 0 && industries.length === 0}
       />
     );
   }
@@ -490,11 +508,13 @@ const TopicsIndustriesCoaching = ({
       ...coachingChatRootSx,
       ...(layout === 'page' ? coachingChatPageRootSx : coachingChatDialogRootSx),
     }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <CoachingChatFailureAlert
+        error={error}
+        loading={loading}
+        onDismiss={() => setError('')}
+        onRetry={!bootstrapped ? handleRetryCoaching : undefined}
+        onEnterManually={handleEnterManually}
+      />
       <Box ref={messagesScrollRef} sx={messagesScrollSx}>
         {messages.length === 0 && loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

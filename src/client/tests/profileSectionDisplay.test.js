@@ -15,7 +15,7 @@ jest.mock('../components/profile/WorkEnjoyMostCoaching', () => ({
   formatActivitiesAsText: (items) => items.join('\n'),
 }));
 
-jest.mock('../components/profile/TopicsIndustriesCoaching', () => ({
+jest.mock('../utils/topicsIndustriesText', () => ({
   parseInterestTopicsFromText: (text) => String(text || '').split('\n').map((line) => line.trim()).filter(Boolean),
   formatInterestTopicsAsText: (items) => items.join('\n'),
 }));

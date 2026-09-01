@@ -1,5 +1,6 @@
 /**
- * Canonical industry / economic-sector taxonomy for profile `domains`.
+ * Canonical industry / economic-sector taxonomy for profile `domains` and occupation
+ * `CareerPath.domain` (exactly one domain per occupation).
  * Stored values use English {@link IndustryEntry.label.en}; UI shows localized labels.
  *
  * Keep server normalization, CV extraction, coaching prompts, and client pickers in sync.
@@ -12,44 +13,131 @@ const INDUSTRY_TAXONOMY = [
   {
     id: 'healthcare',
     label: { en: 'Healthcare', de: 'Gesundheitswesen' },
-    aliases: ['health tech', 'healthcare technology', 'medical', 'hospital', 'clinical', 'gesundheit'],
-    patterns: [/\bhospital\b/, /\bclinic\b/, /\bpatient\b/, /\bhealthcare\b/, /\bgesundheit\b/],
+    aliases: [
+      'health tech',
+      'healthcare technology',
+      'medical',
+      'hospital',
+      'clinical',
+      'gesundheit',
+      'MedTech',
+      'medtech',
+      'med tech',
+      'medical devices',
+      'medical device',
+      'digital health',
+    ],
+    patterns: [
+      /\bhospital\b/,
+      /\bclinic\b/,
+      /\bpatient\b/,
+      /\bhealthcare\b/,
+      /\bgesundheit\b/,
+      /\bmedtech\b/,
+      /\bmedical device\b/,
+      /\bdigital health\b/,
+    ],
   },
   {
-    id: 'medtech',
-    label: { en: 'MedTech', de: 'MedTech' },
-    aliases: ['med tech', 'medical devices', 'medical device', 'digital health'],
-    patterns: [/\bmedtech\b/, /\bmedical device\b/, /\bdigital health\b/],
+    id: 'animals_veterinary',
+    label: { en: 'Animals and Veterinary', de: 'Tiere und Veterinärwesen' },
+    aliases: [
+      'animals & veterinary',
+      'animal and veterinary',
+      'veterinary',
+      'veterinary medicine',
+      'veterinary services',
+      'veterinary care',
+      'veterinarian',
+      'animal care',
+      'animal health',
+      'pet care',
+      'tiere',
+      'veterinärwesen',
+      'veterinärmedizin',
+      'tierarzt',
+      'tierärztin',
+      'tiergesundheit',
+      'tierpflege',
+    ],
+    patterns: [
+      /\banimals and veterinary\b/,
+      /\btiere und veterinärwesen\b/,
+      /\bveterinary\b/,
+      /\bveterinar/,
+      /\bveterinär/,
+      /\btierarzt\b/,
+      /\btierärzt/,
+      /\btierpflege\b/,
+      /\btierpfleger/,
+      /\banimal care\b/,
+      /\banimal health\b/,
+      /\bpet care\b/,
+    ],
   },
   {
-    id: 'life_sciences',
-    label: { en: 'Life Sciences', de: 'Life Sciences' },
-    aliases: ['life science', 'biotech', 'biotechnology', 'biosciences'],
-    patterns: [/\blife sciences?\b/, /\bbiotech\b/, /\bbiotechnology\b/],
-  },
-  {
-    id: 'biophysics',
-    label: { en: 'Biophysics', de: 'Biophysik' },
-    aliases: ['biophysics'],
-    patterns: [/\bbiophysics\b/, /\bbiophysik\b/],
-  },
-  {
-    id: 'biology',
-    label: { en: 'Biology', de: 'Biologie' },
-    aliases: ['biological sciences', 'life science research'],
-    patterns: [/\bbiology\b/, /\bbiologie\b/, /\bbiological sciences\b/],
-  },
-  {
-    id: 'physics',
-    label: { en: 'Physics', de: 'Physik' },
-    aliases: ['physical sciences'],
-    patterns: [/\bphysics\b/, /\bphysik\b/, /\bphysical sciences\b/],
-  },
-  {
-    id: 'chemistry_science',
-    label: { en: 'Chemistry', de: 'Chemiewissenschaften' },
-    aliases: ['chemical sciences', 'science of chemistry'],
-    patterns: [/\bchemiewissenschaften\b/, /\bchemical sciences\b/],
+    id: 'natural_sciences',
+    label: { en: 'Natural Sciences', de: 'Naturwissenschaften' },
+    aliases: [
+      'biology',
+      'biologie',
+      'biological sciences',
+      'life sciences',
+      'life science',
+      'life science research',
+      'biotech',
+      'biotechnology',
+      'biosciences',
+      'physics',
+      'physik',
+      'physical sciences',
+      'biophysics',
+      'biophysik',
+      'chemistry',
+      'chemiewissenschaften',
+      'chemical sciences',
+      'science of chemistry',
+      'chemicals',
+      'chemie',
+      'chemical industry',
+      'specialty chemicals',
+      'earth sciences',
+      'geowissenschaften',
+      'geosciences',
+      'geology',
+      'mathematics',
+      'mathematik',
+      'math',
+      'applied mathematics',
+      'natural science',
+      'naturwissenschaft',
+    ],
+    patterns: [
+      /\bnatural sciences?\b/,
+      /\bnaturwissenschaften?\b/,
+      /\bbiology\b/,
+      /\bbiologie\b/,
+      /\bbiological sciences\b/,
+      /\blife sciences?\b/,
+      /\bbiotech\b/,
+      /\bbiotechnology\b/,
+      /\bphysics\b/,
+      /\bphysik\b/,
+      /\bphysical sciences\b/,
+      /\bbiophysics\b/,
+      /\bbiophysik\b/,
+      /\bchemistry\b/,
+      /\bchemiewissenschaften\b/,
+      /\bchemical sciences\b/,
+      /\bchemicals?\b/,
+      /\bchemie\b/,
+      /\bearth sciences?\b/,
+      /\bgeowissenschaften\b/,
+      /\bgeosciences\b/,
+      /\bgeology\b/,
+      /\bmathematics\b/,
+      /\bmathematik\b/,
+    ],
   },
   {
     id: 'environmental_science',
@@ -58,16 +146,25 @@ const INDUSTRY_TAXONOMY = [
     patterns: [/\benvironmental science\b/, /\bumweltwissenschaften\b/],
   },
   {
-    id: 'earth_sciences',
-    label: { en: 'Earth Sciences', de: 'Geowissenschaften' },
-    aliases: ['geosciences', 'geology'],
-    patterns: [/\bearth sciences?\b/, /\bgeowissenschaften\b/, /\bgeosciences\b/],
-  },
-  {
-    id: 'mathematics',
-    label: { en: 'Mathematics', de: 'Mathematik' },
-    aliases: ['math', 'applied mathematics'],
-    patterns: [/\bmathematics\b/, /\bmathematik\b/],
+    id: 'social_language_sciences',
+    label: { en: 'Social and Language Sciences', de: 'Sozial- und Sprachwissenschaften' },
+    aliases: [
+      'social sciences',
+      'language sciences',
+      'linguistics',
+      'sozialwissenschaften',
+      'sprachwissenschaften',
+      'sozial und sprachwissenschaften',
+    ],
+    patterns: [
+      /\bsocial and language sciences\b/,
+      /\bsocial sciences\b/,
+      /\blanguage sciences\b/,
+      /\blinguistics\b/,
+      /\bsozial-?\s*und\s*sprachwissenschaften\b/,
+      /\bsozialwissenschaften\b/,
+      /\bsprachwissenschaften\b/,
+    ],
   },
   {
     id: 'pharmaceuticals',
@@ -80,6 +177,12 @@ const INDUSTRY_TAXONOMY = [
     label: { en: 'Finance', de: 'Finanzwesen' },
     aliases: ['financial services', 'fintech', 'banking', 'capital markets'],
     patterns: [/\bfintech\b/, /\bbanking\b/, /\bfinance\b/, /\bfinancial services\b/],
+  },
+  {
+    id: 'economy',
+    label: { en: 'Economy', de: 'Wirtschaft' },
+    aliases: ['economics', 'economic sector', 'wirtschaftswissenschaften', 'volkswirtschaft', 'volkswirtschaftslehre'],
+    patterns: [/\beconomy\b/, /\beconomics\b/, /\bwirtschaft\b/, /\bvolkswirtschaft/, /\bwirtschaftswissenschaft/],
   },
   {
     id: 'insurance',
@@ -107,9 +210,29 @@ const INDUSTRY_TAXONOMY = [
   },
   {
     id: 'ecommerce',
-    label: { en: 'E-commerce', de: 'E-Commerce' },
-    aliases: ['e commerce', 'ecommerce', 'online retail', 'digital commerce'],
-    patterns: [/\be-?commerce\b/, /\bonline retail\b/, /\bmarketplace\b/],
+    label: { en: 'Sales and Customer Service', de: 'Vertrieb und Kundenservice' },
+    aliases: [
+      'e-commerce',
+      'e commerce',
+      'ecommerce',
+      'online retail',
+      'digital commerce',
+      'sales',
+      'vertrieb',
+      'customer service',
+      'kundenservice',
+      'sales & customer service',
+      'vertrieb & kundenservice',
+    ],
+    patterns: [
+      /\bsales and customer service\b/,
+      /\bvertrieb und kundenservice\b/,
+      /\be-?commerce\b/,
+      /\bonline retail\b/,
+      /\bmarketplace\b/,
+      /\bkundenservice\b/,
+      /\bvertrieb\b/,
+    ],
   },
   {
     id: 'retail',
@@ -126,8 +249,8 @@ const INDUSTRY_TAXONOMY = [
   {
     id: 'automotive',
     label: { en: 'Automotive', de: 'Automobil' },
-    aliases: ['auto industry', 'mobility automotive'],
-    patterns: [/\bautomotive\b/, /\bautomobil\b/],
+    aliases: ['auto industry', 'mobility automotive', 'automotive trades', 'kfz-handwerk', 'automotive repair', 'kfz handwerk', 'kfz-mechatroniker', 'car mechanic', 'karosseriebauer'],
+    patterns: [/\bautomotive\b/, /\bautomobil\b/, /\bautomotive trades\b/, /\bkfz-handwerk\b/, /\bkfz handwerk\b/, /\bkfz mechatroniker\b/, /\bkarosseriebauer\b/, /\bcar mechanic\b/],
   },
   {
     id: 'aerospace',
@@ -162,32 +285,54 @@ const INDUSTRY_TAXONOMY = [
   {
     id: 'food_beverage',
     label: { en: 'Food & Beverage', de: 'Lebensmittel & Getränke' },
-    aliases: ['food industry', 'fmcg', 'consumer goods'],
-    patterns: [/\bfood and beverage\b/, /\bfmcg\b/, /\bconsumer goods\b/],
-  },
-  {
-    id: 'chemicals',
-    label: { en: 'Chemicals', de: 'Chemie' },
-    aliases: ['chemical industry', 'specialty chemicals'],
-    patterns: [/\bchemicals?\b/, /\bchemie\b/],
+    aliases: ['food industry', 'fmcg', 'consumer goods', 'food trades', 'lebensmittelhandwerk'],
+    patterns: [/\bfood and beverage\b/, /\bfmcg\b/, /\bconsumer goods\b/, /\bfood trades\b/, /\blebensmittelhandwerk\b/],
   },
   {
     id: 'mining_metals',
-    label: { en: 'Mining & Metals', de: 'Bergbau & Metalle' },
-    aliases: ['mining', 'metals', 'raw materials'],
+    label: { en: 'Mining', de: 'Bergbau' },
+    aliases: ['mining & metals', 'bergbau & metalle', 'metals', 'raw materials'],
     patterns: [/\bmining\b/, /\bmetals\b/, /\bbergbau\b/],
   },
   {
     id: 'construction',
     label: { en: 'Construction', de: 'Bauwesen' },
-    aliases: ['building industry', 'civil engineering industry'],
-    patterns: [/\bconstruction\b/, /\bbauwesen\b/, /\bbauindustrie\b/],
+    aliases: ['building industry', 'civil engineering industry', 'roofing & building envelope', 'dach & gebäudehülle', 'roofing', 'dachdecker', 'glaser', 'building envelope', 'facade trades'],
+    patterns: [/\bconstruction\b/, /\bbauwesen\b/, /\bbauindustrie\b/, /\broofing and building envelope\b/, /\bdach\s*&\s*gebäudehülle\b/, /\broofing\b/, /\bdachdecker\b/, /\bglaser\b/, /\bbuilding envelope\b/, /\bfassadenbau\b/],
   },
   {
     id: 'skilled_trades',
     label: { en: 'Skilled Trades', de: 'Handwerk' },
-    aliases: ['trades', 'craft trades', 'manual trades', 'gewerbe', 'handwerkliche berufe', 'handwerksberufe'],
-    patterns: [/\bskilled trades\b/, /\bhandwerk\b/, /\bhandwerks\b/, /\bgewerbe\b/, /\bcraft trades\b/],
+    aliases: [
+      'trades',
+      'craft trades',
+      'manual trades',
+      'gewerbe',
+      'handwerkliche berufe',
+      'handwerksberufe',
+      'painting & finishing',
+      'painting and finishing',
+      'maler & lackierer',
+      'painting trades',
+      'maler',
+      'lackierer',
+      'stuckateur',
+      'plasterer',
+      'finishing trades',
+    ],
+    patterns: [
+      /\bskilled trades\b/,
+      /\bhandwerk\b/,
+      /\bhandwerks\b/,
+      /\bgewerbe\b/,
+      /\bcraft trades\b/,
+      /\bmaler\b/,
+      /\blackierer\b/,
+      /\bstuckateur\b/,
+      /\bpainting and finishing\b/,
+      /\bpainting & finishing\b/,
+      /\bpainter\b/,
+    ],
   },
   {
     id: 'electrical_trades',
@@ -214,30 +359,6 @@ const INDUSTRY_TAXONOMY = [
     patterns: [/\bwoodworking\b/, /\bcarpentry\b/, /\btischler\b/, /\bschreiner\b/, /\bzimmermann\b/, /\bholzhandwerk\b/],
   },
   {
-    id: 'painting_finishing',
-    label: { en: 'Painting & Finishing', de: 'Maler & Lackierer' },
-    aliases: ['painting trades', 'maler', 'lackierer', 'stuckateur', 'plasterer', 'finishing trades'],
-    patterns: [/\bmaler\b/, /\blackierer\b/, /\bstuckateur\b/, /\bpainting and finishing\b/, /\bpainter\b/],
-  },
-  {
-    id: 'roofing_building_envelope',
-    label: { en: 'Roofing & Building Envelope', de: 'Dach & Gebäudehülle' },
-    aliases: ['roofing', 'dachdecker', 'glaser', 'building envelope', 'facade trades'],
-    patterns: [/\broofing\b/, /\bdachdecker\b/, /\bglaser\b/, /\bbuilding envelope\b/, /\bfassadenbau\b/],
-  },
-  {
-    id: 'automotive_trades',
-    label: { en: 'Automotive Trades', de: 'Kfz-Handwerk' },
-    aliases: ['automotive repair', 'kfz handwerk', 'kfz-mechatroniker', 'car mechanic', 'karosseriebauer'],
-    patterns: [/\bkfz-handwerk\b/, /\bkfz mechatroniker\b/, /\bkarosseriebauer\b/, /\bautomotive trades\b/, /\bcar mechanic\b/],
-  },
-  {
-    id: 'food_trades',
-    label: { en: 'Food Trades', de: 'Lebensmittelhandwerk' },
-    aliases: ['food crafts', 'bäcker', 'konditor', 'metzger', 'baker', 'butcher', 'pastry chef'],
-    patterns: [/\bfood trades\b/, /\blebensmittelhandwerk\b/, /\bbäcker\b/, /\bkonditor\b/, /\bmetzger\b/, /\bbaker\b/, /\bbutcher\b/],
-  },
-  {
     id: 'beauty_personal_care',
     label: { en: 'Beauty & Personal Care', de: 'Beauty & Körperpflege' },
     aliases: ['beauty trades', 'friseur', 'kosmetiker', 'hairdressing', 'personal care trades'],
@@ -258,14 +379,8 @@ const INDUSTRY_TAXONOMY = [
   {
     id: 'architecture',
     label: { en: 'Architecture', de: 'Architektur' },
-    aliases: ['architectural services'],
-    patterns: [/\barchitecture\b/, /\barchitektur\b/],
-  },
-  {
-    id: 'urban_planning',
-    label: { en: 'Urban Planning', de: 'Stadtplanung' },
-    aliases: ['city planning', 'town planning', 'urban planning'],
-    patterns: [/\burgan planning\b/, /\bstadtplanung\b/, /\bcity planning\b/],
+    aliases: ['architectural services', 'city planning', 'town planning', 'urban planning', 'stadtplanung'],
+    patterns: [/\barchitecture\b/, /\barchitektur\b/, /\burban planning\b/, /\bstadtplanung\b/, /\bcity planning\b/, /\btown planning\b/],
   },
   {
     id: 'real_estate',
@@ -284,6 +399,28 @@ const INDUSTRY_TAXONOMY = [
     label: { en: 'Media & Entertainment', de: 'Medien & Unterhaltung' },
     aliases: ['media', 'entertainment', 'gaming industry', 'publishing', 'medien'],
     patterns: [/\bmedia\b/, /\bentertainment\b/, /\bgaming industry\b/, /\bpublishing\b/],
+  },
+  {
+    id: 'marketing',
+    label: { en: 'Marketing', de: 'Marketing' },
+    aliases: [
+      'digital marketing',
+      'content marketing',
+      'growth marketing',
+      'social media marketing',
+      'influencer marketing',
+      'performance marketing',
+      'marketing industry',
+      'marketingbranche',
+    ],
+    patterns: [
+      /\bmarketing\b/,
+      /\bdigital marketing\b/,
+      /\bcontent marketing\b/,
+      /\bgrowth marketing\b/,
+      /\bperformance marketing\b/,
+      /\bmarketingbranche\b/,
+    ],
   },
   {
     id: 'culture',
@@ -368,6 +505,48 @@ for (const entry of INDUSTRY_TAXONOMY) {
 
 const INDUSTRY_CANONICAL_LABELS = INDUSTRY_TAXONOMY.map((entry) => entry.label.en);
 
+/**
+ * Temporary sentinel for occupations that have not been classified yet.
+ * Not part of the industry taxonomy; allowed only on CareerPath.domain during migration.
+ */
+const UNASSIGNED_ROLE_DOMAIN = 'UNASSIGNED';
+
+/** Valid CareerPath.domain values: taxonomy labels + {@link UNASSIGNED_ROLE_DOMAIN}. */
+const OCCUPATION_DOMAIN_VALUES = Object.freeze([
+  ...INDUSTRY_CANONICAL_LABELS,
+  UNASSIGNED_ROLE_DOMAIN,
+]);
+
+const OCCUPATION_DOMAIN_SET = new Set(OCCUPATION_DOMAIN_VALUES);
+
+/**
+ * @param {unknown} raw
+ * @returns {boolean}
+ */
+function isValidOccupationDomain(raw) {
+  return OCCUPATION_DOMAIN_SET.has(String(raw ?? '').trim());
+}
+
+/**
+ * Normalize a role-domain value for storage on CareerPath.
+ * Accepts taxonomy labels/aliases; maps empty/null to UNASSIGNED when allowed.
+ * Does not invent or infer a domain from occupation content.
+ *
+ * @param {unknown} raw
+ * @param {{ allowUnassigned?: boolean }} [options]
+ * @returns {string|null} Canonical English label, UNASSIGNED, or null if invalid
+ */
+function normalizeOccupationDomain(raw, { allowUnassigned = true } = {}) {
+  if (raw == null || String(raw).trim() === '') {
+    return allowUnassigned ? UNASSIGNED_ROLE_DOMAIN : null;
+  }
+  const trimmed = String(raw).trim();
+  if (trimmed === UNASSIGNED_ROLE_DOMAIN) {
+    return allowUnassigned ? UNASSIGNED_ROLE_DOMAIN : null;
+  }
+  return resolveCanonicalIndustry(trimmed);
+}
+
 function normalizeIndustryLang(lang = 'en') {
   return String(lang || 'en').toLowerCase().split('-')[0] === 'de' ? 'de' : 'en';
 }
@@ -390,10 +569,11 @@ function toTitleCase(raw) {
 function normalizeIndustryLabel(raw, { keepUnknown = false } = {}) {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return null;
-  if (isBlockedNonIndustryDomain(trimmed)) return null;
 
   const canonical = CANONICAL_BY_KEY.get(normalizeDomainKey(trimmed));
   if (canonical) return canonical;
+
+  if (isBlockedNonIndustryDomain(trimmed)) return null;
 
   if (keepUnknown) return toTitleCase(trimmed);
   return null;
@@ -456,6 +636,31 @@ function resolveIndustryDisplayLabel(stored, lang = 'en') {
 }
 
 /**
+ * Values that may appear on CareerPath.domain / profile domains for one taxonomy entry,
+ * including legacy labels after domain merges (exact string match for Mongo `$in`).
+ *
+ * @param {unknown} raw Canonical English label, localized label, or alias
+ * @returns {string[]} Non-empty when raw resolves; otherwise []
+ */
+function listOccupationDomainFilterValues(raw) {
+  const canonical = resolveCanonicalIndustry(raw);
+  if (!canonical) return [];
+  const entry = ENTRY_BY_CANONICAL.get(canonical.toLowerCase());
+  const values = new Set([canonical]);
+  if (!entry) return [canonical];
+
+  values.add(entry.label.en);
+  if (entry.label.de) values.add(entry.label.de);
+  for (const alias of entry.aliases || []) {
+    const trimmed = String(alias || '').trim();
+    if (!trimmed) continue;
+    values.add(trimmed);
+    values.add(toTitleCase(trimmed));
+  }
+  return [...values];
+}
+
+/**
  * @param {string} [lang]
  * @returns {Array<{ id: string, value: string, label: string }>}
  */
@@ -505,11 +710,16 @@ function inferIndustriesFromText(text, { maxItems = 6 } = {}) {
 module.exports = {
   INDUSTRY_TAXONOMY,
   INDUSTRY_CANONICAL_LABELS,
+  UNASSIGNED_ROLE_DOMAIN,
+  OCCUPATION_DOMAIN_VALUES,
+  isValidOccupationDomain,
+  normalizeOccupationDomain,
   normalizeIndustryLabel,
   normalizeIndustryDomains,
   resolveCanonicalIndustry,
   resolveIndustryId,
   resolveIndustryDisplayLabel,
+  listOccupationDomainFilterValues,
   listIndustryOptions,
   formatIndustryTaxonomyForPrompt,
   inferIndustriesFromText,

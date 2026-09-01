@@ -3,6 +3,7 @@ const { LRUCache } = require('lru-cache');
 const { buildMessages: buildIdentityMessages } = require('../../prompts/interpretCvIdentity');
 const { buildMessages: buildStructuredMessages } = require('../../prompts/interpretCvStructured');
 const { openaiProvider } = require('../jobAnalysis/roleIdentityComposer');
+const { redactCvContactPii } = require('../cv/redactCvContactPii');
 const { runStageIfCvPipeline, logCvEvent, getCvPipeline } = require('../../utils/metricsLogger');
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -210,7 +211,7 @@ async function interpretCvLayer(cvText, options, layer) {
   if (!apiKey || !String(apiKey).trim()) {
     return null;
   }
-  const normalizedText = String(cvText || '').trim();
+  const normalizedText = redactCvContactPii(String(cvText || '').trim());
   const documentLang =
     String(options.documentLanguage ?? options.language ?? 'en')
       .toLowerCase()

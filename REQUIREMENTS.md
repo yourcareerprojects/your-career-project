@@ -196,20 +196,11 @@ Embedding calls send **derived** text to the configured provider (e.g. OpenAI). 
 
 ### 9.8 Simulation result details
 
-- **Access:** From each result card, **More** navigates to a **dedicated route** (e.g. `SimulationResultDetails`, `SavedSimulationCareerStepDetails`, `SavedCareerStepDetails`) with **state** and/or **enrichment** from existing APIs—not from separate `GET /api/simulation/results/:id/details` endpoints.
-- **Layout parity, skills, alt/hidden titles, seniority blocks:** [REQUIREMENTS_CAREER_STEP.md](./REQUIREMENTS_CAREER_STEP.md).
+- **Access:** From each result card, **More** navigates to a **dedicated route** (for example `SimulationResultDetails`) with **state** and/or **enrichment** from existing APIs—not from separate `GET /api/simulation/results/:id/details` endpoints.
+- **Layout parity, skills, alt/hidden titles, seniority blocks:** see [REQUIREMENTS_SIMULATION.md](./REQUIREMENTS_SIMULATION.md) §6.
 - **Print:** Where implemented, print uses a **new window** + print styles on the detail components (see client implementations).
 
-### 9.9 Save career step (library)
-
-- **Star** toggles membership in **`savedCareerSteps`**; **`POST /api/profile/saved-career-steps`**, **`DELETE /api/profile/saved-career-steps/:stepId`**, **`GET /api/profile/saved-career-steps`**.
-- **Card actions:** Keep / Skip / Dislike evaluation + More / Save to library — [REQUIREMENTS_SIMULATION.md](./REQUIREMENTS_SIMULATION.md) §6 (behavior), §6.8 (layout).
-
-#### 9.9.3.1 Duplicate prevention (as implemented)
-
-- **`stepId` / save conflicts:** [REQUIREMENTS_SIMULATION.md](./REQUIREMENTS_SIMULATION.md) §3.3, §6.5 (**duplicate library save** → **409**).
-
-#### 9.9.8 Role evaluation on saved simulations (as implemented)
+#### 9.8.1 Role evaluation on saved simulations (as implemented)
 
 - Saved and unsaved runs use the same **`evaluationFlow`** model (`Keep` / `Skip` / `Dislike`, ranking phase, drag reorder).
 - Edits persist with **`PUT /api/profile/simulation-results/:simulationId`** (full `results`, including `evaluationFlow`).
@@ -227,10 +218,6 @@ Embedding calls send **derived** text to the configured provider (e.g. OpenAI). 
 
 **Not required by current code:** OAuth posting to LinkedIn/Twitter, dedicated share-history DB, **third-party / product analytics platform** integration (e.g. Segment, Amplitude, custom warehouse ETL), or a dedicated in-app **saved-simulation analytics** API/UI (no `GET .../simulation-results/:id/analytics` in the profile router as shipped).
 
-### 9.11 Saved career step details page
-
-- **Route:** Client page for a single saved step (e.g. progress/match UI, print affordance where present). **Detail:** component `SavedCareerStepDetails.jsx` and [REQUIREMENTS_CAREER_STEP.md](./REQUIREMENTS_CAREER_STEP.md).
-
 ### 9.3.11 Career simulation inputs field
 
 Normative definition, triggers, and UI transparency are covered under **`### 9.1.13`** and [REQUIREMENTS_SIMULATION.md](./REQUIREMENTS_SIMULATION.md) §2. The heading label **9.3.11** is an **alias** of **9.1.13** for stable cross-references from other markdown files.
@@ -239,7 +226,6 @@ Normative definition, triggers, and UI transparency are covered under **`### 9.1
 
 ## 12. Change log
 
-- **2026-07-05:** Consolidated career-step docs into `REQUIREMENTS_CAREER_STEP.md`; merged card button layout into `REQUIREMENTS_SIMULATION.md` §6.8; renamed requirements files to `REQUIREMENTS*.md` naming scheme.
 - **2026-07-05:** Aligned simulation docs with **Keep / Skip / Dislike** evaluation flow (`REQUIREMENTS_SIMULATION.md` §6); merged domains/ISCO into `REQUIREMENTS_PROFILE.md` §4.3; simplified career-step companion docs.
 - **2026-04-12:** Added minimal signup requirements; updated **`### 9.2`**, **§2** (auth), **§1.5.12**, and **§4** to separate signup from profile creation.
 - **Maintenance:** This index is updated when shipped behavior or companion specs change; substantive history of edits lives in **version control** for this file and the linked `REQUIREMENTS_*.md` documents.

@@ -86,7 +86,8 @@ export const NavigationGuardProvider = ({ children }) => {
 
     // Check if we're navigating to the same page (should be allowed)
     const currentPath = location.pathname;
-    const targetPath = typeof to === 'string' ? to : to.pathname || '';
+    const rawTarget = typeof to === 'string' ? to : to?.pathname || '';
+    const targetPath = String(rawTarget).split('?')[0];
     
     if (currentPath === targetPath) {
       console.log('✅ Navigation allowed - same page');

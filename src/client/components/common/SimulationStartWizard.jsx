@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import SimulationWizardDialog from './SimulationWizardDialog';
 import SimulationWizardPauseDialog from './SimulationWizardPauseDialog';
 import { RoleEvaluationCard } from './SimulationCategoryEvaluation';
-import { EVALUATION_ROLES_TARGET } from '../../utils/simulationRoleRanking';
+import { EVALUATION_ROLES_TARGET, getEvalQueue } from '../../utils/simulationRoleRanking';
 import {
   getRoleIndexForNextWizardStep,
   getRoleIndexForOotbWizardStep,
@@ -36,9 +36,6 @@ function WizardRoleEvaluationSection({
   isViewingSavedSimulation,
   savedSimulationId,
   onEvaluate,
-  onToggleSave,
-  isStepSaved,
-  isStepSaving,
   guardedNavigate,
   evalNudge,
 }) {
@@ -51,6 +48,7 @@ function WizardRoleEvaluationSection({
       </Typography>
       <Box ref={swipeStageRef} sx={{ position: 'relative', overflow: 'visible' }}>
         <RoleEvaluationCard
+          key={role.id}
           role={role}
           categoryKey={categoryKey}
           inlineDetails
@@ -59,9 +57,6 @@ function WizardRoleEvaluationSection({
           isViewingSavedSimulation={isViewingSavedSimulation}
           savedSimulationId={savedSimulationId}
           onEvaluate={onEvaluate}
-          onSave={() => onToggleSave(role)}
-          isStepSaved={isStepSaved(role)}
-          savingStep={isStepSaving(role)}
           guardedNavigate={guardedNavigate}
           showEvalNudge
           getButtonNudgeSx={evalNudge.getButtonNudgeSx}
@@ -104,9 +99,6 @@ export default function SimulationStartWizard({
   onSkipOotb,
   onContinueOotb,
   onPauseAndExit,
-  isStepSaved,
-  isStepSaving,
-  onToggleSave,
   guardedNavigate,
   isViewingSavedSimulation,
   savedSimulationId,
@@ -181,7 +173,7 @@ export default function SimulationStartWizard({
   const renderContent = () => {
     if (phase === 'ootb') {
       const roleIndex = getRoleIndexForOotbWizardStep(step);
-      const role = evaluationFlow?.outsideTheBox?.[roleIndex];
+      const role = getEvalQueue(evaluationFlow, 'outsideTheBox')[roleIndex];
       if (!role) {
         return (
           <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -198,9 +190,6 @@ export default function SimulationStartWizard({
           isViewingSavedSimulation={isViewingSavedSimulation}
           savedSimulationId={savedSimulationId}
           onEvaluate={(stepId, evaluation) => onEvaluateOotb(stepId, evaluation)}
-          onToggleSave={onToggleSave}
-          isStepSaved={isStepSaved}
-          isStepSaving={isStepSaving}
           guardedNavigate={guardedNavigate}
           evalNudge={evalNudge}
         />
@@ -274,7 +263,7 @@ export default function SimulationStartWizard({
     }
 
     const roleIndex = getRoleIndexForNextWizardStep(step);
-    const role = evaluationFlow?.nextSteps?.[roleIndex];
+    const role = getEvalQueue(evaluationFlow, 'nextSteps')[roleIndex];
     if (!role) {
       return (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -295,9 +284,6 @@ export default function SimulationStartWizard({
         isViewingSavedSimulation={isViewingSavedSimulation}
         savedSimulationId={savedSimulationId}
         onEvaluate={(stepId, evaluation) => onEvaluateNext(stepId, evaluation)}
-        onToggleSave={onToggleSave}
-        isStepSaved={isStepSaved}
-        isStepSaving={isStepSaving}
         guardedNavigate={guardedNavigate}
         evalNudge={evalNudge}
       />

@@ -18,6 +18,7 @@ function ensureBabelForRoleFitCore() {
       /generateRoleFitExplanation\.js$/,
       /roleFitExplanationCopy\.js$/,
       /roleFitExplanationTraits\.js$/,
+      /roleFitProfileMatches\.js$/,
       /localizedContentService\.js$/,
     ],
   });
@@ -148,6 +149,7 @@ async function getOrCreateRoleFitExplanation(params) {
 
   return {
     text: result.text,
+    bullets: result.bullets,
     explanationSource: result.explanationSource,
     fromCache: Boolean(result.fromCache),
     branch: result.branch,

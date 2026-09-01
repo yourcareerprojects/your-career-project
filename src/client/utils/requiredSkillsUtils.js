@@ -81,7 +81,7 @@ export function getRequiredSkillLabels(details, lang = 'en') {
 }
 
 /**
- * Optional skills: top-level optionalSkills and/or skillModel.optional_skills (simulation/saved steps).
+ * Optional skills: top-level optionalSkills and/or skillModel.optional_skills.
  * @param {object} [details]
  * @param {string} [lang]
  */

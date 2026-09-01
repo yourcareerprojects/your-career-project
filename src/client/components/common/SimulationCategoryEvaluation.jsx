@@ -8,16 +8,12 @@ import {
   Grid,
   LinearProgress,
   Tooltip,
-  Divider,
-  CircularProgress,
-  IconButton,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import RouteIcon from '@mui/icons-material/Route';
 import ThumbUpAltOutlinedIcon from '@mui/icons-material/ThumbUpAltOutlined';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -46,10 +42,14 @@ import {
   countEvaluatedRoles,
   isEvaluationComplete,
 } from '../../utils/simulationRoleRanking';
+import {
+  buildCombinedRankingSeenRolesKey,
+  getCombinedRankingRowId,
+  trackCombinedRankingRolesForVisit,
+} from '../../utils/combinedRankingRoleAccent';
 import { getCareerStepMatchScorePercent } from '../../utils/careerStepMatchScore';
 import { getRoleTitleForLocale, getRoleTitleEnglishForMatch } from '../../utils/roleTitleDisplay';
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
-import CareerStepCardWithReplacement from './CareerStepCardWithReplacement';
 import RoleEvaluationActionButtons from './RoleEvaluationActionButtons';
 import localizedContentService from '../../utils/localizedContentService';
 import { CareerStepRoleInlineBody } from './CareerStepRoleSections';
@@ -104,27 +104,18 @@ const swipeCueTextShadowSx = (theme) =>
     ? '0 1px 2px rgba(0, 0, 0, 0.85)'
     : '0 1px 2px rgba(255, 255, 255, 0.95)';
 
-/** Darker blue for Save toggle when role is already saved */
-const ROLE_CARD_SAVE_SAVED_SX = {
-  bgcolor: 'primary.dark',
-  '&:hover': {
-    bgcolor: 'primary.dark',
-    filter: 'brightness(1.08)',
-  },
-};
-
 const rankedRowActionSx = (theme) => ({
-  minWidth: { xs: 0, sm: '96px !important' },
-  width: { xs: '100%', sm: 'auto' },
+  minWidth: { xs: 0, md: '96px !important' },
+  width: { xs: '100%', md: 'auto' },
   px: '12px !important',
   py: '6px !important',
   fontSize: '0.8rem !important',
   lineHeight: '1.1 !important',
   borderRadius: '10px !important',
-  whiteSpace: { xs: 'normal !important', sm: 'nowrap !important' },
+  whiteSpace: { xs: 'normal !important', md: 'nowrap !important' },
   boxShadow: 'none !important',
   textAlign: 'center',
-  [theme.breakpoints.up('sm')]: {
+  [theme.breakpoints.up('md')]: {
     textAlign: 'initial',
   },
 });
@@ -136,12 +127,13 @@ const OOTB_ACTION_BUTTON_SX = {
   '&:hover': { bgcolor: 'var(--color-ootb-action-hover)' },
 };
 
-const OOTB_SAVE_SAVED_BUTTON_SX = {
-  bgcolor: 'var(--color-ootb-action-saved)',
-  '&:hover': { bgcolor: 'var(--color-ootb-action-saved-hover)' },
-};
-
-const CARD_ENTER_MS = 280;
+const CARD_ENTER_MS = 360;
+/** Softer ease — decelerate into place so the card feels like it settles from behind. */
+const CARD_ENTER_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** Start slightly smaller/dimmer so the next role reads as coming from behind the deck. */
+const CARD_ENTER_FROM_TRANSFORM = 'translate3d(0, 0, 0) scale(0.9)';
+const CARD_ENTER_TO_TRANSFORM = 'translate3d(0, 0, 0) scale(1)';
+const CARD_ENTER_FROM_OPACITY = 0;
 
 /** Animates a swiped-away card off-screen while the next card appears underneath. */
 function RoleEvaluationExitShell({
@@ -234,9 +226,6 @@ export function RoleEvaluationCard({
   isViewingSavedSimulation,
   savedSimulationId,
   onEvaluate,
-  onSave,
-  isStepSaved,
-  savingStep,
   guardedNavigate,
   showEvalNudge = false,
   getButtonNudgeSx,
@@ -257,7 +246,6 @@ export function RoleEvaluationCard({
   const roleTitle = getRoleTitleForLocale(role.title, uiLang);
   const roleDescription = localizedContentService.getLocalizedWithFallback(role.description, uiLang, '');
   const pct = getCareerStepMatchScorePercent(role);
-  const roleTestId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title) || 'role';
   const simulationScopeId = simulationIdForCards || role?.simulationId || 'local';
 
   const nudgeSx = (buttonKey) => (
@@ -285,7 +273,10 @@ export function RoleEvaluationCard({
 
   const useStickyCardLayout = inlineDetails;
   const enableSwipe = typeof onEvaluate === 'function';
-  const [hasEntered, setHasEntered] = useState(skipEnterAnimation || !enableSwipe);
+  /** 'from' → mount pose (no transition); 'to' → animate forward; 'done' → idle. */
+  const [enterPhase, setEnterPhase] = useState(
+    skipEnterAnimation || !enableSwipe ? 'done' : 'from'
+  );
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const cardRef = useRef(null);
   const swipeCueAnchorRef = useRef(null);
@@ -317,18 +308,23 @@ export function RoleEvaluationCard({
 
   useLayoutEffect(() => {
     if (skipEnterAnimation || !enableSwipe || prefersReducedMotion) {
-      setHasEntered(true);
+      setEnterPhase('done');
       return undefined;
     }
-    setHasEntered(false);
+    setEnterPhase('from');
     let raf1 = 0;
     let raf2 = 0;
+    let settleTimer = 0;
     raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setHasEntered(true));
+      raf2 = requestAnimationFrame(() => {
+        setEnterPhase('to');
+        settleTimer = window.setTimeout(() => setEnterPhase('done'), CARD_ENTER_MS);
+      });
     });
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
+      window.clearTimeout(settleTimer);
     };
   }, [role.id, enableSwipe, skipEnterAnimation, prefersReducedMotion]);
 
@@ -363,7 +359,9 @@ export function RoleEvaluationCard({
     };
   }, [enableSwipe, role.id, useStickyCardLayout, roleTitle]);
 
-  const isSwipeMotionActive = enableSwipe && (!hasEntered || swipe.dragging || swipe.exiting);
+  const isEntering = enableSwipe && enterPhase !== 'done';
+  const isSwipeDragOrExit = enableSwipe && (swipe.dragging || Boolean(swipe.exiting));
+  const isSwipeMotionActive = isEntering || isSwipeDragOrExit;
 
   const isSwipeExpanded = expandSwipeToPanel && enableSwipe && (
     swipe.dragging
@@ -383,18 +381,28 @@ export function RoleEvaluationCard({
   }, [swipe.containerRef]);
 
   const cardTransform = (() => {
-    if (!isSwipeMotionActive) return 'none';
-    if (!hasEntered) return 'translateX(0) scale(0.94)';
-    return `translateX(${swipe.offsetX}px)`;
+    if (!enableSwipe) return 'none';
+    if (enterPhase === 'from') return CARD_ENTER_FROM_TRANSFORM;
+    if (enterPhase === 'to') return CARD_ENTER_TO_TRANSFORM;
+    if (isSwipeDragOrExit) return `translateX(${swipe.offsetX}px)`;
+    return 'none';
   })();
 
-  const cardOpacity = enableSwipe && !hasEntered && !useStickyCardLayout ? 0 : 1;
+  const cardOpacity = (() => {
+    if (!enableSwipe) return 1;
+    if (enterPhase === 'from') return CARD_ENTER_FROM_OPACITY;
+    return 1;
+  })();
 
   const cardTransition = (() => {
-    if (!enableSwipe || !hasEntered) return 'none';
+    if (!enableSwipe) return 'none';
+    if (enterPhase === 'from') return 'none';
+    if (enterPhase === 'to') {
+      return `transform ${CARD_ENTER_MS}ms ${CARD_ENTER_EASING}, opacity ${CARD_ENTER_MS}ms ${CARD_ENTER_EASING}`;
+    }
     if (swipe.dragging) return 'none';
     if (swipe.exiting) return `transform ${SWIPE_EXIT_MS}ms ease-in`;
-    return `transform ${CARD_ENTER_MS}ms ease-out, opacity ${CARD_ENTER_MS}ms ease-out`;
+    return 'none';
   })();
 
   const getSwipeCueProgress = (direction) => {
@@ -463,58 +471,6 @@ export function RoleEvaluationCard({
       >
         {roleTitle}
       </Typography>
-      <Tooltip
-        title={
-          isStepSaved
-            ? t('details.actions.removeFromSavedSteps')
-            : t('details.actions.saveToSavedSteps')
-        }
-        arrow
-      >
-        <span>
-          <IconButton
-            onClick={onSave}
-            disabled={savingStep}
-            size="small"
-            data-testid={`simulation-list-save-toggle-${roleTestId}`}
-            aria-label={
-              isStepSaved
-                ? t('details.actions.removeFromSavedSteps')
-                : t('details.actions.saveToSavedSteps')
-            }
-            sx={{
-              flexShrink: 0,
-              mt: -0.25,
-              color:
-                categoryKey === 'outsideTheBox'
-                  ? 'var(--color-ootb-action)'
-                  : 'primary.main',
-              ...(isStepSaved && !savingStep
-                ? {
-                    bgcolor:
-                      categoryKey === 'outsideTheBox'
-                        ? 'rgba(211, 47, 47, 0.12)'
-                        : 'action.selected',
-                  }
-                : {}),
-              '&:hover': {
-                bgcolor:
-                  categoryKey === 'outsideTheBox'
-                    ? 'rgba(211, 47, 47, 0.18)'
-                    : 'action.hover',
-              },
-            }}
-          >
-            {savingStep ? (
-              <CircularProgress size={20} color="inherit" />
-            ) : isStepSaved ? (
-              <StarIcon fontSize="small" />
-            ) : (
-              <StarBorderIcon fontSize="small" />
-            )}
-          </IconButton>
-        </span>
-      </Tooltip>
     </Box>
   );
 
@@ -707,10 +663,13 @@ export function RoleEvaluationCard({
             height: '100%',
             overflowX: useStickyCardLayout || isSwipeExpanded ? 'visible' : 'hidden',
             overflowY: 'visible',
-            transform: isSwipeMotionActive ? cardTransform : 'none',
-            opacity: useStickyCardLayout ? 1 : cardOpacity,
-            transition: isSwipeMotionActive ? cardTransition : 'none',
+            transformOrigin: 'center center',
+            transform: cardTransform,
+            opacity: cardOpacity,
+            transition: cardTransition,
             willChange: isSwipeMotionActive ? 'transform, opacity' : 'auto',
+            // Keep the card in document flow while scaled so siblings do not jump.
+            backfaceVisibility: 'hidden',
           }}
         >
       <Card
@@ -859,28 +818,14 @@ const parseItemId = (id) => {
   };
 };
 
-const buildRankingStorageKey = ({
-  categoryKey,
-  isViewingSavedSimulation,
-  savedSimulationId,
-  simulationIdForCards,
-}) => {
-  const mode = isViewingSavedSimulation ? 'saved' : 'live';
-  const simId =
-    savedSimulationId || simulationIdForCards || 'local';
-  return `simulation:rankingLayout:${mode}:${simId}:${categoryKey || 'default'}`;
-};
-
 const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
   id,
   row,
   groupKey,
   isOver,
-  isStepSaved,
-  isStepSaving,
-  onToggleSave,
-  onMoveToGroup,
+  onMoveToGroup: _onMoveToGroup,
   onOpenStepDetails,
+  onPlanPath,
   categoryKey,
 }) {
   const { t, i18n } = useTranslation('dashboard');
@@ -897,9 +842,6 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
   });
   const role = row.step;
   const displayTitle = getRoleTitleForLocale(row.title, i18n.language);
-  const saved = isStepSaved(role);
-  const saving = isStepSaving(role);
-  const roleTestId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title) || 'role';
 
   const style = useMemo(
     () => ({
@@ -932,10 +874,10 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
         <Box
           sx={{
             display: 'flex',
-            alignItems: { xs: 'stretch', sm: 'center' },
+            alignItems: { xs: 'stretch', md: 'center' },
             justifyContent: 'space-between',
             gap: 1.5,
-            flexDirection: { xs: 'column', sm: 'row' },
+            flexDirection: { xs: 'column', md: 'row' },
           }}
         >
           <Box
@@ -945,7 +887,7 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
               gap: 1.5,
               flex: 1,
               minWidth: 0,
-              width: { xs: '100%', sm: 'auto' },
+              width: { xs: '100%', md: 'auto' },
             }}
           >
             <Tooltip title={t('simulation.evaluationFlow.tooltips.dragToReorder')} arrow>
@@ -986,67 +928,58 @@ const SortableRankedRoleCard = React.memo(function SortableRankedRoleCard({
           <Box
             sx={{
               display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
+              flexDirection: 'row',
               alignItems: 'stretch',
               gap: 1,
-              width: { xs: '100%', sm: 'auto' },
-              flexShrink: { sm: 0 },
+              width: { xs: '100%', md: 'auto' },
+              flexShrink: { md: 0 },
             }}
           >
-            <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
-              <span style={{ display: 'block', width: '100%' }}>
-                <Button
-                  variant="contained"
-                  color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-                  size="small"
-                  endIcon={<ArrowForwardIcon sx={{ fontSize: '0.9rem' }} />}
-                  onClick={() => onOpenStepDetails(role)}
-                  sx={(theme) => ({
-                    ...rankedRowActionSx(theme),
-                    ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
-                  })}
-                >
-                  {t('simulation.evaluationFlow.actions.more')}
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip
-              title={
-                saved
-                  ? t('simulation.evaluationFlow.tooltips.savedRemove')
-                  : t('simulation.evaluationFlow.tooltips.saveToSavedList')
-              }
-              arrow
-            >
-              <span style={{ display: 'block', width: '100%' }}>
-                <Button
-                  variant="contained"
-                  color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
-                  size="small"
-                  endIcon={saved ? <StarIcon sx={{ fontSize: '0.9rem' }} /> : <StarBorderIcon sx={{ fontSize: '0.9rem' }} />}
-                  onClick={() => onToggleSave(role)}
-                  data-testid={`simulation-ranking-save-toggle-${roleTestId}`}
-                  disabled={saving}
-                  sx={(theme) => ({
-                    ...rankedRowActionSx(theme),
-                    ...(categoryKey === 'outsideTheBox'
-                      ? {
-                          ...OOTB_ACTION_BUTTON_SX,
-                          ...(saved && !saving ? OOTB_SAVE_SAVED_BUTTON_SX : {}),
-                        }
-                      : saved
-                        ? { backgroundColor: 'var(--color-save-toggle-saved-on-primary)' }
-                        : {}),
-                  })}
-                >
-                  {saving
-                    ? t('simulation.evaluationFlow.actions.saving')
-                    : saved
-                      ? t('simulation.evaluationFlow.actions.saved')
-                      : t('simulation.evaluationFlow.actions.save')}
-                </Button>
-              </span>
-            </Tooltip>
+            <Box sx={{ flex: { xs: 1, md: 'initial' }, minWidth: 0, width: { md: 'auto' } }}>
+              <Tooltip title={t('simulation.evaluationFlow.tooltips.moreDetails')} arrow>
+                <span style={{ display: 'block', width: '100%' }}>
+                  <Button
+                    variant="contained"
+                    color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
+                    size="small"
+                    endIcon={<ArrowForwardIcon sx={{ fontSize: '0.9rem' }} />}
+                    onClick={() => onOpenStepDetails(role)}
+                    sx={(theme) => ({
+                      ...rankedRowActionSx(theme),
+                      whiteSpace: 'nowrap !important',
+                      ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
+                    })}
+                  >
+                    {t('simulation.evaluationFlow.actions.more')}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+            {typeof onPlanPath === 'function' ? (
+              <Box sx={{ flex: { xs: 1, md: 'initial' }, minWidth: 0, width: { md: 'auto' } }}>
+                <Tooltip title={t('simulation.evaluationFlow.tooltips.planPath')} arrow>
+                  <span style={{ display: 'block', width: '100%' }}>
+                    <Button
+                      variant="outlined"
+                      color={categoryKey === 'outsideTheBox' ? 'inherit' : 'primary'}
+                      size="small"
+                      endIcon={<RouteIcon sx={{ fontSize: '0.9rem' }} />}
+                      onClick={() => onPlanPath(role)}
+                      sx={(theme) => ({
+                        ...rankedRowActionSx(theme),
+                        // Keep label on one line; share the action row equally with "Mehr" on mobile/tablet.
+                        whiteSpace: 'nowrap !important',
+                        minWidth: { xs: 0, md: '132px !important' },
+                        flexShrink: 0,
+                        ...(categoryKey === 'outsideTheBox' ? OOTB_ACTION_BUTTON_SX : {}),
+                      })}
+                    >
+                      {t('simulation.evaluationFlow.actions.planPath')}
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
+            ) : null}
           </Box>
         </Box>
       </CardContent>
@@ -1146,36 +1079,44 @@ export function RankedGroupsView({
   rankCategoryLabel,
   categoryKey,
   rankingDescription,
+  showRankingDescription = true,
   resolveRowCategoryKey,
-  rankingStorageCategoryKey,
-  isStepSaved,
-  isStepSaving,
-  onToggleSave,
   guardedNavigate,
   isViewingSavedSimulation,
   savedSimulationId,
   simulationIdForCards,
   onReorderRankedRoles,
+  onPlanPath,
+  onOpenStepDetails = null,
 }) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('dashboard');
   const [activeId, setActiveId] = useState(null);
   const [overMeta, setOverMeta] = useState(null);
-  const [persistedLayout, setPersistedLayout] = useState(null);
   const getRowCategoryKey = resolveRowCategoryKey || (() => categoryKey);
-  const storageCategoryKey = rankingStorageCategoryKey || categoryKey;
-  const storageKey = useMemo(
+  const seenRolesStorageKey = useMemo(
     () =>
-      buildRankingStorageKey({
-        categoryKey: storageCategoryKey,
+      buildCombinedRankingSeenRolesKey({
         isViewingSavedSimulation,
         savedSimulationId,
         simulationIdForCards,
       }),
-    [storageCategoryKey, isViewingSavedSimulation, savedSimulationId, simulationIdForCards]
+    [isViewingSavedSimulation, savedSimulationId, simulationIdForCards]
   );
 
+  // Track ranked roles for this tab visit so later inserts stay "new" (red) until a full reload.
+  // Do not write localStorage here — that would clear the red state on SPA navigate-away/back.
+  useEffect(() => {
+    const ids = (rankedRows || []).map(getCombinedRankingRowId).filter(Boolean);
+    if (!ids.length) return;
+    trackCombinedRankingRolesForVisit(seenRolesStorageKey, ids);
+  }, [rankedRows, seenRolesStorageKey]);
+
   const openStepDetails = (role) => {
+    if (typeof onOpenStepDetails === 'function') {
+      onOpenStepDetails(role);
+      return;
+    }
     const stepId = role.stepId || role.id || getRoleTitleEnglishForMatch(role.title);
     try {
       sessionStorage.setItem('currentStepDetails', JSON.stringify(role));
@@ -1200,72 +1141,16 @@ export function RankedGroupsView({
     })
   );
 
-  const baseGroups = useMemo(() => {
+  // Columns = rankedRows grouped by userEvaluation (roles[] SoT via getRankedBoard). No localStorage overlay.
+  const groups = useMemo(() => {
     const grouped = { keep: [], skip: [], dislike: [] };
-    rankedRows.forEach((row, index) => {
+    (rankedRows || []).forEach((row, index) => {
       if (grouped[row.userEvaluation]) {
         grouped[row.userEvaluation].push({ ...row, _dndId: getRankRowId(row, index) });
       }
     });
     return grouped;
   }, [rankedRows]);
-
-  useEffect(() => {
-    const allIds = new Set(rankedRows.map((row, idx) => getRankRowId(row, idx)));
-    if (!allIds.size) {
-      setPersistedLayout(null);
-      return;
-    }
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setPersistedLayout(null);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      const keep = Array.isArray(parsed?.keep) ? parsed.keep : [];
-      const skip = Array.isArray(parsed?.skip) ? parsed.skip : [];
-      const dislike = Array.isArray(parsed?.dislike) ? parsed.dislike : [];
-      const incomingIds = [...keep, ...skip, ...dislike];
-      if (!incomingIds.length) {
-        setPersistedLayout(null);
-        return;
-      }
-      const incomingSet = new Set(incomingIds);
-      const sameUniverse = incomingSet.size === allIds.size && [...allIds].every((id) => incomingSet.has(id));
-      setPersistedLayout(sameUniverse ? { keep, skip, dislike } : null);
-    } catch {
-      // Corrupt or unavailable local storage should not break ranking UX.
-      setPersistedLayout(null);
-    }
-  }, [rankedRows, storageKey]);
-
-  const groups = useMemo(() => {
-    if (!persistedLayout) return baseGroups;
-    const sourceById = new Map(
-      rankedRows.map((row, idx) => [getRankRowId(row, idx), { ...row, _dndId: getRankRowId(row, idx) }])
-    );
-    const next = { keep: [], skip: [], dislike: [] };
-    GROUP_KEYS.forEach((key) => {
-      const wantedIds = persistedLayout[key] || [];
-      wantedIds.forEach((id) => {
-        const existing = sourceById.get(id);
-        if (existing) {
-          next[key].push({
-            ...existing,
-            userEvaluation: key,
-            step: { ...existing.step, userEvaluation: key },
-          });
-          sourceById.delete(id);
-        }
-      });
-    });
-    sourceById.forEach((row) => {
-      const key = row.userEvaluation;
-      if (next[key]) next[key].push(row);
-    });
-    return next;
-  }, [baseGroups, persistedLayout, rankedRows]);
 
   const idToLocation = useMemo(() => {
     const map = new Map();
@@ -1285,17 +1170,6 @@ export function RankedGroupsView({
       userEvaluation: row.userEvaluation,
       step: { ...row.step, userEvaluation: row.userEvaluation },
     }));
-    const nextLayout = {
-      keep: nextGroups.keep.map((row) => row._dndId),
-      skip: nextGroups.skip.map((row) => row._dndId),
-      dislike: nextGroups.dislike.map((row) => row._dndId),
-    };
-    setPersistedLayout(nextLayout);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(nextLayout));
-    } catch {
-      // Ignore quota/private mode failures; parent persistence may still handle ranking.
-    }
     onReorderRankedRoles(flattened);
   };
 
@@ -1403,10 +1277,12 @@ export function RankedGroupsView({
 
   return (
     <Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {rankingDescription
-          || t('simulation.evaluationFlow.finalRankingDescription', { category: rankCategoryLabel })}
-      </Typography>
+      {showRankingDescription ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {rankingDescription
+            || t('simulation.evaluationFlow.finalRankingDescription', { category: rankCategoryLabel })}
+        </Typography>
+      ) : null}
 
       <DndContext
         sensors={sensors}
@@ -1432,11 +1308,9 @@ export function RankedGroupsView({
                 row={row}
                 groupKey="keep"
                 isOver={overMeta?.overType === 'item' && overMeta?.overId === id}
-                isStepSaved={isStepSaved}
-                isStepSaving={isStepSaving}
-                onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
+                onPlanPath={onPlanPath}
                 categoryKey={getRowCategoryKey(row)}
               />
             );
@@ -1460,11 +1334,9 @@ export function RankedGroupsView({
                 row={row}
                 groupKey="skip"
                 isOver={overMeta?.overType === 'item' && overMeta?.overId === id}
-                isStepSaved={isStepSaved}
-                isStepSaving={isStepSaving}
-                onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
+                onPlanPath={onPlanPath}
                 categoryKey={getRowCategoryKey(row)}
               />
             );
@@ -1488,11 +1360,9 @@ export function RankedGroupsView({
                 row={row}
                 groupKey="dislike"
                 isOver={overMeta?.overType === 'item' && overMeta?.overId === id}
-                isStepSaved={isStepSaved}
-                isStepSaving={isStepSaving}
-                onToggleSave={onToggleSave}
                 onMoveToGroup={handleMoveToGroup}
                 onOpenStepDetails={openStepDetails}
+                onPlanPath={onPlanPath}
                 categoryKey={getRowCategoryKey(row)}
               />
             );
@@ -1541,14 +1411,12 @@ export default function SimulationCategoryEvaluation({
   hasStarted,
   onEvaluate,
   onSeeRanking,
-  isStepSaved,
-  isStepSaving,
-  onToggleSave,
   guardedNavigate,
   isViewingSavedSimulation,
   savedSimulationId,
   simulationIdForCards,
   onReorderRankedRoles,
+  onPlanPath,
 }) {
   const { t } = useTranslation('dashboard');
   const theme = useTheme();
@@ -1595,9 +1463,6 @@ export default function SimulationCategoryEvaluation({
         isViewingSavedSimulation={isViewingSavedSimulation}
         savedSimulationId={savedSimulationId}
         onEvaluate={interactive ? onEvaluate : undefined}
-        onSave={() => onToggleSave(role)}
-        isStepSaved={isStepSaved(role)}
-        savingStep={isStepSaving(role)}
         guardedNavigate={guardedNavigate}
         showEvalNudge={showEvalNudge && interactive}
         getButtonNudgeSx={evalNudge.getButtonNudgeSx}
@@ -1617,11 +1482,8 @@ export default function SimulationCategoryEvaluation({
       evalNudge.interactionHandlers,
       guardedNavigate,
       handleSwipeExitStart,
-      isStepSaved,
-      isStepSaving,
       isViewingSavedSimulation,
       onEvaluate,
-      onToggleSave,
       savedSimulationId,
       simulationIdForCards,
       useEvalStickyLayout,
@@ -1655,44 +1517,17 @@ export default function SimulationCategoryEvaluation({
           boxShadow: (theme) => theme.shadows[1],
         }}
       >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: { xs: 'stretch', sm: 'center' },
-            justifyContent: 'space-between',
-            mb: 2,
-            gap: 1.5,
-            flexDirection: { xs: 'column', sm: 'row' },
-          }}
-        >
-          <Typography
-            variant="h4"
-            component="h2"
-            sx={{
-              fontWeight: 'bold',
-              flex: 1,
-              minWidth: 0,
-              typography: { xs: 'h5', sm: 'h4' },
-              wordBreak: 'break-word',
-              overflowWrap: 'anywhere',
-              pr: { sm: 1 },
-            }}
-          >
-            {t('simulation.evaluationFlow.yourRankingTitle', { title })}
-          </Typography>
-        </Box>
         <RankedGroupsView
           rankedRows={rankedRows}
           rankCategoryLabel={title}
           categoryKey={categoryKey}
-          isStepSaved={isStepSaved}
-          isStepSaving={isStepSaving}
-          onToggleSave={onToggleSave}
+          showRankingDescription={false}
           guardedNavigate={guardedNavigate}
           isViewingSavedSimulation={isViewingSavedSimulation}
           savedSimulationId={savedSimulationId}
           simulationIdForCards={simulationIdForCards}
           onReorderRankedRoles={onReorderRankedRoles}
+          onPlanPath={onPlanPath}
         />
       </Box>
     );

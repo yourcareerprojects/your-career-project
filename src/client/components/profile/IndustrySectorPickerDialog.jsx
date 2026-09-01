@@ -107,7 +107,6 @@ export default function IndustrySectorPickerDialog({
 
   const handleSave = () => {
     onSave?.(draftValues);
-    onClose?.();
   };
 
   const saveDisabled = !multiple && draftValues.length === 0;
@@ -127,7 +126,7 @@ export default function IndustrySectorPickerDialog({
       <DialogContent dividers>
         {multiple && draftValues.length > 0 ? (
           <Box sx={{ mb: 2.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
               {t('profilePage.structuredInfo.industrySectors.dialogSelectionHint')}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -136,7 +135,12 @@ export default function IndustrySectorPickerDialog({
                   key={value}
                   value={value}
                   lang={lang}
-                  sx={SELECTED_CHIP_SX}
+                  onClick={() => handleToggle({ value })}
+                  sx={{
+                    ...SELECTED_CHIP_SX,
+                    cursor: 'pointer',
+                    '&:hover': { opacity: 0.88 },
+                  }}
                 />
               ))}
             </Box>
@@ -144,11 +148,7 @@ export default function IndustrySectorPickerDialog({
         ) : null}
         {grouped.map((group) => (
           <Box key={group.key} sx={{ mb: 3 }}>
-            <Typography
-              variant="subtitle2"
-              color="text.secondary"
-              sx={{ mb: 1.5, fontWeight: 600 }}
-            >
+            <Typography variant="body1" sx={{ color: '#950202', fontWeight: 600, mb: 1.5 }}>
               {t(`profilePage.structuredInfo.industrySectors.groups.${group.key}`)}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toPersistedSimulationResults } from '../utils/evaluationFlowModel';
 
 /**
  * Hook for updating existing simulation results
@@ -22,6 +23,13 @@ const useUpdateSimulation = () => {
       console.log('🔄 Updating simulation:', simulationId);
       console.log('🔄 Simulation data:', simulationData);
 
+      const payload = simulationData?.results
+        ? {
+            ...simulationData,
+            results: toPersistedSimulationResults(simulationData.results),
+          }
+        : simulationData;
+
       const response = await fetch(
         `/api/profile/simulation-results/${simulationId}`,
         {
@@ -30,7 +38,7 @@ const useUpdateSimulation = () => {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(simulationData)
+          body: JSON.stringify(payload)
         }
       );
 

@@ -191,7 +191,7 @@ async function embedTextBatch(texts) {
 
   const results = new Array(texts.length).fill(null);
   const toFetch = [];
-  const indices = [];
+  const keyToIndices = new Map();
 
   for (let i = 0; i < texts.length; i++) {
     const t = texts[i];
@@ -199,17 +199,19 @@ async function embedTextBatch(texts) {
     const key = sanitizeEmbeddingInput(String(t));
     if (embedCache.has(key)) {
       results[i] = embedCache.get(key);
-    } else {
-      toFetch.push(key);
-      indices.push(i);
+      continue;
     }
+    if (!keyToIndices.has(key)) {
+      keyToIndices.set(key, []);
+      toFetch.push(key);
+    }
+    keyToIndices.get(key).push(i);
   }
 
   if (toFetch.length === 0) return results;
 
   for (let start = 0; start < toFetch.length; start += BATCH_SIZE) {
     const chunk = toFetch.slice(start, start + BATCH_SIZE);
-    const idxChunk = indices.slice(start, start + BATCH_SIZE);
 
     let response;
     try {
@@ -233,14 +235,20 @@ async function embedTextBatch(texts) {
     }
 
     const data = response.data || [];
-    for (let j = 0; j < data.length && j < idxChunk.length; j++) {
+    for (let j = 0; j < data.length && j < chunk.length; j++) {
       const emb = data[j].embedding;
       const vec = new Float32Array(Array.isArray(emb) ? emb : Array.from(emb));
       const normalized = l2Normalize(vec);
-      const origIdx = idxChunk[j];
-      results[origIdx] = normalized;
       const key = chunk[j];
-      if (embedCache.size < CACHE_MAX_SIZE) embedCache.set(key, normalized);
+      const targetIndices = keyToIndices.get(key) || [];
+      for (const origIdx of targetIndices) {
+        results[origIdx] = normalized;
+      }
+      if (embedCache.size >= CACHE_MAX_SIZE) {
+        const firstKey = embedCache.keys().next().value;
+        if (firstKey !== undefined) embedCache.delete(firstKey);
+      }
+      embedCache.set(key, normalized);
     }
   }
 

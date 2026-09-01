@@ -1,57 +1,35 @@
-function applyUserEvaluationToResultsSnapshot(resultsSnapshot, nextEvaluation, isMatchingRole) {
+import { normalizeEvaluationFlow, getFlowRoles, withFlowRoles } from './evaluationFlowModel';
+
+/**
+ * Patch Keep/Skip/Dislike on evaluationFlow.roles[] only, then rematerialize derived views.
+ * Top-level results.nextSteps / outsideTheBox are not ranking SoT and are left unchanged.
+ *
+ * @param {object} resultsSnapshot
+ * @param {'keep'|'skip'|'dislike'|null} nextEvaluation
+ * @param {(role: object) => boolean} isMatchingRole
+ * @returns {object}
+ */
+export function applyUserEvaluationToResultsSnapshot(resultsSnapshot, nextEvaluation, isMatchingRole) {
   if (!resultsSnapshot || typeof resultsSnapshot !== 'object' || typeof isMatchingRole !== 'function') {
     return resultsSnapshot;
   }
 
-  let changed = false;
-
-  const patchRoleList = (roles) => {
-    if (!Array.isArray(roles)) return roles;
-    return roles.map((role) => {
-      if (!isMatchingRole(role)) return role;
-      changed = true;
-      return { ...role, userEvaluation: nextEvaluation };
-    });
-  };
-
-  const nextResults = { ...resultsSnapshot };
-  nextResults.nextSteps = patchRoleList(resultsSnapshot.nextSteps);
-  nextResults.outsideTheBox = patchRoleList(resultsSnapshot.outsideTheBox);
-
-  if (resultsSnapshot.evaluationFlow) {
-    const flow = resultsSnapshot.evaluationFlow;
-    const nextFlow = { ...flow };
-    nextFlow.nextSteps = patchRoleList(flow.nextSteps);
-    nextFlow.outsideTheBox = patchRoleList(flow.outsideTheBox);
-
-    if (flow.ranked) {
-      const patchRankedRows = (rows) => {
-        if (!Array.isArray(rows)) return rows;
-        return rows.map((row) => {
-          const rowRole = row?.step || row;
-          if (!isMatchingRole(rowRole)) return row;
-          changed = true;
-          return {
-            ...row,
-            userEvaluation: nextEvaluation,
-            step: row.step ? { ...row.step, userEvaluation: nextEvaluation } : row.step,
-          };
-        });
-      };
-      nextFlow.ranked = {
-        ...flow.ranked,
-        nextSteps: patchRankedRows(flow.ranked.nextSteps),
-        outsideTheBox: patchRankedRows(flow.ranked.outsideTheBox),
-      };
-    }
-
-    nextResults.evaluationFlow = nextFlow;
+  if (!resultsSnapshot.evaluationFlow || typeof resultsSnapshot.evaluationFlow !== 'object') {
+    return resultsSnapshot;
   }
 
-  return changed ? nextResults : resultsSnapshot;
+  const normalized = normalizeEvaluationFlow(resultsSnapshot.evaluationFlow);
+  let changed = false;
+  const roles = getFlowRoles(normalized).map((role) => {
+    if (!isMatchingRole(role)) return role;
+    changed = true;
+    return { ...role, userEvaluation: nextEvaluation };
+  });
+
+  if (!changed) return resultsSnapshot;
+
+  return {
+    ...resultsSnapshot,
+    evaluationFlow: withFlowRoles(normalized, roles),
+  };
 }
-
-module.exports = {
-  applyUserEvaluationToResultsSnapshot,
-};
-
