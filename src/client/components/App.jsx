@@ -19,6 +19,7 @@ import RoleDetails from './pages/RoleDetails';
 import SavedSearchHub from './pages/SavedSearchHub';
 import HistoryPage from './pages/HistoryPage';
 import Settings from './pages/Settings';
+import MorePage from './pages/MorePage';
 import SimulationResultDetails from './pages/SimulationResultDetails';
 import CareerPathPlanning from './pages/CareerPathPlanning';
 import CareerPuzzlePage from './pages/CareerPuzzlePage';
@@ -126,7 +127,7 @@ const ProtectedOutlet = () => {
 
 /** Career simulation UX requires an account; guests may only use Home (plus login/register). */
 const AuthenticatedSimulationShell = ({ children }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const { t } = useTranslation('common');
 
   if (loading) {
@@ -135,10 +136,6 @@ const AuthenticatedSimulationShell = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
-  }
-
-  if (!user?.isVerified && !user?.emailVerified) {
-    return <Navigate to="/check-email" replace />;
   }
 
   return children;
@@ -218,6 +215,14 @@ const App = () => {
                 </Route>
               </Route>
 
+              <Route element={<ProtectedOutlet />}>
+                <Route path="/more" element={<MorePage />} />
+                <Route path="/puzzle-path" element={<CareerPuzzlePage />} />
+                <Route path="/career-puzzle" element={<LegacyPathRedirect to="/puzzle-path" />} />
+                <Route path="/puzzle-you" element={<CareerIdentityPage />} />
+                <Route path="/career-identity" element={<LegacyPathRedirect to="/puzzle-you" />} />
+              </Route>
+
               {/* Role search & hub: auth + verified email (no profile-completion gate) */}
               <Route element={<ProtectedOutlet />}>
                 <Route element={<VerifiedEmailOutlet />}>
@@ -225,10 +230,6 @@ const App = () => {
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/explore-roles" element={<RoleSearch />} />
                   <Route path="/role/:escoId" element={<RoleDetails />} />
-                  <Route path="/puzzle-path" element={<CareerPuzzlePage />} />
-                  <Route path="/career-puzzle" element={<LegacyPathRedirect to="/puzzle-path" />} />
-                  <Route path="/puzzle-you" element={<CareerIdentityPage />} />
-                  <Route path="/career-identity" element={<LegacyPathRedirect to="/puzzle-you" />} />
                 </Route>
               </Route>
 

@@ -52,8 +52,9 @@ import { getRoleTitleForLocale, getRoleTitleEnglishForMatch } from '../../utils/
 import { storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
 import RoleEvaluationActionButtons from './RoleEvaluationActionButtons';
 import localizedContentService from '../../utils/localizedContentService';
-import { CareerStepRoleInlineBody } from './CareerStepRoleSections';
+import { CareerStepRoleInlineBody, RoleFitPreparingPlaceholder } from './CareerStepRoleSections';
 import { useEvalActionNudge } from '../../hooks/useEvalActionNudge';
+import { useRoleFitExplanation } from '../../hooks/useRoleFitExplanation';
 import { useCtaNudgeAnimation } from '../../hooks/useCtaNudgeAnimation';
 import { useSwipePanelExpansion } from '../../hooks/useSwipePanelExpansion';
 import {
@@ -247,6 +248,9 @@ export function RoleEvaluationCard({
   const roleDescription = localizedContentService.getLocalizedWithFallback(role.description, uiLang, '');
   const pct = getCareerStepMatchScorePercent(role);
   const simulationScopeId = simulationIdForCards || role?.simulationId || 'local';
+  const { isSettled: roleFitSettled } = useRoleFitExplanation(role, simulationScopeId, {
+    enabled: inlineDetails,
+  });
 
   const nudgeSx = (buttonKey) => (
     showEvalNudge && typeof getButtonNudgeSx === 'function' ? getButtonNudgeSx(buttonKey) : {}
@@ -433,6 +437,10 @@ export function RoleEvaluationCard({
       : swipe.offsetX < -SWIPE_CUE_ACTIVATION_PX
         ? 'left'
         : null);
+
+  if (inlineDetails && !roleFitSettled) {
+    return <RoleFitPreparingPlaceholder />;
+  }
 
   const inlineDetailsBlock = inlineDetails ? (
     <CareerStepRoleInlineBody

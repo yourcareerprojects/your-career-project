@@ -13,14 +13,29 @@ export const PAGE_TITLE_GRADIENT_SX = {
   backgroundClip: 'text',
 };
 
+/** Canonical page title — same size and top alignment on every screen. */
 export const PAGE_TITLE_SX = {
-  mb: 3,
+  mt: 0,
+  mb: 2,
   fontWeight: 700,
   textAlign: 'center',
+  fontSize: { xs: '1.75rem', sm: '2.125rem' },
+  lineHeight: 1.25,
+  overflowWrap: 'break-word',
+  wordBreak: 'break-word',
   ...PAGE_TITLE_GRADIENT_SX,
 };
 
-export const PAGE_DESCRIPTION_SX = { mb: 4, textAlign: 'center' };
+export const PAGE_DESCRIPTION_SX = {
+  mt: 0,
+  mb: 4,
+  textAlign: 'center',
+  fontSize: { xs: '1rem', sm: '1.125rem' },
+  lineHeight: 1.5,
+  color: 'text.secondary',
+  overflowWrap: 'break-word',
+  wordBreak: 'break-word',
+};
 
 /**
  * Standard page title and description — matches Saved Simulations list pages.

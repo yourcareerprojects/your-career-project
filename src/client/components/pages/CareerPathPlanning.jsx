@@ -281,7 +281,7 @@ export default function CareerPathPlanning() {
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 3 } }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       {!isOverview ? (
         <Tooltip title={t('careerPathPlanning.actions.back')}>
           <IconButton

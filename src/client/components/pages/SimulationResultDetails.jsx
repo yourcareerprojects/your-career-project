@@ -36,7 +36,6 @@ import { persistUserEvaluationToSavedSimulation } from '../../utils/persistSimul
 import { schedulePersistLastSimulationProgress } from '../../utils/persistLastSimulationProgress';
 import { getSimulationResultDetails, storeSimulationResultDetails } from '../../utils/simulationResultSessionStore';
 import { applyUserEvaluationToResultsSnapshot } from '../../utils/simulationEvaluationPropagation';
-import { useFullProfileQuery } from '../../hooks/useProfileQueries';
 import {
   getRoleTitleForLocale,
   getRoleTitleEnglishForMatch,
@@ -64,7 +63,6 @@ const SimulationResultDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [matchScore, setMatchScore] = useState(0);
-  const { isLoading: profileLoading } = useFullProfileQuery();
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [evaluationSaving, setEvaluationSaving] = useState(false);
@@ -487,7 +485,7 @@ const SimulationResultDetails = () => {
   );
 
   return (
-      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
       {/* Header Section */}
       <Paper 
         sx={{ 
@@ -619,7 +617,6 @@ const SimulationResultDetails = () => {
               loadSimulationDetailContext().savedSimulationId ||
               'local'
             }
-            profileLoading={profileLoading}
           />
 
           {isStackedCareerDetailLayout ? userEvaluationCard : null}

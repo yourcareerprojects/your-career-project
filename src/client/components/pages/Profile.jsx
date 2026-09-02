@@ -49,7 +49,7 @@ import ProfilePictureEditor from '../profile/ProfilePictureEditor';
 import ProfileDocumentList from '../profile/ProfileDocumentList';
 import ProfilePageActionBar from '../profile/ProfilePageActionBar';
 import ProfileSnapTarget from '../profile/ProfileSnapTarget';
-import { PAGE_TITLE_SX } from '../common/PageHeader';
+import PageHeader from '../common/PageHeader';
 import {
   buildReviewSaveUserMessage,
   saveExtractedProfileReview,
@@ -2210,30 +2210,27 @@ const Profile = ({
   };
 
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
       {/* Prompt to complete profile if below threshold */}
       {!canEditProfile ? (
         <ProfileSnapTarget snap>
-          <Typography variant="h4" component="h1" sx={PAGE_TITLE_SX}>
-            {t('profilePagePrompts.verifyEmail.title')}
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
-            {t('profilePagePrompts.verifyEmail.description')}
-          </Typography>
+          <PageHeader
+            title={t('profilePagePrompts.verifyEmail.title')}
+            description={t('profilePagePrompts.verifyEmail.description')}
+          />
           <ProfilePageActionBar actions={profilePageActions} />
         </ProfileSnapTarget>
       ) : completion && completion.overall < MIN_PROFILE_COMPLETION_REQUIRED ? (
         <ProfileSnapTarget snap>
-          <Typography variant="h4" component="h1" sx={PAGE_TITLE_SX}>
-            {t('profilePagePrompts.incomplete.title')}
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 4, textAlign: 'center' }}>
-            {t('profilePagePrompts.incomplete.description')}
-          </Typography>
+          <PageHeader
+            title={t('profilePagePrompts.incomplete.title')}
+            description={t('profilePagePrompts.incomplete.description')}
+          />
           <ProfilePageActionBar actions={profilePageActions} />
         </ProfileSnapTarget>
       ) : (
         <ProfileSnapTarget snap>
+          <PageHeader title={t('navigation.profile', { ns: 'common' })} />
           <ProfilePageActionBar actions={profilePageActions} />
         </ProfileSnapTarget>
       )}
@@ -2305,7 +2302,7 @@ const Profile = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
-                <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+                <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
                   {profileDisplayName || t('profilePage.nameEditor.placeholderName')}
                 </Typography>
                 <Tooltip title={t('profilePage.nameEditor.editCta')}>

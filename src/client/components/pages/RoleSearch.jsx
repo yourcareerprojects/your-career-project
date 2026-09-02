@@ -89,7 +89,7 @@ const RoleSearch = () => {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       <PageHeader title={t('roleSearch.pageTitle')} description={t('roleSearch.subtitle')} />
 
       <Paper sx={{ p: 2, mb: 3 }}>

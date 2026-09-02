@@ -21,8 +21,13 @@
       "title": "Profile completion required",
       "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to start a career simulation."
     },
+    "emailVerificationGate": {
+      "title": "Email verification required",
+      "description": "Confirm your email address to start a career simulation."
+    },
     "tooltips": {
       "completeProfileFirst": "Complete at least {{min}}% of your profile first",
+      "verifyEmailFirst": "Confirm your email address first",
       "startSimulation": "Choose a goal and generate new career role suggestions",
       "savedSimulations": "View and manage your saved simulations",
       "updateProfile": "Update your profile information",
@@ -113,6 +118,8 @@
     "wizard": {
       "loadingTitle": "Generating your simulation",
       "loadingDescription": "We are analysing your profile and building personalised role suggestions...",
+      "preparingTitle": "Preparing your first role",
+      "preparingDescription": "We're writing why this role fits you. The first suggestion appears as soon as it's ready — the rest continue in the background.",
       "nextRoleTitle": "Natural Next Roles",
       "nextRoleIntro": "Rate this suggestion. The next role will appear automatically.",
       "ootbChoiceTitle": "Surprising Perspectives",
@@ -141,6 +148,7 @@
     "messages": {
       "loadFailed": "Failed to load simulation",
       "profileCompletionRequired": "Your profile must be at least {{min}}% complete to run a simulation. Update your profile and try again.",
+      "emailVerificationRequired": "Please confirm your email address before starting a simulation.",
       "completeProfileToRun": "Complete at least {{min}}% of your profile to run a simulation.",
       "failedTryAgain": "Simulation failed. Please try again.",
       "failedCheckConnection": "Simulation failed. Please check your connection and try again.",
@@ -583,6 +591,10 @@
       "title": "Profile completion required",
       "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to build your career path puzzle."
     },
+    "emailVerificationGate": {
+      "title": "Email verification required",
+      "description": "Confirm your email address to build your career path puzzle."
+    },
     "emptySlot": "Your next step",
     "emptySlotAria": "Open next step choices",
     "dropHere": "Drop here to add",
@@ -686,6 +698,10 @@
     "profileGate": {
       "title": "Profile completion required",
       "description": "Your profile is {{current}}% complete. Reach at least {{min}}% to unlock your career identity puzzle."
+    },
+    "emailVerificationGate": {
+      "title": "Email verification required",
+      "description": "Confirm your email address to unlock your career identity puzzle."
     },
     "loadError": "Could not load your Career Identity.",
     "closeDetail": "Close details",

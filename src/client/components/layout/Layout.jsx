@@ -115,6 +115,9 @@ const Layout = ({ children }) => {
     if (location.pathname === '/history') {
       return t('history.pageTitle', { ns: 'dashboard' });
     }
+    if (location.pathname === '/more') {
+      return t('navigation.bottomNav.more', { ns: 'common' });
+    }
     if (location.pathname === '/settings') {
       return t('settings.pageTitle', { ns: 'common' });
     }

@@ -11,21 +11,17 @@ import {
 } from '@mui/material';
 import { Insights, School, Work } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
 import { getRequiredSkillLabels, getOptionalSkillLabels } from '../../utils/requiredSkillsUtils';
 import { mergeResponsibilityTranslations } from '../../utils/mergeResponsibilityTranslations';
 import localizedContentService from '../../utils/localizedContentService';
-import { useFullProfileQuery } from '../../hooks/useProfileQueries';
 import { WRAP_CHIP_LABEL_SX } from '../../constants/iconChipStyles';
 import { getLocalizedAltTitles, getLocalizedHiddenTitles } from '../../utils/roleTitleDisplay';
 import { splitDescriptionIntoParagraphs } from '../../utils/splitDescriptionIntoParagraphs';
+import { useRoleFitExplanation } from '../../hooks/useRoleFitExplanation';
 
 export const MAX_VISIBLE_REQUIRED_SKILLS = 5;
 export const MAX_VISIBLE_ALT_TITLES = 5;
 export const MAX_VISIBLE_OPTIONAL_SKILLS = 5;
-
-/** Wait after inputs settle before generating — absorbs profile fetch + occupation enrichment churn. */
-const ROLE_FIT_EXPLANATION_DEBOUNCE_MS = 500;
 
 export const getSeniorityColor = (level) => {
   if (typeof level !== 'number') return 'default';
@@ -302,79 +298,60 @@ export function CareerStepRoleDetailsCard({ stepDetails, unfolded = false }) {
   );
 }
 
+export function RoleFitPreparingPlaceholder() {
+  const { t } = useTranslation('dashboard');
+  const loadingLabel = t('simulation.preparingRoleEvaluation');
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 4,
+        minHeight: 160,
+      }}
+      aria-busy="true"
+      aria-live="polite"
+      aria-label={loadingLabel}
+    >
+      <CircularProgress size={32} thickness={4} />
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+        {loadingLabel}
+      </Typography>
+    </Box>
+  );
+}
+
 export function CareerStepRoleFitCard({
   stepDetails,
   simulationScopeId = null,
-  profileLoading = false,
 }) {
-  const { t, i18n } = useTranslation('dashboard');
-  const [bullets, setBullets] = useState([]);
-  const [explanationBusy, setExplanationBusy] = useState(false);
+  const { t } = useTranslation('dashboard');
+  const { bullets, isLoading, isReady } = useRoleFitExplanation(stepDetails, simulationScopeId);
 
-  useEffect(() => {
-    if (profileLoading) {
-      return undefined;
-    }
+  if (isLoading) {
+    return (
+      <Card
+        sx={{
+          mb: 3,
+          border: '1px solid',
+          borderColor: 'primary.light',
+          backgroundColor: 'var(--color-primary-muted-bg)',
+        }}
+      >
+        <CardContent>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5 }}>
+            {t('details.roleSections.whyThisRoleFitsYou')}
+          </Typography>
+          <RoleFitPreparingPlaceholder />
+        </CardContent>
+      </Card>
+    );
+  }
 
-    setBullets([]);
-    setExplanationBusy(true);
-
-    let cancelled = false;
-    const lang = i18n.resolvedLanguage || i18n.language || 'en';
-
-    const timerId = window.setTimeout(() => {
-      (async () => {
-        try {
-          const token =
-            typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-          if (!token) {
-            if (!cancelled) setBullets([]);
-          } else {
-            const { data } = await axios.post(
-              '/api/profile/role-fit-explanation',
-              {
-                language: lang,
-                role: stepDetails,
-                simulationScopeId: simulationScopeId || undefined,
-              },
-              {
-                headers: { Authorization: `Bearer ${token}` },
-              }
-            );
-            if (!cancelled && data?.success) {
-              const nextBullets = Array.isArray(data.bullets)
-                ? data.bullets.map((b) => String(b || '').trim()).filter(Boolean)
-                : [];
-              setBullets(nextBullets);
-            } else if (!cancelled) {
-              setBullets([]);
-            }
-          }
-        } catch {
-          if (!cancelled) setBullets([]);
-        } finally {
-          if (!cancelled) setExplanationBusy(false);
-        }
-      })();
-    }, ROLE_FIT_EXPLANATION_DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timerId);
-      setExplanationBusy(false);
-    };
-  }, [
-    stepDetails,
-    simulationScopeId,
-    i18n.resolvedLanguage,
-    i18n.language,
-    profileLoading,
-  ]);
-
-  const showLoading = profileLoading || explanationBusy;
-  if (!showLoading && bullets.length === 0) return null;
-
-  const loadingLabel = t('details.actions.loading');
+  if (!isReady || bullets.length === 0) return null;
 
   return (
     <Card
@@ -389,36 +366,15 @@ export function CareerStepRoleFitCard({
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5 }}>
           {t('details.roleSections.whyThisRoleFitsYou')}
         </Typography>
-        {showLoading ? (
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: 2,
-              py: 3,
-              minHeight: 72,
-            }}
-            aria-busy="true"
-            aria-live="polite"
-            aria-label={loadingLabel}
-          >
-            <CircularProgress size={28} thickness={4} />
-            <Typography variant="body2" color="text.secondary">
-              {loadingLabel}
-            </Typography>
-          </Box>
-        ) : (
-          <Box component="ul" sx={{ m: 0, pl: 2.25, '& li': { mb: 1 } }}>
-            {bullets.map((bullet, index) => (
-              <Box component="li" key={`${index}-${bullet.slice(0, 24)}`}>
-                <Typography variant="body2" sx={{ lineHeight: 1.55, fontWeight: 500 }}>
-                  {bullet}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        )}
+        <Box component="ul" sx={{ m: 0, pl: 2.25, '& li': { mb: 1 } }}>
+          {bullets.map((bullet, index) => (
+            <Box component="li" key={`${index}-${bullet.slice(0, 24)}`}>
+              <Typography variant="body2" sx={{ lineHeight: 1.55, fontWeight: 500 }}>
+                {bullet}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
       </CardContent>
     </Card>
   );
@@ -540,7 +496,6 @@ export function CareerStepRoleDescriptionCard({
  */
 export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null }) {
   const { i18n } = useTranslation('dashboard');
-  const { isLoading: profileLoading } = useFullProfileQuery();
   const uiLang = i18n.resolvedLanguage || i18n.language || 'en';
   const description = localizedContentService.getLocalizedWithFallback(
     stepDetails?.description,
@@ -554,7 +509,6 @@ export function CareerStepRoleInlineBody({ stepDetails, simulationScopeId = null
         <CareerStepRoleFitCard
           stepDetails={stepDetails}
           simulationScopeId={simulationScopeId || stepDetails?.simulationId || 'local'}
-          profileLoading={profileLoading}
         />
       </Box>
 

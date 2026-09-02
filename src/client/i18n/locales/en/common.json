@@ -19,9 +19,9 @@
       "label": "Main navigation",
       "profile": "Profile",
       "simulation": "PuzzleJOB",
-      "home": "Home",
-      "savedSearch": "Saved & Search",
-      "settings": "Settings"
+      "identity": "PuzzleYOU",
+      "careerPuzzle": "PuzzlePATH",
+      "more": "More"
     }
   },
   "actions": {
@@ -71,6 +71,7 @@
   },
   "settings": {
     "pageTitle": "Settings",
+    "hubDescription": "Change theme, language, and account options.",
     "appearance": "Appearance",
     "theme": "Theme",
     "themeDark": "Dark mode",

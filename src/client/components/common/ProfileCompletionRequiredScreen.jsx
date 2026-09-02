@@ -33,6 +33,8 @@ export default function ProfileCompletionRequiredScreen({
   pageSubtitle,
   gateTitle,
   gateDescription,
+  ctaTo = '/profile/fill',
+  ctaLabel,
 }) {
   const { t } = useTranslation('onboarding');
   const { overall, minRequired } = useProfileCompletionGate();
@@ -40,6 +42,7 @@ export default function ProfileCompletionRequiredScreen({
     typeof gateDescription === 'function'
       ? gateDescription({ current: overall, min: minRequired })
       : gateDescription;
+  const resolvedCtaLabel = ctaLabel || t('profilePagePrompts.incomplete.cta');
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -84,12 +87,12 @@ export default function ProfileCompletionRequiredScreen({
       >
         <Button
           component={RouterLink}
-          to="/profile/fill"
+          to={ctaTo}
           variant="contained"
           color="primary"
           size="medium"
           startIcon={<ArrowForwardIcon />}
-          aria-label={t('profilePagePrompts.incomplete.cta')}
+          aria-label={resolvedCtaLabel}
           sx={{
             fontWeight: 600,
             px: 3,
@@ -97,10 +100,29 @@ export default function ProfileCompletionRequiredScreen({
             fontSize: '1rem',
           }}
         >
-          {t('profilePagePrompts.incomplete.cta')}
+          {resolvedCtaLabel}
         </Button>
       </Box>
     </Box>
+  );
+}
+
+export function EmailVerificationRequiredScreen({
+  pageTitle,
+  pageSubtitle,
+  gateTitle,
+  gateDescription,
+}) {
+  const { t } = useTranslation('onboarding');
+  return (
+    <ProfileCompletionRequiredScreen
+      pageTitle={pageTitle}
+      pageSubtitle={pageSubtitle}
+      gateTitle={gateTitle}
+      gateDescription={gateDescription}
+      ctaTo="/check-email"
+      ctaLabel={t('profilePagePrompts.verifyEmail.cta')}
+    />
   );
 }
 

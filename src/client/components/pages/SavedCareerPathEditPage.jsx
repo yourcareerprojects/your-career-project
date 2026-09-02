@@ -31,7 +31,7 @@ export default function SavedCareerPathEditPage() {
 
   if (puzzleQuery.isLoading) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+      <Container maxWidth="lg" disableGutters>
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
@@ -41,7 +41,7 @@ export default function SavedCareerPathEditPage() {
 
   if (puzzleQuery.isError) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+      <Container maxWidth="lg" disableGutters>
         <Alert severity="error">
           {puzzleQuery.error?.message || t('savedLists.savedCareerPaths.errors.fetchFailed')}
         </Alert>
@@ -54,7 +54,11 @@ export default function SavedCareerPathEditPage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+    <Container maxWidth="lg" disableGutters>
+      <PageHeader
+        title={displayTitle}
+        description={t('savedLists.savedCareerPaths.editSubtitle')}
+      />
       <Box sx={{ mb: 2 }}>
         <Button
           component={RouterLink}
@@ -64,12 +68,6 @@ export default function SavedCareerPathEditPage() {
         >
           {t('savedLists.savedCareerPaths.backToList')}
         </Button>
-      </Box>
-      <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-        <PageHeader
-          title={displayTitle}
-          description={t('savedLists.savedCareerPaths.editSubtitle')}
-        />
       </Box>
       <CareerPuzzle pathId={pathId} mode="saved" />
     </Container>

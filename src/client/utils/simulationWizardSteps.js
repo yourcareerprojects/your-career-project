@@ -99,11 +99,29 @@ export function isSimulationWizardActive({
 }
 
 /**
- * @param {{ simLoading?: boolean, evaluationFlow?: object | null }} params
+ * Fresh next-role evaluation: nothing rated yet, so hold the loading step until
+ * the first role-fit explanation is ready.
+ *
+ * @param {object | null | undefined} evaluationFlow
+ * @returns {boolean}
+ */
+export function shouldHoldWizardOnLoadingForRoleFit(evaluationFlow) {
+  if (!evaluationFlow) return false;
+  const next = getEvalQueue(evaluationFlow, 'nextSteps');
+  if (!next.length) return false;
+  return next.every((role) => role && role.userEvaluation == null);
+}
+
+/**
+ * @param {{ simLoading?: boolean, evaluationFlow?: object | null, holdOnLoadingStep?: boolean }} params
  * @returns {{ phase: 'next' | 'ootb', step: number } | null}
  */
-export function deriveSimulationWizardStep({ simLoading = false, evaluationFlow = null }) {
-  if (simLoading || !evaluationFlow) {
+export function deriveSimulationWizardStep({
+  simLoading = false,
+  evaluationFlow = null,
+  holdOnLoadingStep = false,
+}) {
+  if (simLoading || holdOnLoadingStep || !evaluationFlow) {
     return { phase: 'next', step: NEXT_WIZARD_LOADING_STEP };
   }
 

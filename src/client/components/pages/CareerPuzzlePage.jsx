@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import { Alert, Box, Button, CircularProgress, Container } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 import PageHeader from '../common/PageHeader';
 import ProfileCompletionRequiredScreen, {
+  EmailVerificationRequiredScreen,
   ProfileCompletionGateLoading,
   useProfileCompletionGate,
 } from '../common/ProfileCompletionRequiredScreen';
@@ -17,8 +19,10 @@ import {
  */
 export default function CareerPuzzlePage() {
   const { t } = useTranslation('dashboard');
+  const { user } = useAuth();
+  const needsEmailVerification = !user?.isVerified && !user?.emailVerified;
   const profileGate = useProfileCompletionGate();
-  const puzzleEnabled = profileGate.isReady;
+  const puzzleEnabled = !needsEmailVerification && profileGate.isReady;
   const puzzleQuery = useCareerPuzzleQuery({ enabled: puzzleEnabled });
   const ensureDraftMutation = useEnsurePuzzleDraftMutation();
   const activeIsFavorite = Boolean(puzzleQuery.data?.activePath?.isFavorite);
@@ -32,9 +36,22 @@ export default function CareerPuzzlePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when active favorite path changes
   }, [puzzleEnabled, puzzleQuery.isSuccess, activeIsFavorite, puzzleQuery.data?.activePath?.pathId]);
 
+  if (needsEmailVerification) {
+    return (
+      <Container maxWidth="lg" disableGutters>
+        <EmailVerificationRequiredScreen
+          pageTitle={t('careerPuzzle.pageTitle')}
+          pageSubtitle={t('careerPuzzle.pageSubtitle')}
+          gateTitle={t('careerPuzzle.emailVerificationGate.title')}
+          gateDescription={t('careerPuzzle.emailVerificationGate.description')}
+        />
+      </Container>
+    );
+  }
+
   if (profileGate.isLoading) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+      <Container maxWidth="lg" disableGutters>
         <ProfileCompletionGateLoading />
       </Container>
     );
@@ -42,7 +59,7 @@ export default function CareerPuzzlePage() {
 
   if (profileGate.belowMin) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+      <Container maxWidth="lg" disableGutters>
         <ProfileCompletionRequiredScreen
           pageTitle={t('careerPuzzle.pageTitle')}
           pageSubtitle={t('careerPuzzle.pageSubtitle')}
@@ -61,13 +78,11 @@ export default function CareerPuzzlePage() {
     (puzzleQuery.isSuccess && activeIsFavorite && !ensureDraftMutation.isError);
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
-      <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-        <PageHeader
-          title={t('careerPuzzle.pageTitle')}
-          description={t('careerPuzzle.pageSubtitle')}
-        />
-      </Box>
+    <Container maxWidth="lg" disableGutters>
+      <PageHeader
+        title={t('careerPuzzle.pageTitle')}
+        description={t('careerPuzzle.pageSubtitle')}
+      />
       {ensureDraftMutation.isError ? (
         <Alert
           severity="error"

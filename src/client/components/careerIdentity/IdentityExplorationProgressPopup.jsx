@@ -13,8 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useLastSimulationQuery } from '../../hooks/useProfileQueries';
-import { loadPreferredSimulationSnapshot } from '../../utils/simulationPersistence';
-import { areBothSimulationRankingsComplete } from '../../utils/simulationRoleRanking';
+import { isIdentityExplorationUnlockedBySimulation } from '../../utils/identityExplorationSimulationUnlock';
 import { resolveExplorationProgressPhase } from '../../utils/resolveExplorationNotification';
 
 function resolveBodyCopy(phase, t, { activityPending = false } = {}) {
@@ -33,22 +32,13 @@ function resolveBodyCopy(phase, t, { activityPending = false } = {}) {
   }
 }
 
-function resolveSimulationUnlocked(lastSimData) {
-  const queryFlow = lastSimData?.results?.evaluationFlow;
-  if (areBothSimulationRankingsComplete(queryFlow)) return true;
-  try {
-    const sessionFlow = loadPreferredSimulationSnapshot()?.results?.evaluationFlow;
-    return areBothSimulationRankingsComplete(sessionFlow);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Progress card for identity → role-suggestion accumulation.
  * Discovery and profile next-actions unlock only after the first simulation
  * has both Next and Outside-the-Box rankings complete; otherwise the card
- * sends the user to the simulation flow.
+ * sends the user to the simulation flow (Career Identity page).
+ * On PuzzleJOB, pass hideWhenSimulationGated so the "complete simulation" prompt
+ * is not shown while ranking is still in progress.
  * While ready/preparing at threshold, shows an explicit preparing state (not a Discover button).
  */
 export default function IdentityExplorationProgressPopup({
@@ -58,6 +48,7 @@ export default function IdentityExplorationProgressPopup({
   onRateIdentity = null,
   canRateIdentity = true,
   sticky = true,
+  hideWhenSimulationGated = false,
   sx = null,
 }) {
   const { t } = useTranslation('dashboard');
@@ -66,7 +57,7 @@ export default function IdentityExplorationProgressPopup({
   const { careerSimulationPath } = useAppNavigation();
   const lastSimQuery = useLastSimulationQuery({ enabled: isAuthenticated });
 
-  const simulationUnlocked = resolveSimulationUnlocked(lastSimQuery.data);
+  const simulationUnlocked = isIdentityExplorationUnlockedBySimulation(lastSimQuery.data);
   const rankingsKnown = simulationUnlocked
     || !isAuthenticated
     || lastSimQuery.isFetched
@@ -87,6 +78,7 @@ export default function IdentityExplorationProgressPopup({
   };
 
   if (!progress?.hasBaseline) return null;
+  if (hideWhenSimulationGated && !simulationUnlocked) return null;
 
   const reasons = Array.isArray(progress.reasons) ? progress.reasons.filter(Boolean) : [];
   const progressValue = Math.max(0, Math.min(100, Number(progress.progressPercent) || 0));

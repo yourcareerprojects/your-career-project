@@ -3,6 +3,7 @@ import axios from 'axios';
 import { clearAppQueryCache, lastSimulationQueryKey, fetchLastSimulation, baseUILanguage } from '../hooks/useProfileQueries';
 import { queryClient } from '../queryClient';
 import { clearSimulationSessionForAuthChange } from '../utils/simulationPersistence';
+import { clearRoleFitExplanationCache } from '../utils/roleFitExplanationClient';
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,7 @@ export const AuthProvider = ({ children }) => {
     delete axios.defaults.headers.common['Authorization'];
     clearAppQueryCache();
     clearSimulationSessionForAuthChange();
+    clearRoleFitExplanationCache();
     setUser(null);
     setIsAuthenticated(false);
   }, []);
@@ -73,6 +75,7 @@ export const AuthProvider = ({ children }) => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       clearAppQueryCache();
       clearSimulationSessionForAuthChange();
+      clearRoleFitExplanationCache();
 
       setUser(user);
       setIsAuthenticated(true);
@@ -107,6 +110,7 @@ export const AuthProvider = ({ children }) => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       clearAppQueryCache();
       clearSimulationSessionForAuthChange();
+      clearRoleFitExplanationCache();
 
       setUser(user);
       setIsAuthenticated(true);

@@ -92,6 +92,7 @@ export default function SimulationStartWizard({
   simulationJobState,
   simulationProgress,
   evaluationFlow,
+  preparingRoleFit = false,
   simError,
   onDismissError,
   onEvaluateNext,
@@ -148,7 +149,9 @@ export default function SimulationStartWizard({
       return (
         <SimulationWizardStepTitle>
           <ExtensionIcon sx={{ mr: 1, verticalAlign: 'middle' }} aria-hidden />
-          {t('simulation.wizard.loadingTitle')}
+          {preparingRoleFit
+            ? t('simulation.wizard.preparingTitle')
+            : t('simulation.wizard.loadingTitle')}
         </SimulationWizardStepTitle>
       );
     }
@@ -200,15 +203,17 @@ export default function SimulationStartWizard({
       return (
         <Box sx={{ textAlign: 'center', py: 2 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {simulationJobState === 'queued'
-              ? t('simulation.loadingQueued')
-              : simulationJobState === 'running'
-                ? t('simulation.loadingRunning')
-                : t('simulation.wizard.loadingDescription')}
+            {preparingRoleFit
+              ? t('simulation.wizard.preparingDescription')
+              : simulationJobState === 'queued'
+                ? t('simulation.loadingQueued')
+                : simulationJobState === 'running'
+                  ? t('simulation.loadingRunning')
+                  : t('simulation.wizard.loadingDescription')}
           </Typography>
           <LinearProgress
-            variant="determinate"
-            value={Math.min(100, Math.max(0, simulationProgress))}
+            variant={preparingRoleFit ? 'indeterminate' : 'determinate'}
+            value={preparingRoleFit ? undefined : Math.min(100, Math.max(0, simulationProgress))}
             sx={{ height: 8, borderRadius: 999, maxWidth: 440, mx: 'auto' }}
           />
         </Box>

@@ -9,16 +9,18 @@ import {
 import {
   Person as PersonIcon,
   Extension as SimulationIcon,
-  Home as HomeIcon,
-  Bookmark as SavedSearchIcon,
-  Settings as SettingsIcon,
+  MoreHoriz as MoreIcon,
 } from '@mui/icons-material';
+import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined';
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 import { useNavigationGuardContext } from '../../contexts/NavigationGuardContext';
 import {
   useAppNavigation,
-  isSavedSearchPath,
   isSimulationPath,
   isProfilePath,
+  isPuzzleYouPath,
+  isPuzzlePathPath,
+  isMorePath,
 } from '../../hooks/useAppNavigation';
 
 export const MOBILE_BOTTOM_NAV_HEIGHT = 56;
@@ -45,25 +47,25 @@ const MobileBottomNav = () => {
       isActive: isSimulationPath(location.pathname),
     },
     {
-      key: 'home',
-      label: t('navigation.bottomNav.home', { ns: 'common' }),
-      icon: <HomeIcon />,
-      path: '/',
-      isActive: location.pathname === '/',
+      key: 'identity',
+      label: t('navigation.bottomNav.identity', { ns: 'common' }),
+      icon: <HubOutlinedIcon />,
+      path: '/puzzle-you',
+      isActive: isPuzzleYouPath(location.pathname),
     },
     {
-      key: 'savedSearch',
-      label: t('navigation.bottomNav.savedSearch', { ns: 'common' }),
-      icon: <SavedSearchIcon />,
-      path: '/saved-search',
-      isActive: isSavedSearchPath(location.pathname),
+      key: 'careerPuzzle',
+      label: t('navigation.bottomNav.careerPuzzle', { ns: 'common' }),
+      icon: <ExtensionOutlinedIcon />,
+      path: '/puzzle-path',
+      isActive: isPuzzlePathPath(location.pathname),
     },
     {
-      key: 'settings',
-      label: t('navigation.bottomNav.settings', { ns: 'common' }),
-      icon: <SettingsIcon />,
-      path: '/settings',
-      isActive: location.pathname === '/settings',
+      key: 'more',
+      label: t('navigation.bottomNav.more', { ns: 'common' }),
+      icon: <MoreIcon />,
+      path: '/more',
+      isActive: isMorePath(location.pathname),
     },
   ];
 

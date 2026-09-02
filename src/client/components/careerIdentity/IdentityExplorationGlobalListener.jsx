@@ -30,9 +30,10 @@ function applyDeliveredExplorationHint(payload = {}) {
  * Discovery CTA lives on the Career Identity progress card (not a toast).
  */
 export default function IdentityExplorationGlobalListener() {
-  const { isAuthenticated } = useAuth();
-  const identityQuery = useCareerIdentityQuery({ enabled: isAuthenticated });
-  const latestExplorationQuery = useLatestExplorationQuery({ enabled: isAuthenticated });
+  const { isAuthenticated, user } = useAuth();
+  const queriesEnabled = isAuthenticated && Boolean(user?.isVerified || user?.emailVerified);
+  const identityQuery = useCareerIdentityQuery({ enabled: queriesEnabled });
+  const latestExplorationQuery = useLatestExplorationQuery({ enabled: queriesEnabled });
   const phase = identityQuery.data?.explorationProgress?.phase;
   const activityPending = Boolean(identityQuery.data?.explorationProgress?.activityPending);
   const notification = resolveExplorationNotification(
@@ -46,30 +47,30 @@ export default function IdentityExplorationGlobalListener() {
   // Re-render when an activity watch window starts/ends so polling can engage.
   const [, setWatchTick] = useState(0);
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!queriesEnabled) return undefined;
     if (!isWatchingExplorationAfterActivity() && !activityPending) return undefined;
     const timer = setInterval(() => {
       setWatchTick((n) => n + 1);
     }, 1_000);
     return () => clearInterval(timer);
-  }, [isAuthenticated, activityPending]);
+  }, [queriesEnabled, activityPending]);
 
   const watchingActivity = isWatchingExplorationAfterActivity() || activityPending;
 
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!queriesEnabled) return undefined;
     const refetch = latestExplorationQuery.refetch;
     const timer = setInterval(() => {
       if (typeof refetch === 'function') refetch();
     }, 45_000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll while authenticated only
-  }, [isAuthenticated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll while verified only
+  }, [queriesEnabled]);
 
   // Poll while roles are being prepared, or right after identity-affecting writes
   // (profile edits) so progress can leave a stale 0% without a manual reload.
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!queriesEnabled) return undefined;
     if (!awaitingDelivery && !watchingActivity) return undefined;
 
     const refetchIdentity = identityQuery.refetch;
@@ -92,7 +93,7 @@ export default function IdentityExplorationGlobalListener() {
     }, 1_000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- driven by delivery / activity wait
-  }, [isAuthenticated, awaitingDelivery, watchingActivity]);
+  }, [queriesEnabled, awaitingDelivery, watchingActivity]);
 
   // Clear the recalculating hint once server progress has moved or unlocked.
   useEffect(() => {
@@ -202,7 +203,7 @@ export default function IdentityExplorationGlobalListener() {
 
   // Refresh identity progress when a pipeline run finishes.
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!queriesEnabled) return undefined;
     const token = localStorage.getItem('token');
     if (!token || typeof EventSource === 'undefined') return undefined;
 
@@ -274,7 +275,7 @@ export default function IdentityExplorationGlobalListener() {
         /* ignore */
       }
     };
-  }, [isAuthenticated]);
+  }, [queriesEnabled]);
 
   return null;
 }

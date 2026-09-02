@@ -12,16 +12,16 @@
   "navigation": {
     "home": "Startseite",
     "profile": "Profil",
-    "careerPuzzle": "PuzzleWEG",
+    "careerPuzzle": "PuzzlePATH",
     "openDrawer": "NavigationsmenÜ Öffnen",
     "goHome": "Zur Startseite",
     "bottomNav": {
       "label": "Hauptnavigation",
       "profile": "Profil",
-      "simulation": "PuzzleBERUF",
-      "home": "Start",
-      "savedSearch": "Gespeichert & Suche",
-      "settings": "Einstellungen"
+      "simulation": "PuzzleJOB",
+      "identity": "PuzzleYOU",
+      "careerPuzzle": "PuzzlePATH",
+      "more": "Mehr"
     }
   },
   "actions": {
@@ -71,6 +71,7 @@
   },
   "settings": {
     "pageTitle": "Einstellungen",
+    "hubDescription": "Ändere Design, Sprache und Konto.",
     "appearance": "Darstellung",
     "theme": "Design",
     "themeDark": "Dunkelmodus",

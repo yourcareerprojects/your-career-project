@@ -130,12 +130,12 @@ const ProfileCreation = () => {
   };
 
   if (loading || (user && completionQuery.isLoading)) {
-    return <Box sx={{ p: 3 }}><Typography>{t('profileCreation.loading')}</Typography></Box>;
+    return <Box><Typography>{t('profileCreation.loading')}</Typography></Box>;
   }
 
   if (profileExists && !allowProfileFill) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Box>
         <Paper sx={{ p: 3, mb: 3 }}>
           <PageHeader
             title={t('profileCreation.alreadyCreated.title')}
@@ -154,7 +154,7 @@ const ProfileCreation = () => {
   const showFullUpdateCopy = fullUpdateMode || profileBelowMinCompletion;
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}

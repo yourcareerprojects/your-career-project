@@ -4,22 +4,28 @@ import {
   useLatestExplorationQuery,
   useMarkExplorationSeenMutation,
 } from '../../hooks/useCareerIdentityQueries';
+import { useAuth } from '../../contexts/AuthContext';
+import { useLastSimulationQuery } from '../../hooks/useProfileQueries';
+import { isIdentityExplorationUnlockedBySimulation } from '../../utils/identityExplorationSimulationUnlock';
 import { resolveExplorationNotification } from '../../utils/resolveExplorationNotification';
 import IdentityExplorationDiscoverDialog from './IdentityExplorationDiscoverDialog';
 import IdentityExplorationProgressPopup from './IdentityExplorationProgressPopup';
 
 /**
- * Standalone exploration progress + discovery CTA for pages outside Career Identity.
- * Shows the same progress card (including next-action buttons below 100%) and keeps
- * the ranking dialog mounted after mark-seen clears the unread flag.
+ * Standalone exploration progress + discovery CTA for PuzzleJOB.
+ * Hidden while simulation ranking is incomplete (the "complete simulation" gate
+ * would only send the user to a page they are already on).
  */
 export default function IdentityExplorationDiscoverCta({
   sx = null,
   onExplorationRanked = null,
+  hideWhenSimulationGated = true,
 }) {
   const identityQuery = useCareerIdentityQuery();
   const latestExplorationQuery = useLatestExplorationQuery();
   const markSeenMutation = useMarkExplorationSeenMutation();
+  const { isAuthenticated } = useAuth();
+  const lastSimQuery = useLastSimulationQuery({ enabled: isAuthenticated });
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const markSeenInFlightRef = useRef(new Set());
@@ -28,6 +34,8 @@ export default function IdentityExplorationDiscoverCta({
   const identity = identityQuery.data;
   const progress = identity?.explorationProgress || null;
   const notification = resolveExplorationNotification(identity, latestExplorationQuery.data);
+  const simulationUnlocked = isIdentityExplorationUnlockedBySimulation(lastSimQuery.data);
+  const hideGatedCard = hideWhenSimulationGated && !simulationUnlocked;
 
   const markSeenOnce = useCallback(
     (id) => {
@@ -68,6 +76,7 @@ export default function IdentityExplorationDiscoverCta({
 
   // Keep the dialog alive if the unread flag clears while ranking.
   if (!progress?.hasBaseline && !discoverOpen) return null;
+  if (hideGatedCard && !discoverOpen) return null;
 
   return (
     <>
@@ -76,6 +85,7 @@ export default function IdentityExplorationDiscoverCta({
         explorationNotification={notification}
         onDiscover={handleDiscover}
         sticky={false}
+        hideWhenSimulationGated={hideWhenSimulationGated}
         sx={sx}
         canRateIdentity={(identity?.nodes || []).some((node) => node.userVote == null)}
       />

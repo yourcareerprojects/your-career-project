@@ -36,7 +36,8 @@ export const useAppNavigation = () => {
   const { isAuthenticated, user } = useAuth();
   const completionQuery = useProfileCompletionQuery({ enabled: isAuthenticated });
   const hasSimulationSession = hasActiveCareerSimulationSession();
-  const lastSimEnabled = isAuthenticated && !hasSimulationSession;
+  const emailVerified = Boolean(user?.isVerified || user?.emailVerified);
+  const lastSimEnabled = isAuthenticated && emailVerified && !hasSimulationSession;
   const lastSimQuery = useLastSimulationQuery({ enabled: lastSimEnabled });
 
   const canAccessSavedPages = useMemo(() => {
@@ -44,16 +45,15 @@ export const useAppNavigation = () => {
     return Number(completionQuery.data?.completion?.overall || 0) >= MIN_PROFILE_COMPLETION_REQUIRED;
   }, [isAuthenticated, user?.isVerified, completionQuery.data]);
 
-  const careerSimulationPath = useMemo(
-    () =>
-      resolveCareerSimulationPath({
-        hasSimulationSession,
-        isAuthenticated,
-        queryEnabled: lastSimEnabled,
-        lastSimQuery,
-      }),
-    [hasSimulationSession, isAuthenticated, lastSimEnabled, lastSimQuery]
-  );
+  const careerSimulationPath = useMemo(() => {
+    if (isAuthenticated && !emailVerified) return '/puzzle-job';
+    return resolveCareerSimulationPath({
+      hasSimulationSession,
+      isAuthenticated,
+      queryEnabled: lastSimEnabled,
+      lastSimQuery,
+    });
+  }, [emailVerified, hasSimulationSession, isAuthenticated, lastSimEnabled, lastSimQuery]);
 
   return { canAccessSavedPages, careerSimulationPath, isAuthenticated };
 };
@@ -80,3 +80,13 @@ export const isSimulationPath = (pathname) =>
 
 export const isProfilePath = (pathname) =>
   pathname === '/profile' || pathname.startsWith('/profile/');
+
+export const isPuzzleYouPath = (pathname) =>
+  pathname === '/puzzle-you' || pathname === '/career-identity';
+
+export const isPuzzlePathPath = (pathname) =>
+  pathname === '/puzzle-path' || pathname === '/career-puzzle';
+
+/** Mobile More hub and the destinations it links to. */
+export const isMorePath = (pathname) =>
+  pathname === '/more' || pathname === '/settings' || isSavedSearchPath(pathname);

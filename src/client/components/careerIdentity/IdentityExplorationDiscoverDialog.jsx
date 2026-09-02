@@ -31,6 +31,7 @@ import {
 } from '../../utils/persistExplorationRankingProgress';
 import { navigateToCareerPathPlanning } from '../../utils/careerPathPlanningSession';
 import { fireProfileCreatedConfetti } from '../../utils/profileCreatedConfetti';
+import { prefetchRoleFitExplanations } from '../../utils/roleFitExplanationClient';
 
 /**
  * Discovery ranking experience for a completed IdentityExplorationSession.
@@ -72,6 +73,18 @@ export default function IdentityExplorationDiscoverDialog({
   useEffect(() => {
     rankedRowsRef.current = rankedRows;
   }, [rankedRows]);
+
+  useEffect(() => {
+    if (!open || phase !== 'eval' || !Array.isArray(roles) || roles.length === 0) {
+      return undefined;
+    }
+    prefetchRoleFitExplanations({
+      roles: roles.filter((role) => role && role.userEvaluation == null),
+      simulationScopeId: `exploration-${sessionId || 'session'}`,
+      language: lang,
+    });
+    return undefined;
+  }, [open, phase, roles, sessionId, lang]);
 
   const jobs = useMemo(
     () => (Array.isArray(sessionQuery.data?.explorationJobs) ? sessionQuery.data.explorationJobs : []),

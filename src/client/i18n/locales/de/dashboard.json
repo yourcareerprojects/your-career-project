@@ -1,8 +1,8 @@
 {
   "simulation": {
-    "menuLabel": "PuzzleBERUF",
+    "menuLabel": "PuzzleJOB",
     "pageTitle": "Deine Berufssimulation",
-    "resultsTitle": "PuzzleBERUF",
+    "resultsTitle": "PuzzleJOB",
     "subtitle": {
       "hasResults": "Prüfe deine zuletzt generierten Berufsempfehlungen und erkunde jede Rolle im Detail.",
       "empty": "Starte eine Simulation, um personalisierte Berufsempfehlungen und nächste Schritte basierend auf deinem Profil zu erhalten."
@@ -21,8 +21,13 @@
       "title": "Vollständiges Profil erforderlich",
       "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um eine Berufssimulation zu starten."
     },
+    "emailVerificationGate": {
+      "title": "E-Mail-Bestätigung erforderlich",
+      "description": "Bestätige deine E-Mail-Adresse, um eine Berufssimulation zu starten."
+    },
     "tooltips": {
       "completeProfileFirst": "Vervollständige zuerst mindestens {{min}}% deines Profils",
+      "verifyEmailFirst": "Bestätige zuerst deine E-Mail-Adresse",
       "startSimulation": "Generiere neue Berufsvorschläge",
       "savedSimulations": "Gespeicherte Simulationen anzeigen und verwalten",
       "updateProfile": "Profildaten aktualisieren",
@@ -113,6 +118,8 @@
     "wizard": {
       "loadingTitle": "Simulation wird erstellt",
       "loadingDescription": "Wir analysieren dein Profil und erstellen personalisierte Rollenvorschläge...",
+      "preparingTitle": "Deine erste Rolle wird vorbereitet",
+      "preparingDescription": "Wir formulieren, warum diese Rolle zu dir passt. Der erste Vorschlag erscheint, sobald er bereit ist — die übrigen werden im Hintergrund vorbereitet.",
       "nextRoleTitle": "Naheliegende Rollen",
       "nextRoleIntro": "Bewerte diesen Vorschlag. Danach erscheint die nächste Rolle automatisch.",
       "ootbChoiceTitle": "Überraschende Perspektiven",
@@ -141,6 +148,7 @@
     "messages": {
       "loadFailed": "Simulation konnte nicht geladen werden",
       "profileCompletionRequired": "Dein Profil muss mindestens zu {{min}}% vollständig sein, um eine Simulation auszuführen. Aktualisiere dein Profil und versuche es erneut.",
+      "emailVerificationRequired": "Bitte bestätige deine E-Mail-Adresse, bevor du eine Simulation startest.",
       "completeProfileToRun": "Vervollständige mindestens {{min}}% deines Profils, um eine Simulation zu starten.",
       "failedTryAgain": "Simulation fehlgeschlagen. Bitte versuche es erneut.",
       "failedCheckConnection": "Simulation fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.",
@@ -576,12 +584,16 @@
     }
   },
   "careerPuzzle": {
-    "menuLabel": "PuzzleWEG",
-    "pageTitle": "PuzzleWEG",
+    "menuLabel": "PuzzlePATH",
+    "pageTitle": "PuzzlePATH",
     "pageSubtitle": "Baue deine Zukunft Schritt für Schritt. Starte dort, wo du stehst und entscheide selbst, was als Nächstes kommt.",
     "profileGate": {
       "title": "Vollständiges Profil erforderlich",
       "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um dein Karriereweg-Puzzle zu bauen."
+    },
+    "emailVerificationGate": {
+      "title": "E-Mail-Bestätigung erforderlich",
+      "description": "Bestätige deine E-Mail-Adresse, um dein Karriereweg-Puzzle zu bauen."
     },
     "emptySlot": "Dein nächster Schritt",
     "emptySlotAria": "Nächste Schritte öffnen",
@@ -680,12 +692,16 @@
     }
   },
   "careerIdentity": {
-    "menuLabel": "PuzzleICH",
-    "pageTitle": "PuzzleICH",
+    "menuLabel": "PuzzleYOU",
+    "pageTitle": "PuzzleYOU",
     "pageSubtitle": "Dein Berufsleben ist ein Puzzle. Jede Erfahrung fügt dem Puzzlebild neue Erkenntnisse hinzu. So kannst du dich selbst besser kennenlernen.",
     "profileGate": {
       "title": "Vollständiges Profil erforderlich",
       "description": "Dein Profil ist zu {{current}}% ausgefüllt. Erreiche mindestens {{min}}%, um dein Identitäts-Puzzle freizuschalten."
+    },
+    "emailVerificationGate": {
+      "title": "E-Mail-Bestätigung erforderlich",
+      "description": "Bestätige deine E-Mail-Adresse, um dein Identitäts-Puzzle freizuschalten."
     },
     "loadError": "Deine berufliche Identität konnte nicht geladen werden.",
     "closeDetail": "Details schließen",

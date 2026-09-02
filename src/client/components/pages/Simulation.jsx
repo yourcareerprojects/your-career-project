@@ -47,7 +47,13 @@ import {
   deriveSimulationWizardStep,
   isSimulationWizardActive,
   canResumeSimulationWizard,
+  shouldHoldWizardOnLoadingForRoleFit,
 } from '../../utils/simulationWizardSteps';
+import { useRoleFitExplanation } from '../../hooks/useRoleFitExplanation';
+import {
+  cancelRoleFitPrefetch,
+  prefetchRoleFitExplanationsForEvaluation,
+} from '../../utils/roleFitExplanationClient';
 import { navigateToCareerPathPlanning } from '../../utils/careerPathPlanningSession';
 import {
   ensureEvaluationFlow,
@@ -58,6 +64,7 @@ import {
   hasSimulationEvaluationProgress,
   withMaterializedEvaluationFlow,
   toPersistedSimulationResults,
+  getEvalQueue,
 } from '../../utils/simulationRoleRanking';
 import { useEvaluationFlowWrites } from '../../hooks/useEvaluationFlowWrites';
 import { useSimulationRankingsCompleteCelebration } from '../../hooks/useSimulationRankingsCompleteCelebration';
@@ -253,13 +260,27 @@ const Simulation = () => {
     setSimulationWizardIntent(true);
   }, [resumeOutsideTheBoxFlow]);
 
+  const simulationScopeIdForCards =
+    selectedSimulation?.id || simResults?.simulationId || 'local';
+  const holdFreshNextRoleFit = shouldHoldWizardOnLoadingForRoleFit(simResults?.evaluationFlow);
+  const firstPendingNextRole = holdFreshNextRoleFit
+    ? getEvalQueue(simResults?.evaluationFlow, 'nextSteps')[0]
+    : null;
+  const { isSettled: firstRoleFitSettled } = useRoleFitExplanation(
+    firstPendingNextRole,
+    simulationScopeIdForCards,
+    { enabled: holdFreshNextRoleFit }
+  );
+  const holdWizardForRoleFit = holdFreshNextRoleFit && !firstRoleFitSettled;
+
   const simulationWizardStep = useMemo(
     () =>
       deriveSimulationWizardStep({
         simLoading,
         evaluationFlow: simResults?.evaluationFlow,
+        holdOnLoadingStep: !simLoading && holdWizardForRoleFit,
       }),
-    [simLoading, simResults?.evaluationFlow]
+    [simLoading, simResults?.evaluationFlow, holdWizardForRoleFit]
   );
 
   const simulationWizardActive = useMemo(
@@ -286,6 +307,25 @@ const Simulation = () => {
       setSimulationWizardIntent(false);
     }
   }, [simLoading, simResults, simulationWizardIntent]);
+
+  useEffect(() => {
+    if (simLoading) {
+      cancelRoleFitPrefetch();
+      return undefined;
+    }
+    if (!simResults?.evaluationFlow) return undefined;
+    prefetchRoleFitExplanationsForEvaluation({
+      evaluationFlow: simResults.evaluationFlow,
+      simulationScopeId: simulationScopeIdForCards,
+      language: requestLang,
+    });
+    return undefined;
+  }, [
+    simLoading,
+    simResults?.evaluationFlow,
+    simulationScopeIdForCards,
+    requestLang,
+  ]);
 
   const handleWizardSkipOotb = useCallback(() => {
     handleSkipOutsideTheBox();
@@ -460,7 +500,9 @@ const Simulation = () => {
     ready: false,
     belowMin: false,
   });
-  const canRunSimulation = profileSimulationGate.ready && !profileSimulationGate.belowMin;
+  const needsEmailVerification = !user?.isVerified && !user?.emailVerified;
+  const canRunSimulation =
+    !needsEmailVerification && profileSimulationGate.ready && !profileSimulationGate.belowMin;
 
   const { data: savedSimulations = [] } = useSavedSimulationsListQuery({ enabled: canRunSimulation });
 
@@ -1106,6 +1148,12 @@ const Simulation = () => {
   };
 
   const handleSimulate = async () => {
+    if (needsEmailVerification) {
+      setSimError(t('simulation.messages.emailVerificationRequired', { ns: 'dashboard' }));
+      setSimulationWizardIntent(false);
+      return;
+    }
+
     if (profileSimulationGate.ready && profileSimulationGate.belowMin) {
       setSimError(
         t('simulation.messages.profileCompletionRequired', {
@@ -1551,13 +1599,19 @@ const Simulation = () => {
 
     if (!canRunSimulation) {
       actions.push({
-        key: 'go-to-profile',
-        label: t('simulation.actions.goToProfile', { ns: 'dashboard' }),
-        shortLabel: t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
-        variant: 'outlined',
+        key: needsEmailVerification ? 'verify-email' : 'go-to-profile',
+        label: needsEmailVerification
+          ? t('profilePagePrompts.verifyEmail.cta', { ns: 'onboarding' })
+          : t('simulation.actions.goToProfile', { ns: 'dashboard' }),
+        shortLabel: needsEmailVerification
+          ? t('profilePagePrompts.verifyEmail.ctaShort', { ns: 'onboarding' })
+          : t('simulation.actions.goToProfileShort', { ns: 'dashboard' }),
+        variant: needsEmailVerification ? 'contained' : 'outlined',
         startIcon: <ArrowForwardIcon />,
-        onClick: () => guardedNavigate('/profile'),
-        ariaLabel: t('simulation.aria.goToProfile', { ns: 'dashboard' }),
+        onClick: () => guardedNavigate(needsEmailVerification ? '/check-email' : '/profile'),
+        ariaLabel: needsEmailVerification
+          ? t('profilePagePrompts.verifyEmail.cta', { ns: 'onboarding' })
+          : t('simulation.aria.goToProfile', { ns: 'dashboard' }),
         compactOrder: 0,
       });
     }
@@ -1567,6 +1621,7 @@ const Simulation = () => {
     simResults,
     isViewingSavedSimulation,
     canRunSimulation,
+    needsEmailVerification,
     t,
     guardedNavigate,
   ]);
@@ -1756,27 +1811,24 @@ const Simulation = () => {
           
           // State consistency tracking (removed verbose logging)
           
-          const resultsHeaderOrder = simResults
-            ? { title: { xs: 1, sm: 0 }, subtitle: { xs: 2, sm: 1 }, profileGate: { xs: 3, sm: 2 }, actions: { xs: 0, sm: 4 } }
-            : { title: 0, subtitle: 1, profileGate: 2, actions: 3 };
+          const resultsHeaderOrder = { title: 0, subtitle: 1, profileGate: 2, actions: 3 };
 
           return (
             <>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              {!(loadingLast || simLoading) && simResults && (
+              {!(loadingLast || simLoading) && simResults && hasSimulationResultsPageActions ? (
                 <Box sx={{ order: resultsHeaderOrder.actions, mb: { xs: 2, sm: 4 } }}>
-                  {hasSimulationResultsPageActions && (
-                    <ProfilePageActionBar
-                      actions={simulationResultsPageActions}
-                      sx={{ mb: 2, px: { xs: 0.5, sm: 0 } }}
-                    />
-                  )}
-                  <IdentityExplorationDiscoverCta
-                    sx={{ mb: 0 }}
-                    onExplorationRanked={handleExplorationRanked}
+                  <ProfilePageActionBar
+                    actions={simulationResultsPageActions}
                   />
                 </Box>
-              )}
+              ) : null}
+              {!(loadingLast || simLoading) && simResults ? (
+                <IdentityExplorationDiscoverCta
+                  sx={{ order: resultsHeaderOrder.actions, mb: { xs: 2, sm: 4 } }}
+                  onExplorationRanked={handleExplorationRanked}
+                />
+              ) : null}
 
               <PageHeader
                 title={
@@ -1793,7 +1845,33 @@ const Simulation = () => {
                 descriptionSx={{ order: resultsHeaderOrder.subtitle }}
               />
 
-              {profileSimulationGate.ready && profileSimulationGate.belowMin && (
+              {needsEmailVerification && (
+                <Alert
+                  severity="warning"
+                  variant="outlined"
+                  sx={{
+                    order: resultsHeaderOrder.profileGate,
+                    mb: 3,
+                    maxWidth: 680,
+                    mx: 'auto',
+                    borderRadius: 3,
+                    px: 2,
+                    py: 1.5,
+                    borderWidth: 1.5,
+                    alignItems: 'center',
+                    backgroundColor: 'warning.50'
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
+                    {t('simulation.emailVerificationGate.title', { ns: 'dashboard' })}
+                  </Typography>
+                  <Typography variant="body2">
+                    {t('simulation.emailVerificationGate.description', { ns: 'dashboard' })}
+                  </Typography>
+                </Alert>
+              )}
+
+              {profileSimulationGate.ready && profileSimulationGate.belowMin && !needsEmailVerification && (
                 <Alert
                   severity="warning"
                   variant="outlined"
@@ -1846,7 +1924,9 @@ const Simulation = () => {
                 {!simResults && !simLoading && (
                   <Tooltip
                     title={
-                      profileSimulationGate.ready && profileSimulationGate.belowMin
+                      needsEmailVerification
+                        ? t('simulation.tooltips.verifyEmailFirst', { ns: 'dashboard' })
+                        : profileSimulationGate.ready && profileSimulationGate.belowMin
                         ? t('simulation.tooltips.completeProfileFirst', {
                             ns: 'dashboard',
                             min: MIN_PROFILE_COMPLETION_REQUIRED,
@@ -1871,6 +1951,7 @@ const Simulation = () => {
                         }}
                         disabled={
                           simLoading ||
+                          needsEmailVerification ||
                           (profileSimulationGate.ready && profileSimulationGate.belowMin)
                         }
                       >
@@ -1881,6 +1962,26 @@ const Simulation = () => {
                 )}
                 {!simResults &&
                   !simLoading &&
+                  needsEmailVerification && (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      size="medium"
+                      startIcon={<ArrowForwardIcon />}
+                      onClick={() => guardedNavigate('/check-email')}
+                      sx={{
+                        fontWeight: 600,
+                        px: 3,
+                        py: 1.5,
+                        fontSize: '1rem',
+                      }}
+                    >
+                      {t('profilePagePrompts.verifyEmail.cta', { ns: 'onboarding' })}
+                    </Button>
+                  )}
+                {!simResults &&
+                  !simLoading &&
+                  !needsEmailVerification &&
                   profileSimulationGate.ready &&
                   profileSimulationGate.belowMin && (
                     <Button
@@ -2194,7 +2295,7 @@ const Simulation = () => {
   };
   
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
       {renderWithErrorBoundary()}
 
       {simulationWizardActive && simulationWizardStep ? (
@@ -2206,6 +2307,7 @@ const Simulation = () => {
           simulationJobState={simulationJobState}
           simulationProgress={simulationProgress}
           evaluationFlow={simResults?.evaluationFlow}
+          preparingRoleFit={!simLoading && holdWizardForRoleFit}
           simError={simError}
           onDismissError={() => setSimError('')}
           onEvaluateNext={handleWizardEvaluateNext}
@@ -2216,9 +2318,7 @@ const Simulation = () => {
           guardedNavigate={guardedNavigate}
           isViewingSavedSimulation={isViewingSavedSimulation}
           savedSimulationId={selectedSimulation?.id}
-          simulationIdForCards={
-            selectedSimulation?.id || simResults?.simulationId || 'local'
-          }
+          simulationIdForCards={simulationScopeIdForCards}
         />
       ) : null}
 
